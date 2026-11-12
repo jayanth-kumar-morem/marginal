@@ -1,0 +1,7 @@
+packages:
+  - room
+  - services/*
+  - apps/web
+  - sdk/ts
+  - verifiers/replay-ts
+  - scripts
