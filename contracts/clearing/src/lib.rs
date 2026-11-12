@@ -1,7 +1,7 @@
 //! Clearing: listings, jobs, escrow, pricing, leakage. This is the E1 skeleton: it holds
 //! the deployment profile so that `config()` shows which toggles produced a record
 //! (SDD §6.3 rule 2). Epics E4 to E6 add the rest.
-use near_sdk::{near, AccountId, PanicOnDefault};
+use near_sdk::{near, require, AccountId, PanicOnDefault};
 
 pub const CLEARING_VERSION: u8 = 1;
 
@@ -57,10 +57,15 @@ pub struct Clearing {
 impl Clearing {
     #[init]
     pub fn new(gov: AccountId, tokens: Vec<AccountId>, profile: ProfileConfig) -> Self {
-        assert!(!profile.rules_enabled.is_empty(), "no rule enabled");
-        assert!(
+        require!(!tokens.is_empty(), "no settlement token");
+        require!(!profile.rules_enabled.is_empty(), "no rule enabled");
+        require!(
             !profile.asset_classes_enabled.is_empty(),
             "no asset class enabled"
+        );
+        require!(
+            profile.challenge_window_secs > 0,
+            "challenge window must be positive"
         );
         Self {
             gov,
@@ -97,7 +102,7 @@ mod tests {
     #[test]
     fn config_reflects_profile() {
         let gov: AccountId = "gov.test".parse().unwrap();
-        let c = Clearing::new(gov.clone(), vec![], profile());
+        let c = Clearing::new(gov.clone(), vec!["t.test".parse().unwrap()], profile());
         let cfg = c.config();
         assert_eq!(cfg.gov, gov);
         assert_eq!(cfg.profile.challenge_window_secs, 600);
@@ -121,6 +126,28 @@ mod tests {
     fn rejects_empty_rules() {
         let mut p = profile();
         p.rules_enabled.clear();
-        Clearing::new("gov.test".parse().unwrap(), vec![], p);
+        Clearing::new(
+            "gov.test".parse().unwrap(),
+            vec!["t.test".parse().unwrap()],
+            p,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "no settlement token")]
+    fn rejects_no_token() {
+        Clearing::new("gov.test".parse().unwrap(), vec![], profile());
+    }
+
+    #[test]
+    #[should_panic(expected = "challenge window must be positive")]
+    fn rejects_zero_challenge_window() {
+        let mut p = profile();
+        p.challenge_window_secs = 0;
+        Clearing::new(
+            "gov.test".parse().unwrap(),
+            vec!["t.test".parse().unwrap()],
+            p,
+        );
     }
 }

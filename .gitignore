@@ -9,3 +9,6 @@ deploy/.keys/
 .env
 .env.*
 !.env.example
+# tsc output belongs in dist/, never next to the sources
+**/src/**/*.js
+**/src/**/*.js.map

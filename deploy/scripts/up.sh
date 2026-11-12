@@ -8,8 +8,13 @@ if [ -s "$HOME/.nvm/nvm.sh" ] && [ -f .nvmrc ]; then
   # shellcheck disable=SC1091
   . "$HOME/.nvm/nvm.sh" >/dev/null && nvm use >/dev/null
 fi
-if [ ! -f target/near/musdc/musdc.wasm ] || [ ! -f target/near/clearing/clearing.wasm ] || [ ! -f target/near/keypolicy/keypolicy.wasm ]; then
-  echo "building contracts first (make wasm)"
+profile="${1:-}"
+if [ "$profile" != "sandbox" ]; then
+  # Real networks get exactly the committed source: a reproducible build, every time.
+  echo "reproducible contract build for $profile (make wasm)"
   make wasm
+elif [ ! -f target/near/musdc/musdc.wasm ] || [ ! -f target/near/clearing/clearing.wasm ] || [ ! -f target/near/keypolicy/keypolicy.wasm ]; then
+  echo "no contract wasm yet; dev build for the sandbox (make wasm-dev)"
+  make wasm-dev
 fi
 exec pnpm --silent --filter @marginal/scripts exec tsx src/up.ts "$@"

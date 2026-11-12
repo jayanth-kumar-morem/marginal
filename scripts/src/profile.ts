@@ -23,6 +23,8 @@ export interface Profile {
 }
 
 const ACCOUNT_ID = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+/** One account-id segment: what goes in front of `.<deployer>`. */
+const SUB_NAME = /^([a-z\d]+[-_])*[a-z\d]+$/;
 
 function fail(msg: string): never {
   throw new Error(`invalid profile: ${msg}`);
@@ -46,6 +48,11 @@ function account(o: Record<string, unknown>, k: string, path: string): string {
   if (v.length < 2 || v.length > 64 || !ACCOUNT_ID.test(v)) fail(`${path}.${k} is not a valid NEAR account id: ${v}`);
   return v;
 }
+function subName(o: Record<string, unknown>, k: string, path: string): string {
+  const v = str(o, k, path);
+  if (!SUB_NAME.test(v)) fail(`${path}.${k} must be a single account-id segment (no dots): ${v}`);
+  return v;
+}
 function enumList<T extends string>(o: Record<string, unknown>, k: string, path: string, allowed: readonly T[]): T[] {
   const v = o[k];
   if (!Array.isArray(v) || v.length === 0) fail(`${path}.${k} must be a non-empty list`);
@@ -58,7 +65,8 @@ export function validateProfile(raw: unknown): Profile {
   const network = str(r, "network", "profile");
   if (network !== "sandbox" && network !== "testnet") fail(`network must be sandbox or testnet, got ${network}`);
   const rpc = r["rpc"];
-  if (!Array.isArray(rpc) || !rpc.every((x) => typeof x === "string")) fail("rpc must be a list of strings");
+  if (!Array.isArray(rpc) || !rpc.every((x) => typeof x === "string" && /^https?:\/\/\S+$/.test(x)))
+    fail("rpc must be a list of http(s) URLs");
   if (network !== "sandbox" && rpc.length === 0) fail("rpc must list at least one endpoint for non-sandbox networks");
   const a = obj(r["accounts"], "accounts");
   const h = obj(r["hdp"], "hdp");
@@ -70,19 +78,18 @@ export function validateProfile(raw: unknown): Profile {
   const challenge = int(h, "challenge_window_secs", "hdp");
   if (challenge === 0) fail("hdp.challenge_window_secs must be positive");
   const domain = int(k, "ckd_domain_id", "keypolicy");
+  const deployer = account(a, "deployer", "accounts");
+  const subs = (["gov", "faucet", "token", "clearing", "keypolicy"] as const).map((n) => [n, subName(a, n, "accounts")] as const);
+  const names = new Set(subs.map(([, v]) => v));
+  if (names.size !== subs.length) fail("accounts: gov, faucet, token, clearing and keypolicy must all differ");
+  for (const [n, v] of subs) if (`${v}.${deployer}`.length > 64) fail(`accounts.${n}: ${v}.${deployer} is longer than 64 characters`);
+  const sub = Object.fromEntries(subs) as Record<(typeof subs)[number][0], string>;
   return {
     profile: str(r, "profile", "profile"),
     network,
     chain_id: str(r, "chain_id", "profile"),
     rpc: rpc as string[],
-    accounts: {
-      deployer: account(a, "deployer", "accounts"),
-      gov: str(a, "gov", "accounts"),
-      faucet: str(a, "faucet", "accounts"),
-      token: str(a, "token", "accounts"),
-      clearing: str(a, "clearing", "accounts"),
-      keypolicy: str(a, "keypolicy", "accounts"),
-    },
+    accounts: { deployer, ...sub },
     hdp: {
       gov_profile: str(h, "gov_profile", "hdp"),
       cooling_blocks: int(h, "cooling_blocks", "hdp"),

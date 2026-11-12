@@ -52,6 +52,20 @@ test("rejects a bad account id and a zero challenge window", () => {
   assert.throws(() => validateProfile(r2), /must be positive/);
 });
 
+test("rejects dotted, duplicate or over-long sub-account names and non-URL rpc", () => {
+  const set = (k: string, v: string) => {
+    const r = raw();
+    (r["accounts"] as Record<string, unknown>)[k] = v;
+    return r;
+  };
+  assert.throws(() => validateProfile(set("gov", "a.b")), /single account-id segment/);
+  assert.throws(() => validateProfile(set("faucet", "gov")), /must all differ/);
+  assert.throws(() => validateProfile(set("clearing", "c".repeat(60))), /longer than 64/);
+  const r = raw();
+  r["rpc"] = ["not a url"];
+  assert.throws(() => validateProfile(r), /http\(s\) URLs/);
+});
+
 test("sub-account ids are qualified with the deployer", () => {
   const a = fullAccounts(loadProfile(join(dir, "sandbox.toml")));
   assert.equal(a.token, "musdc.sandbox");

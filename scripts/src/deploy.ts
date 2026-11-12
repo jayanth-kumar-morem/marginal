@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, baseEncode, type KeyPairString, type SerializedReturnValue } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, actions, baseEncode, type KeyPairString, type SerializedReturnValue } from "near-api-js";
+import { AccountDoesNotExistError } from "near-api-js/rpc-errors";
 import { fullAccounts, type Profile } from "./profile.js";
 
 export interface DeployContext {
@@ -11,6 +12,13 @@ export interface DeployContext {
   /** Directory holding `<crate>/<crate>.wasm` (cargo-near output). */
   wasmDir: string;
   log?: (line: string) => void;
+  /**
+   * Called with every secret key as soon as its account exists on chain, so a deploy that fails
+   * halfway never loses the keys of accounts it already created.
+   */
+  saveKeys?: (keys: DeployKeys) => void;
+  /** Source revision recorded in the manifest. */
+  git?: { commit: string; dirty: boolean };
 }
 
 export interface ContractRecord {
@@ -27,9 +35,10 @@ export interface Manifest {
   chain_id: string;
   rpc: string[];
   deployed_at: string;
+  git: { commit: string; dirty: boolean } | null;
   accounts: { deployer: string; gov: string; faucet: string };
   contracts: { musdc: ContractRecord; clearing: ContractRecord; keypolicy: ContractRecord };
-  /** Number of access keys left on the KeyPolicy account. Must be 0 (SDD §3.12.6). */
+  /** Access keys on the KeyPolicy account. Must be 0 (SDD §3.12.6): it is created keyless. */
   keypolicy_access_keys: number;
   config: { clearing: unknown; keypolicy: unknown };
   /** Public keys of the accounts we control; secret keys are never written here. */
@@ -64,6 +73,16 @@ function readWasm(dir: string, crate: string): { bytes: Uint8Array; sha256: stri
   return { bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
+async function exists(provider: JsonRpcProvider, id: string): Promise<boolean> {
+  try {
+    await provider.viewAccount({ accountId: id });
+    return true;
+  } catch (e) {
+    if (e instanceof AccountDoesNotExistError) return false;
+    throw e; // a network or RPC failure must not read as "account is free"
+  }
+}
+
 export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manifest: Manifest; keys: DeployKeys }> {
   const log = ctx.log ?? (() => {});
   const ids = fullAccounts(p);
@@ -79,52 +98,54 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
 
   // Fresh deploys only: refuse to touch accounts that already exist.
   for (const id of [ids.gov, ids.faucet, ids.token, ids.clearing, ids.keypolicy]) {
-    const exists = await new Account(id, provider).getState().then(
-      () => true,
-      () => false,
-    );
-    if (exists) throw new Error(`account ${id} already exists; up.sh only does fresh deploys`);
+    if (await exists(provider, id)) throw new Error(`account ${id} already exists; up.sh only does fresh deploys`);
   }
 
   const keys: DeployKeys = {};
   const pub: Record<string, string> = {};
-  const accounts = new Map<string, Account>();
-  async function create(id: string, balance: bigint): Promise<Account> {
-    const kp = KeyPair.fromRandom("ed25519");
-    await deployer.createAccount({ newAccountId: id, publicKey: kp.getPublicKey().toString(), nearToTransfer: balance });
-    keys[id] = kp.toString();
-    pub[id] = kp.getPublicKey().toString();
-    const acc = new Account(id, provider, new KeyPairSigner(kp));
-    accounts.set(id, acc);
-    return acc;
+
+  /**
+   * One transaction from the deployer: create the sub-account, fund it, add its key (unless
+   * keyless), deploy the code and call `new`. Nothing can call `new` before we do, and a failed
+   * init rolls back the whole account.
+   */
+  async function create(
+    id: string,
+    balance: bigint,
+    opts: { keyless?: boolean; wasm?: { bytes: Uint8Array; sha256: string }; init?: Record<string, unknown> } = {},
+  ): Promise<void> {
+    const kp = opts.keyless ? undefined : KeyPair.fromRandom("ed25519");
+    const acts = [actions.createAccount(), actions.transfer(balance)];
+    if (kp) acts.push(actions.addFullAccessKey(kp.getPublicKey()));
+    if (opts.wasm) acts.push(actions.deployContract(opts.wasm.bytes));
+    if (opts.init) acts.push(actions.functionCall("new", opts.init, GAS_INIT, 0n));
+    await deployer.signAndSendTransaction({ receiverId: id, actions: acts, waitUntil: "FINAL" });
+    if (kp) {
+      keys[id] = kp.toString();
+      pub[id] = kp.getPublicKey().toString();
+      ctx.saveKeys?.({ ...keys });
+    }
+    if (opts.wasm) {
+      const onChain = (await provider.viewAccount({ accountId: id })).code_hash;
+      const expected = baseEncode(Buffer.from(opts.wasm.sha256, "hex"));
+      if (onChain !== expected) throw new Error(`${id}: on-chain code hash ${onChain} != built wasm ${expected}`);
+    }
   }
 
   const view = <T extends SerializedReturnValue>(contractId: string, method: string, args: Record<string, unknown> = {}) =>
     provider.callFunction<T>({ contractId, method, args }) as Promise<T>;
-
-  async function deployContract(id: string, balance: bigint, wasm: { bytes: Uint8Array; sha256: string }): Promise<Account> {
-    const acc = await create(id, balance);
-    await acc.deployContract(wasm.bytes);
-    const onChain = (await acc.getState()).codeHash;
-    const expected = baseEncode(Buffer.from(wasm.sha256, "hex"));
-    if (onChain !== expected) throw new Error(`${id}: on-chain code hash ${onChain} != built wasm ${expected}`);
-    return acc;
-  }
 
   log(`[0/6] creating gov (${ids.gov}) and faucet (${ids.faucet}) accounts`);
   await create(ids.gov, bal.gov);
   await create(ids.faucet, bal.faucet);
 
   log(`[1/6] deploying musdc to ${ids.token}`);
-  const token = await deployContract(ids.token, bal.token, wasms.musdc);
-  await token.callFunction({ contractId: ids.token, methodName: "new", args: { faucet: ids.faucet }, gas: GAS_INIT });
+  await create(ids.token, bal.token, { wasm: wasms.musdc, init: { faucet: ids.faucet } });
 
   log(`[2/6] deploying clearing to ${ids.clearing}`);
-  const clearing = await deployContract(ids.clearing, bal.clearing, wasms.clearing);
-  await clearing.callFunction({
-    contractId: ids.clearing,
-    methodName: "new",
-    args: {
+  await create(ids.clearing, bal.clearing, {
+    wasm: wasms.clearing,
+    init: {
       gov: ids.gov,
       tokens: [ids.token],
       profile: {
@@ -136,15 +157,15 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
         asset_classes_enabled: p.hdp.asset_classes_enabled,
       },
     },
-    gas: GAS_INIT,
   });
 
-  log(`[3/6] deploying keypolicy to ${ids.keypolicy} (registry = clearing)`);
-  const keypolicy = await deployContract(ids.keypolicy, bal.keypolicy, wasms.keypolicy);
-  await keypolicy.callFunction({
-    contractId: ids.keypolicy,
-    methodName: "new",
-    args: {
+  // KeyPolicy is created keyless: no access key ever exists on it, which is stronger than
+  // deleting one after init (SDD §3.12.6) and leaves no window in which a key could be used.
+  log(`[3/6] deploying keypolicy to ${ids.keypolicy} (registry = clearing, keyless)`);
+  await create(ids.keypolicy, bal.keypolicy, {
+    keyless: true,
+    wasm: wasms.keypolicy,
+    init: {
       chain_id: p.chain_id,
       registry: ids.clearing,
       clearing: ids.clearing,
@@ -152,7 +173,6 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
       ckd_domain_id: p.keypolicy.ckd_domain_id,
       dcap_verifier: p.keypolicy.dcap_verifier,
     },
-    gas: GAS_INIT,
   });
 
   log("[4/6] seeding room policy");
@@ -163,13 +183,9 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   }
   log("      0 entries in the profile; nothing to seed");
 
-  log("[5/6] deleting every access key on keypolicy");
-  await keypolicy.deleteKey(pub[ids.keypolicy] as string);
-  const left = (await new Account(ids.keypolicy, provider).getAccessKeyList()).keys.length;
-  if (left !== 0) throw new Error(`keypolicy still has ${left} access key(s)`);
-  // After this point KeyPolicy can only be called by others; its own key no longer exists.
-  delete keys[ids.keypolicy];
-  delete pub[ids.keypolicy];
+  log("[5/6] asserting keypolicy has no access keys");
+  const left = (await provider.viewAccessKeyList({ accountId: ids.keypolicy })).keys.length;
+  if (left !== 0) throw new Error(`keypolicy has ${left} access key(s); it must have none`);
 
   log("[6/6] reading back configuration and building the manifest");
   const clearingCfg = await view<{ gov: string; profile: Profile["hdp"] & { profile: string } }>(ids.clearing, "config");
@@ -181,7 +197,7 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   const rec = async (account: string, w: { sha256: string }): Promise<ContractRecord> => ({
     account,
     wasm_sha256: w.sha256,
-    code_hash: (await new Account(account, provider).getState()).codeHash,
+    code_hash: (await provider.viewAccount({ accountId: account })).code_hash,
   });
   const manifest: Manifest = {
     manifest_version: 1,
@@ -190,6 +206,7 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
     chain_id: p.chain_id,
     rpc: [ctx.rpcUrl],
     deployed_at: new Date().toISOString(),
+    git: ctx.git ?? null,
     accounts: { deployer: ids.deployer, gov: ids.gov, faucet: ids.faucet },
     contracts: {
       musdc: await rec(ids.token, wasms.musdc),
@@ -205,5 +222,6 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
 
 export function writeJson(path: string, value: unknown, mode?: number): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", mode ? { mode } : undefined);
+  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", mode === undefined ? undefined : { mode });
+  if (mode !== undefined) chmodSync(path, mode); // `mode` above only applies when the file is new
 }

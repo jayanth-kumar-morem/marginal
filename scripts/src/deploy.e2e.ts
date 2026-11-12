@@ -2,7 +2,7 @@
 // Needs built wasm: `make wasm`. Run with `pnpm --filter @marginal/scripts test:e2e`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -23,7 +23,7 @@ test("up.sh sandbox --once deploys everything and writes a correct manifest", ()
   const r = spawnSync("bash", [join(root, "deploy", "scripts", "up.sh"), "sandbox", "--once"], { encoding: "utf8", timeout: 240_000 });
   assert.equal(r.status, 0, `up.sh failed:\n${r.stdout}\n${r.stderr}`);
   // Steps ran in the order the task lists them.
-  const order = ["deploying musdc", "deploying clearing", "deploying keypolicy", "seeding room policy", "deleting every access key", "building the manifest"];
+  const order = ["deploying musdc", "deploying clearing", "deploying keypolicy", "seeding room policy", "asserting keypolicy has no access keys", "building the manifest"];
   let at = -1;
   for (const s of order) {
     const i = r.stdout.indexOf(s);
@@ -33,6 +33,13 @@ test("up.sh sandbox --once deploys everything and writes a correct manifest", ()
 
   const m = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
   assert.equal(m.profile, "sandbox");
+  assert.match(m.git?.commit ?? "", /^[0-9a-f]{40}$/, "manifest records the git commit");
+  // The keys file holds exactly the keyed accounts, is private, and never includes KeyPolicy.
+  const keysPath = join(root, "deploy", ".keys", "sandbox.json");
+  assert.equal(statSync(keysPath).mode & 0o777, 0o600);
+  const keys = JSON.parse(readFileSync(keysPath, "utf8")) as Record<string, string>;
+  assert.deepEqual(Object.keys(keys).sort(), Object.keys(m.public_keys).sort());
+  assert.ok(!(m.contracts.keypolicy.account in keys), "KeyPolicy never had a key");
   assert.equal(m.keypolicy_access_keys, 0);
   for (const c of Object.values(m.contracts)) {
     assert.equal(c.code_hash, baseEncode(Buffer.from(c.wasm_sha256, "hex")), `${c.account} code hash`);
@@ -52,7 +59,16 @@ test("deployed state: profile values, KeyPolicy immutability, token wiring", asy
   const p = profile();
   const sandbox = await Sandbox.start({});
   try {
-    const { manifest } = await deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString, wasmDir });
+    const saved: Record<string, string>[] = [];
+    const { manifest, keys: finalKeys } = await deployAll(p, {
+      rpcUrl: sandbox.rpcUrl,
+      deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString,
+      wasmDir,
+      saveKeys: (k) => saved.push(k),
+    });
+    // Keys are saved after every keyed account, not only at the end.
+    assert.equal(saved.length, Object.keys(finalKeys).length);
+    assert.deepEqual(saved.at(-1), finalKeys);
     const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
     const view = <T extends SerializedReturnValue>(c: string, method: string, args: Record<string, unknown> = {}) => provider.callFunction<T>({ contractId: c, method, args }) as Promise<T>;
 
@@ -74,6 +90,13 @@ test("deployed state: profile values, KeyPolicy immutability, token wiring", asy
     const meta = await view<{ decimals: number }>(manifest.contracts.musdc.account, "ft_metadata");
     assert.equal(meta.decimals, 6);
     assert.equal(await view<string>(manifest.contracts.musdc.account, "faucet"), manifest.accounts.faucet);
+
+    // Init ran in the creating transaction, so nobody can call `new` again.
+    const gov = new Account(manifest.accounts.gov, provider, finalKeys[manifest.accounts.gov] as KeyPairString);
+    await assert.rejects(
+      gov.callFunction({ contractId: manifest.contracts.keypolicy.account, methodName: "new", args: { chain_id: "x", registry: "x.sandbox", clearing: "x.sandbox", mpc: "x.sandbox", ckd_domain_id: 0, dcap_verifier: "x.sandbox" } }),
+      /already initialized|state already exists|The contract has already been initialized/i,
+    );
 
     // A second run into the same chain must refuse rather than overwrite.
     await assert.rejects(deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString, wasmDir }), /already exists/);

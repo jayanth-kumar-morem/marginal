@@ -196,14 +196,25 @@ async fn storage_registration_gates_transfers() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn mint_registers_new_receivers() -> anyhow::Result<()> {
+async fn mint_registers_new_receivers_and_emits_ft_mint() -> anyhow::Result<()> {
     let e = setup().await?;
-    e.faucet
+    let out = e
+        .faucet
         .call(e.token.id(), "mint")
         .args_json(json!({"account_id": e.bob.id(), "amount": ONE_USDC.to_string()}))
         .transact()
         .await?
         .into_result()?;
+    let event = out
+        .logs()
+        .into_iter()
+        .find_map(|l| l.strip_prefix("EVENT_JSON:"))
+        .expect("an NEP-297 event");
+    let event: serde_json::Value = serde_json::from_str(event)?;
+    assert_eq!(event["standard"], "nep141");
+    assert_eq!(event["event"], "ft_mint");
+    assert_eq!(event["data"][0]["owner_id"], e.bob.id().as_str());
+    assert_eq!(event["data"][0]["amount"], ONE_USDC.to_string());
     let sb: Option<serde_json::Value> = e
         .token
         .view("storage_balance_of")

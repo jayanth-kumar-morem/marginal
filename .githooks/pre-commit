@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Pre-commit gate (replaces hosted CI). Enabled by `pnpm install` or `make hooks`.
+# Runs only the checks that the staged paths can affect. The full gate, with reproducible
+# builds and sandbox tests, is `make ci`: run it before any deploy or milestone.
+# Checks run on the working tree, so stage everything you want checked.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+[ -z "$staged" ] && exit 0
+
+# 1. Secrets. NEAR secret keys are 64 bytes (about 88 base58 chars); public keys are about 44.
+if git diff --cached -U0 --diff-filter=ACMR | grep -E '^\+' | grep -qE 'ed25519:[1-9A-HJ-NP-Za-km-z]{80,}'; then
+  echo "pre-commit: a NEAR secret key is staged. Unstage it." >&2
+  exit 1
+fi
+if echo "$staged" | grep -qE '^deploy/\.keys/|(^|/)\.env($|\.)|^deploy/manifest\.'; then
+  echo "pre-commit: deploy keys, manifests or .env files are staged. Unstage them." >&2
+  exit 1
+fi
+
+# 2. Scoped checks.
+rust=0; node=0
+echo "$staged" | grep -qE '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$' && rust=1
+echo "$staged" | grep -qE '\.(ts|tsx|js|mjs|cjs)$|(^|/)package\.json$|^pnpm-(lock|workspace)\.yaml$|tsconfig.*\.json$|^deploy/' && node=1
+echo "$staged" | grep -qE '^Makefile$|^\.githooks/|^\.nvmrc$' && { rust=1; node=1; }
+
+if [ $rust = 0 ] && [ $node = 0 ]; then
+  echo "pre-commit: docs-only change, no checks needed"
+  exit 0
+fi
+[ $rust = 1 ] && make --no-print-directory check-rust
+[ $node = 1 ] && make --no-print-directory check-node
+echo "pre-commit: ok"
