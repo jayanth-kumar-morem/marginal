@@ -123,16 +123,18 @@ To fix in SDD v0.3.
 
 ## E1. Repo and deploy
 
-- [ ] **E1.1 Marginal repo skeleton** · P0 · §3.1 · needs X-1 (private until X-2)
+- [x] **E1.1 Marginal repo skeleton** · P0 · §3.1 · needs X-1 (private until X-2)
   - Cargo workspace: `contracts/{clearing,keypolicy,test-tokens/musdc}` and `crates/marginal-core`.
   - pnpm workspace: `room`, `services/{gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` and `scripts`.
   - Pinned toolchains: Rust, near-sdk 5.30, cargo-near, Node 22.
   - Contracts built with `cargo near build reproducible-wasm`. CI runs the build, clippy, eslint and tests.
   - **Done:** CI is green on empty packages.
-- [ ] **E1.2 `musdc` test stablecoin** · P0
+  - **Completed 2026-11-12.** `make ci` (lint, build, test, reproducible wasm, e2e) exits 0 locally; `.github/workflows/ci.yml` runs the same targets but has not run on GitHub yet (no remote). Notes: Node 22 via `.nvmrc`; Rust pinned to 1.99.1; `repository` in `Cargo.toml` is a placeholder URL (required by `cargo near build reproducible-wasm`), to confirm when the repo is created.
+- [x] **E1.2 `musdc` test stablecoin** · P0
   - NEP-141, 6 decimals, NEP-145 storage. Only the faucet account can mint.
   - **Done:** sandbox tests for transfer and storage.
-- [ ] **E1.3 Deploy script and profiles** · P0 · §3.24
+  - **Completed 2026-11-12.** 4 near-workspaces tests: metadata, faucet-only mint, storage gating, transfers.
+- [x] **E1.3 Deploy script and profiles** · P0 · §3.24
   - Profiles: `deploy/profiles/{sandbox,testnet-demo}.toml`. In HDP:
     - cooling blocks are 0;
     - W is 10 minutes;
@@ -147,6 +149,7 @@ To fix in SDD v0.3.
     5. Delete KeyPolicy's access keys and assert the list is empty.
     6. Write `deploy/manifest.<profile>.json`.
   - **Done:** one command deploys a fresh sandbox end to end.
+  - **Completed 2026-11-12** for `sandbox`: `deploy/scripts/up.sh sandbox [--once]`, verified by `deploy.e2e.ts` (step order, on-chain code hash = built wasm, profile values in `config()`, KeyPolicy has 0 access keys, a second run refuses). Not yet run: `testnet-demo` (its `deployer` account is a placeholder and needs a funded key). The seed step is a no-op until E4.3 adds the room-policy module; it fails loudly if a profile lists entries before then. Clearing and KeyPolicy are skeletons with `new` and `config()` only; E3 and E4 extend them.
 
 ## E2. `marginal-core`
 
