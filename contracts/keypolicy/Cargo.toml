@@ -4,6 +4,7 @@ description = "IMMUTABLE key policy: attestation, pins, key-release tickets (fil
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]

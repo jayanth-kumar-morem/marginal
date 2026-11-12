@@ -4,6 +4,7 @@ description = "HDP test stablecoin: NEP-141, 6 decimals, NEP-145 storage, faucet
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
+repository.workspace = true
 
 [lib]
 crate-type = ["cdylib", "rlib"]
