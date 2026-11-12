@@ -15,7 +15,12 @@ pub enum AssetClass {
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum Rule {
+    /// Posted price: the only rule enabled in M1.
     R1,
+    /// Value-indexed price (M2).
+    R2,
+    /// Legacy surplus split, behind a flag (M2).
+    R3,
 }
 
 /// Profile values from `deploy/profiles/<profile>.toml` that change contract behaviour.
@@ -97,6 +102,18 @@ mod tests {
         assert_eq!(cfg.gov, gov);
         assert_eq!(cfg.profile.challenge_window_secs, 600);
         assert_eq!(cfg.profile.rules_enabled, vec![Rule::R1]);
+    }
+
+    /// Regression: a single-variant enum is zero-sized and borsh rejects `Vec` of it,
+    /// which made `new` panic with "Cannot serialize the contract state".
+    #[test]
+    fn state_serialises_with_borsh() {
+        let c = Clearing::new(
+            "gov.test".parse().unwrap(),
+            vec!["t.test".parse().unwrap()],
+            profile(),
+        );
+        assert!(near_sdk::borsh::to_vec(&c).is_ok());
     }
 
     #[test]

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
 import { Account, JsonRpcProvider, baseEncode } from "near-api-js";
 import { Sandbox, DEFAULT_PRIVATE_KEY } from "near-sandbox";
-import type { KeyPairString } from "near-api-js";
+import type { KeyPairString, SerializedReturnValue } from "near-api-js";
 import { deployAll, type Manifest } from "./deploy.js";
 import { loadProfile } from "./profile.js";
 
@@ -54,7 +54,7 @@ test("deployed state: profile values, KeyPolicy immutability, token wiring", asy
   try {
     const { manifest } = await deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString, wasmDir });
     const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
-    const view = <T>(c: string, method: string, args: Record<string, unknown> = {}) => provider.callFunction<T>({ contractId: c, method, args }) as Promise<T>;
+    const view = <T extends SerializedReturnValue>(c: string, method: string, args: Record<string, unknown> = {}) => provider.callFunction<T>({ contractId: c, method, args }) as Promise<T>;
 
     const clearing = await view<{ gov: string; tokens: string[]; profile: Record<string, unknown> }>(manifest.contracts.clearing.account, "config");
     assert.equal(clearing.gov, manifest.accounts.gov);

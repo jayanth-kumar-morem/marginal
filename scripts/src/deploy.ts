@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, baseEncode, type KeyPairString } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, KeyPairSigner, baseEncode, type KeyPairString, type SerializedReturnValue } from "near-api-js";
 import { fullAccounts, type Profile } from "./profile.js";
 
 export interface DeployContext {
@@ -99,13 +99,13 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
     return acc;
   }
 
-  const view = <T>(contractId: string, method: string, args: Record<string, unknown> = {}) =>
+  const view = <T extends SerializedReturnValue>(contractId: string, method: string, args: Record<string, unknown> = {}) =>
     provider.callFunction<T>({ contractId, method, args }) as Promise<T>;
 
   async function deployContract(id: string, balance: bigint, wasm: { bytes: Uint8Array; sha256: string }): Promise<Account> {
     const acc = await create(id, balance);
     await acc.deployContract(wasm.bytes);
-    const onChain = (await acc.getState()).code_hash;
+    const onChain = (await acc.getState()).codeHash;
     const expected = baseEncode(Buffer.from(wasm.sha256, "hex"));
     if (onChain !== expected) throw new Error(`${id}: on-chain code hash ${onChain} != built wasm ${expected}`);
     return acc;
@@ -181,7 +181,7 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   const rec = async (account: string, w: { sha256: string }): Promise<ContractRecord> => ({
     account,
     wasm_sha256: w.sha256,
-    code_hash: (await new Account(account, provider).getState()).code_hash,
+    code_hash: (await new Account(account, provider).getState()).codeHash,
   });
   const manifest: Manifest = {
     manifest_version: 1,
