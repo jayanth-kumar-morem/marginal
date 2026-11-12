@@ -1,0 +1,15 @@
+[package]
+name = "keypolicy"
+description = "IMMUTABLE key policy: attestation, pins, key-release tickets (filled in by E3)"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }

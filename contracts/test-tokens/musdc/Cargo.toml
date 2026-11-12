@@ -1,0 +1,16 @@
+[package]
+name = "musdc"
+description = "HDP test stablecoin: NEP-141, 6 decimals, NEP-145 storage, faucet-only mint"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk.workspace = true
+near-contract-standards.workspace = true
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }
