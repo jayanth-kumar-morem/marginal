@@ -151,7 +151,7 @@ To fix in SDD v0.3.
     5. Assert KeyPolicy has no access keys. It is created keyless (see the revision note).
     6. Write `deploy/manifest.<profile>.json`.
   - **Done:** one command deploys a fresh sandbox end to end.
-  - **Completed 2026-11-12** for `sandbox`: `deploy/scripts/up.sh sandbox [--once]`, verified by `deploy.e2e.ts` (step order, on-chain code hash = built wasm, profile values in `config()`, KeyPolicy has 0 access keys, a second run refuses). Not yet run: `testnet-demo` (its `deployer` account is a placeholder and needs a funded key). The seed step is a no-op until E4.3 adds the room-policy module; it fails loudly if a profile lists entries before then. Clearing and KeyPolicy are skeletons with `new` and `config()` only; E3 and E4 extend them.
+  - **Completed 2026-11-12** for `sandbox`: `deploy/scripts/up.sh sandbox [--once]`, verified by `deploy.e2e.ts` (step order, on-chain code hash = built wasm, profile values in `config()`, KeyPolicy has 0 access keys, a second run refuses). Not yet run: `testnet-demo` (needs the funded deployer from E15.1's todo:jay). The seed step is a no-op until E4.3 adds the room-policy module; it fails loudly if a profile lists entries before then. Clearing and KeyPolicy are skeletons with `new` and `config()` only; E3 and E4 extend them.
   - **Revised 2026-11-12 (E1 review).**
     - **Atomic deploys.** Each contract is created, funded, deployed and initialised in one transaction from the deployer, so no one can call `new` first. Before this, deploy and init were separate transactions.
     - **KeyPolicy is created keyless.** No access key ever exists on it, which is stronger than deleting the key after init.
@@ -451,6 +451,7 @@ Each version is deployed once, then its keys are deleted. Every PR gets a second
 Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may change.
 
 - [ ] **E15.1 Deploy HDP** · P0
+  - todo:jay - create and fund the deployer `marginal-demo.testnet` (16 NEAR); steps in `CLAUDE.md` → Deploys. Needed before the first testnet deploy, not before.
   - `up.sh testnet-demo` and register the room.
   - Fund the demo personas with `musdc` and nullifier credentials. Seed listings for D1–D9.
 - [ ] **E15.2 Run DRC-1 to DRC-12** · P0 · §5.4

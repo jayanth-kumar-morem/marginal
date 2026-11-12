@@ -12,3 +12,5 @@ deploy/.keys/
 # tsc output belongs in dist/, never next to the sources
 **/src/**/*.js
 **/src/**/*.js.map
+# local run logs
+claude-spec-run.log

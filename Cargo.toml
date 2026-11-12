@@ -11,7 +11,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 publish = false
-# Placeholder until the repo is created (tasks.md X-1/X-2). Required by `cargo near build reproducible-wasm`.
+# Private until tasks.md X-2. Required by `cargo near build reproducible-wasm`.
 repository = "https://github.com/jayanth-kumar-morem/marginal"
 
 [workspace.dependencies]

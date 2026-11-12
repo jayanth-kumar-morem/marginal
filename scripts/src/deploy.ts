@@ -56,11 +56,24 @@ const GAS_INIT = 30n * TERA;
 
 const WASM = { musdc: "musdc", clearing: "clearing", keypolicy: "keypolicy" } as const;
 
-function balances(network: string) {
+/**
+ * Initial balances. Testnet is sized to storage (about 1 NEAR per 100 KB of code and state) plus
+ * headroom, so one faucet top-up covers a deploy. Top accounts up later as contracts grow.
+ */
+export function balances(network: string) {
   return network === "sandbox"
     ? { gov: 5n * NEAR, faucet: 5n * NEAR, token: 10n * NEAR, clearing: 50n * NEAR, keypolicy: 10n * NEAR }
-    : { gov: 2n * NEAR, faucet: 2n * NEAR, token: 5n * NEAR, clearing: 15n * NEAR, keypolicy: 5n * NEAR };
+    : { gov: 1n * NEAR, faucet: 1n * NEAR, token: 3n * NEAR, clearing: 8n * NEAR, keypolicy: 2n * NEAR };
 }
+
+/** Gas and rounding headroom the deployer keeps on top of the balances it hands out. */
+const DEPLOY_GAS_HEADROOM = 1n * NEAR;
+
+export function requiredDeployerBalance(network: string): bigint {
+  return Object.values(balances(network)).reduce((a, b) => a + b, 0n) + DEPLOY_GAS_HEADROOM;
+}
+
+const fmtNear = (y: bigint) => `${y / NEAR}.${((y % NEAR) * 100n / NEAR).toString().padStart(2, "0")} NEAR`;
 
 function readWasm(dir: string, crate: string): { bytes: Uint8Array; sha256: string } {
   const path = join(dir, crate, `${crate}.wasm`);
@@ -100,6 +113,11 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   for (const id of [ids.gov, ids.faucet, ids.token, ids.clearing, ids.keypolicy]) {
     if (await exists(provider, id)) throw new Error(`account ${id} already exists; up.sh only does fresh deploys`);
   }
+
+  // Fail before creating anything if the deployer cannot fund the whole deploy.
+  const need = requiredDeployerBalance(p.network);
+  const have = BigInt((await provider.viewAccount({ accountId: ids.deployer })).amount);
+  if (have < need) throw new Error(`deployer ${ids.deployer} has ${fmtNear(have)}; this deploy needs ${fmtNear(need)}. Top it up first.`);
 
   const keys: DeployKeys = {};
   const pub: Record<string, string> = {};

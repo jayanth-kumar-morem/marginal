@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { join, resolve } from "node:path";
-import { Account, JsonRpcProvider, baseEncode } from "near-api-js";
+import { Account, JsonRpcProvider, KeyPair, baseEncode } from "near-api-js";
 import { Sandbox, DEFAULT_PRIVATE_KEY } from "near-sandbox";
 import type { KeyPairString, SerializedReturnValue } from "near-api-js";
 import { deployAll, type Manifest } from "./deploy.js";
@@ -97,6 +97,15 @@ test("deployed state: profile values, KeyPolicy immutability, token wiring", asy
       gov.callFunction({ contractId: manifest.contracts.keypolicy.account, methodName: "new", args: { chain_id: "x", registry: "x.sandbox", clearing: "x.sandbox", mpc: "x.sandbox", ckd_domain_id: 0, dcap_verifier: "x.sandbox" } }),
       /already initialized|state already exists|The contract has already been initialized/i,
     );
+
+    // An underfunded deployer is refused before any account is created.
+    const poor = "poor.sandbox";
+    const root = new Account("sandbox", provider, DEFAULT_PRIVATE_KEY as KeyPairString);
+    const poorKey = KeyPair.fromRandom("ed25519");
+    await root.createAccount({ newAccountId: poor, publicKey: poorKey.getPublicKey().toString(), nearToTransfer: 2n * 10n ** 24n });
+    const pp = { ...p, accounts: { ...p.accounts, deployer: poor } };
+    await assert.rejects(deployAll(pp, { rpcUrl: sandbox.rpcUrl, deployerKey: poorKey.toString() as KeyPairString, wasmDir }), /needs .* NEAR\. Top it up first/);
+    await assert.rejects(provider.viewAccount({ accountId: `gov.${poor}` }), "nothing was created");
 
     // A second run into the same chain must refuse rather than overwrite.
     await assert.rejects(deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString, wasmDir }), /already exists/);

@@ -5,8 +5,8 @@ chain_id = "testnet"
 rpc = ["https://test.rpc.fastnear.com"]
 
 [accounts]                            # created as <name>.<deployer>
-# PLACEHOLDER: an existing testnet account whose key is in ~/.near-credentials/testnet/.
-# Confirm or change before the first testnet deploy.
+# The user's testnet account; its key is in ~/.near-credentials/testnet/<deployer>.json
+# (or $NEAR_DEPLOYER_KEY). It needs 16 NEAR: up.sh checks before creating anything.
 deployer = "marginal-demo.testnet"
 gov = "gov"
 faucet = "faucet"
