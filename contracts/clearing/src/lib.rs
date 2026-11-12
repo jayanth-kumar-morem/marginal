@@ -53,8 +53,15 @@ impl Clearing {
     #[init]
     pub fn new(gov: AccountId, tokens: Vec<AccountId>, profile: ProfileConfig) -> Self {
         assert!(!profile.rules_enabled.is_empty(), "no rule enabled");
-        assert!(!profile.asset_classes_enabled.is_empty(), "no asset class enabled");
-        Self { gov, tokens, profile }
+        assert!(
+            !profile.asset_classes_enabled.is_empty(),
+            "no asset class enabled"
+        );
+        Self {
+            gov,
+            tokens,
+            profile,
+        }
     }
 
     pub fn config(&self) -> ClearingConfig {

@@ -4,13 +4,17 @@
 use near_contract_standards::fungible_token::metadata::{
     FungibleTokenMetadata, FungibleTokenMetadataProvider, FT_METADATA_SPEC,
 };
-use near_contract_standards::fungible_token::{FungibleToken, FungibleTokenCore, FungibleTokenResolver};
+use near_contract_standards::fungible_token::{
+    FungibleToken, FungibleTokenCore, FungibleTokenResolver,
+};
 use near_contract_standards::storage_management::{
     StorageBalance, StorageBalanceBounds, StorageManagement,
 };
 use near_sdk::json_types::U128;
 use near_sdk::store::LazyOption;
-use near_sdk::{env, near, require, AccountId, BorshStorageKey, NearToken, PanicOnDefault, PromiseOrValue};
+use near_sdk::{
+    env, near, require, AccountId, BorshStorageKey, NearToken, PanicOnDefault, PromiseOrValue,
+};
 
 pub const DECIMALS: u8 = 6;
 
@@ -51,7 +55,10 @@ impl Musdc {
 
     /// Faucet only. Registers the receiver's storage if needed, using the contract's own balance.
     pub fn mint(&mut self, account_id: AccountId, amount: U128) {
-        require!(env::predecessor_account_id() == self.faucet, "only the faucet can mint");
+        require!(
+            env::predecessor_account_id() == self.faucet,
+            "only the faucet can mint"
+        );
         require!(amount.0 > 0, "amount must be positive");
         if !self.token.accounts.contains_key(&account_id) {
             self.token.internal_register_account(&account_id);
@@ -100,7 +107,10 @@ impl FungibleTokenResolver for Musdc {
         receiver_id: AccountId,
         amount: U128,
     ) -> U128 {
-        self.token.ft_resolve_transfer(sender_id, receiver_id, amount).0.into()
+        self.token
+            .ft_resolve_transfer(sender_id, receiver_id, amount)
+            .0
+            .into()
     }
 }
 

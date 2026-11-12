@@ -5,7 +5,7 @@ dist/
 *.tsbuildinfo
 # deployment artefacts: manifests are generated per run
 deploy/manifest.*.json
-deploy/.sandbox/
+deploy/.keys/
 .env
 .env.*
 !.env.example

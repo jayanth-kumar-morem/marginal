@@ -38,7 +38,14 @@ impl KeyPolicy {
         ckd_domain_id: u32,
         dcap_verifier: AccountId,
     ) -> Self {
-        Self { chain_id, registry, clearing, mpc, ckd_domain_id, dcap_verifier }
+        Self {
+            chain_id,
+            registry,
+            clearing,
+            mpc,
+            ckd_domain_id,
+            dcap_verifier,
+        }
     }
 
     pub fn config(&self) -> KeyPolicyConfig {
@@ -61,7 +68,14 @@ mod tests {
     #[test]
     fn config_roundtrip() {
         let a = |s: &str| s.parse::<AccountId>().unwrap();
-        let kp = KeyPolicy::new("testnet".into(), a("c.test"), a("c.test"), a("mpc.test"), 2, a("v.test"));
+        let kp = KeyPolicy::new(
+            "testnet".into(),
+            a("c.test"),
+            a("c.test"),
+            a("mpc.test"),
+            2,
+            a("v.test"),
+        );
         let c = kp.config();
         assert_eq!(c.ckd_domain_id, 2);
         assert_eq!(c.registry, c.clearing);

@@ -8,11 +8,18 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts",
+    "up": "tsx src/up.ts",
+    "test:e2e": "node --import tsx --test src/*.e2e.ts"
   },
   "devDependencies": {
     "@types/node": "22.19.17",
     "tsx": "4.23.15",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "near-api-js": "7.5.3",
+    "near-sandbox": "0.3.5",
+    "smol-toml": "1.9.1"
   }
 }

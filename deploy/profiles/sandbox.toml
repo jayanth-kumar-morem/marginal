@@ -1,0 +1,30 @@
+# Profile: sandbox. A throwaway local NEAR node started by `up.sh sandbox`.
+# Simulated elements are allowed here (SDD §2.7); real MPC and quote verification are not reachable.
+profile = "sandbox"
+network = "sandbox"
+chain_id = "sandbox"
+rpc = []                              # filled in at runtime from the sandbox node
+
+[accounts]                            # created as <name>.<deployer>
+deployer = "sandbox"                  # the sandbox root account
+gov = "gov"
+faucet = "faucet"
+token = "musdc"
+clearing = "clearing"
+keypolicy = "keypolicy"
+
+[hdp]                                 # becomes clearing's ProfileConfig (SDD §1.5, §6.2)
+gov_profile = "demo"                  # `gov` is a dev account, not a DAO
+cooling_blocks = 0
+challenge_window_secs = 600           # W = 10 minutes
+rules_enabled = ["R1"]
+asset_classes_enabled = ["Knowledge", "Dataset"]
+
+[keypolicy]                           # fixed forever at init (SDD §3.12.2)
+mpc = "v1.signer-prod.testnet"        # never called in the sandbox; E3 tests use a mock MPC
+ckd_domain_id = 2
+dcap_verifier = "tee-verifier-2026-11-02.testnet"
+
+[room_policy]                         # applied by the seed step once clearing has the module (E4.3)
+platforms = []
+measurement_sets = []

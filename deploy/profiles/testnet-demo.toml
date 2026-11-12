@@ -1,0 +1,31 @@
+# Profile: testnet-demo (HDP). Real MPC CKD and real quote verification (SDD §2.7).
+profile = "testnet-demo"
+network = "testnet"
+chain_id = "testnet"
+rpc = ["https://test.rpc.fastnear.com"]
+
+[accounts]                            # created as <name>.<deployer>
+# PLACEHOLDER: an existing testnet account whose key is in ~/.near-credentials/testnet/.
+# Confirm or change before the first testnet deploy.
+deployer = "marginal-demo.testnet"
+gov = "gov"
+faucet = "faucet"
+token = "musdc"
+clearing = "clearing"
+keypolicy = "keypolicy"
+
+[hdp]
+gov_profile = "demo"
+cooling_blocks = 0
+challenge_window_secs = 600
+rules_enabled = ["R1"]
+asset_classes_enabled = ["Knowledge", "Dataset"]
+
+[keypolicy]
+mpc = "v1.signer-prod.testnet"
+ckd_domain_id = 2
+dcap_verifier = "tee-verifier-2026-11-02.testnet"
+
+[room_policy]
+platforms = []                        # E4.3 seeds the Phala PPIDs here
+measurement_sets = []                 # E7.3 seeds knowledge-room@1.0.0 here
