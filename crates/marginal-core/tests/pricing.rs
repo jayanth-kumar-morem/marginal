@@ -149,6 +149,21 @@ fn posted_price_clears_exactly_at_the_ask() {
 }
 
 #[test]
+fn errors_propagate_from_the_ceiling_and_the_valuation() {
+    let bad = |c: &[u32]| measured_index(KNOWLEDGE, c, &NO_PARAMS, 0, &[]);
+    assert_eq!(bad(&[10_001, 0]), Err(CoreError::Schema));
+    assert_eq!(
+        measured_index(FormulaId::DatasetV1, &[1, 2], &NO_PARAMS, 0, &[]),
+        Err(CoreError::FormulaDisabled)
+    );
+    // An index above 100% is refused by the rule too, so a bad `m` can never buy a deal above the budget.
+    assert_eq!(
+        apply_rule(&PricingRule::Posted { ask: 1 }, 1_000, BPS + 1),
+        Err(CoreError::Schema)
+    );
+}
+
+#[test]
 fn rules_not_built_are_refused() {
     let refused = [
         PricingRule::ValueIndexed {

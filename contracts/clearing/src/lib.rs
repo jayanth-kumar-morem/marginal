@@ -5,6 +5,9 @@ use near_sdk::{near, require, AccountId, PanicOnDefault};
 
 pub const CLEARING_VERSION: u8 = 1;
 
+// These two mirror marginal-core's `AssetClass` and `PricingRule` kinds. They are local because
+// `cargo near` needs a JSON and Borsh schema for every type in a contract's interface; E4.1 replaces
+// them with the real view types.
 #[near(serializers = [json, borsh])]
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum AssetClass {
@@ -59,14 +62,10 @@ impl Clearing {
     pub fn new(gov: AccountId, tokens: Vec<AccountId>, profile: ProfileConfig) -> Self {
         require!(!tokens.is_empty(), "no settlement token");
         require!(!profile.rules_enabled.is_empty(), "no rule enabled");
-        require!(
-            !profile.asset_classes_enabled.is_empty(),
-            "no asset class enabled"
-        );
-        require!(
-            profile.challenge_window_secs > 0,
-            "challenge window must be positive"
-        );
+        let has_asset_class = !profile.asset_classes_enabled.is_empty();
+        require!(has_asset_class, "no asset class enabled");
+        let has_window = profile.challenge_window_secs > 0;
+        require!(has_window, "challenge window must be positive");
         Self {
             gov,
             tokens,
@@ -131,6 +130,36 @@ mod tests {
             vec!["t.test".parse().unwrap()],
             p,
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "no asset class enabled")]
+    fn rejects_no_asset_class() {
+        let mut p = profile();
+        p.asset_classes_enabled.clear();
+        Clearing::new(
+            "gov.test".parse().unwrap(),
+            vec!["t.test".parse().unwrap()],
+            p,
+        );
+    }
+
+    /// The JSON the deploy script sends to `new` and reads back from `config`: enum names are
+    /// plain strings, shared with `deploy/profiles/*.toml`.
+    #[test]
+    fn profile_json_matches_the_deploy_script() {
+        use near_sdk::serde_json::{from_value, json, to_value};
+        let wire = json!({
+            "profile": "sandbox",
+            "gov_profile": "demo",
+            "cooling_blocks": 0,
+            "challenge_window_secs": 600,
+            "rules_enabled": ["R1"],
+            "asset_classes_enabled": ["Knowledge", "Dataset"],
+        });
+        let parsed: ProfileConfig = from_value(wire.clone()).unwrap();
+        assert_eq!(parsed.rules_enabled, vec![Rule::R1]);
+        assert_eq!(to_value(&parsed).unwrap(), wire);
     }
 
     #[test]

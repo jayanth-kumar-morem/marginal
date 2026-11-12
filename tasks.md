@@ -135,12 +135,12 @@ To fix in SDD v0.3.
   - Contracts built with `cargo near build reproducible-wasm`. No hosted CI (cost): a scoped pre-commit hook runs clippy, eslint, tsc and unit tests; `make ci` is the full local gate.
   - **Done:** `make ci` is green on empty packages.
   - **Completed 2026-11-12.** `make ci` (check, reproducible wasm, e2e) exits 0 locally. Node 22 via `.nvmrc`; Rust pinned to 1.99.1. `repository` in `Cargo.toml` is a placeholder URL (required by `cargo near build reproducible-wasm`), to confirm when the repo is created.
-  - **Revised 2026-11-12 (E1 review).** GitHub workflow replaced by `.githooks/pre-commit` (enabled by `pnpm install`). It runs `make check-rust` and/or `make check-node` depending on the staged paths (about 10 s), and blocks staged secret keys, `deploy/.keys/`, manifests and `.env` files. Also: removed compiled `.js` that had been committed under `src/` (now gitignored), dropped the unused near-sdk `unstable` feature, and added `CLAUDE.md` with the development rules.
+  - **Revised 2026-11-12 (E1 review).** GitHub workflow replaced by `.githooks/pre-commit` (enabled by `pnpm install`). It runs `make check-rust` and/or `make check-node` depending on the staged paths (about 25 s, including the 100% coverage gate), and blocks staged secret keys, `deploy/.keys/`, manifests and `.env` files. Also: removed compiled `.js` that had been committed under `src/` (now gitignored), dropped the unused near-sdk `unstable` feature, and added `CLAUDE.md` with the development rules.
 - [x] **E1.2 `musdc` test stablecoin** · P0
   - NEP-141, 6 decimals, NEP-145 storage. Only the faucet account can mint.
   - **Done:** sandbox tests for transfer and storage.
   - **Completed 2026-11-12.** 4 near-workspaces tests: metadata, faucet-only mint, storage gating, transfers.
-  - **Revised 2026-11-12 (E1 review).** `mint` emits a NEP-297 `ft_mint` event, and a forced `storage_unregister` emits `ft_burn` for the burned balance; the sandbox test checks the mint event.
+  - **Revised 2026-11-12 (E1 review).** `mint` emits a NEP-297 `ft_mint` event, and a forced `storage_unregister` emits `ft_burn` for the burned balance; the sandbox test checks the mint event. 13 native unit tests now cover every method, so coverage can be measured (the sandbox tests run on wasm, which coverage tools cannot see).
 - [x] **E1.3 Deploy script and profiles** · P0 · §3.24
   - Profiles: `deploy/profiles/{sandbox,testnet-demo}.toml`. In HDP:
     - cooling blocks are 0;
@@ -157,7 +157,11 @@ To fix in SDD v0.3.
     6. Write `deploy/manifest.<profile>.json`.
   - **Done:** one command deploys a fresh sandbox end to end.
   - **Completed 2026-11-12** for `sandbox`: `deploy/scripts/up.sh sandbox [--once]`, verified by `deploy.e2e.ts` (step order, on-chain code hash = built wasm, profile values in `config()`, KeyPolicy has 0 access keys, a second run refuses). Not yet run: `testnet-demo` (needs the funded deployer from E15.1's todo:jay). The seed step is a no-op until E4.3 adds the room-policy module; it fails loudly if a profile lists entries before then. Clearing and KeyPolicy are skeletons with `new` and `config()` only; E3 and E4 extend them.
-  - **Revised 2026-11-12 (E1 review).**
+  - **Revised 2026-11-12 (coverage).** 100% coverage, and the code moved to where it belongs.
+    - `paths.ts` and `chain.ts` hold what the CLI and the tests share (paths, `view`, `accountExists`, units); `cli.ts` is the command and `up.ts` only its entry point, so the testnet code path now runs against a local node standing in for testnet (key from the environment, dirty-tree and existing-keys refusals, keys saved).
+    - The post-deploy checks (no access keys, config read back) are one tested function, `verifyDeployment`; the code-hash check is `assertCodeHash`.
+    - `up.sh` refuses an unknown profile before it starts a build.
+    - **Revised 2026-11-12 (E1 review).**
     - **Atomic deploys.** Each contract is created, funded, deployed and initialised in one transaction from the deployer, so no one can call `new` first. Before this, deploy and init were separate transactions.
     - **KeyPolicy is created keyless.** No access key ever exists on it, which is stronger than deleting the key after init.
     - **Keys saved as they are created.** Account keys are written to `deploy/.keys/<profile>.json` (0600) as each account is created, so a failed deploy cannot lose them. On non-sandbox networks the file is never overwritten.
@@ -178,13 +182,13 @@ To fix in SDD v0.3.
     - **Wire format is pinned.** A test fixes every enum's variant order (it is the discriminant), and a byte-by-byte golden layout of `Snapshot` fails if any layout changes. Append variants only; a layout change needs a version bump and a migration.
     - **Version byte.** `Listing`, `Snapshot`, `Job` and `SettlementRecord` start with `v: u8`, which `Record::decode` checks. Wrong version, truncation at every length, and trailing bytes are all refused. Nested types change only with their record.
     - **Errors.** `CoreError` has 48 stable codes: every code in SDD §4.1 plus seven core ones (`E_ARITHMETIC`, `E_FORMULA_DISABLED`, `E_RULE_DISABLED`, `E_DISPLAY_DISABLED`, `E_RULE_PARAMS`, `E_DECODE`, `E_VERSION`). One macro generates the enum, `code()`, `from_code()` and `ALL`. A test reads `SDD.md` §4.1 and fails if a documented code is missing.
-    - **Not here:** `VerdictV1` and `ForgetCertificateV1` belong to §3.17 and §3.18 and arrive with their signing bytes in E2.3. JSON views are not in core: `u128` needs string encoding for JavaScript, so the views are built in E4. Clearing's E1 skeleton still has its own two-variant `AssetClass` and `Rule`; E4.1 replaces them with core's types. SDD gaps filled here are items 8 and 9 under "SDD issues found while planning".
+    - **Not here:** `VerdictV1` and `ForgetCertificateV1` belong to §3.17 and §3.18 and arrive with their signing bytes in E2.3. JSON views are not in core: `u128` needs string encoding for JavaScript, so the views are built in E4. Clearing's E1 skeleton keeps its own two-variant `AssetClass` and `Rule`: `cargo near` needs JSON and Borsh schemas for every type in a contract's interface, and core's types have none, so E4.1 replaces them with the real view types. SDD gaps filled here are items 8 and 9 under "SDD issues found while planning".
 - [x] **E2.2 Pricing and leakage** · P0 · §3.7, §3.8
   - `mul_div`, `judgement_factor` and `ceiling` (`KnowledgeV1`, `DatasetLiteV0`).
   - `measured_index`, `valuation` and `apply_rule` (R1; other rules return disabled).
   - The mbits lookup table, and `max_debit` for Blind mode. Open mode adds components and judge factors.
   - **Done:** proptests for AC-2, AC-3, AC-5 and AC-41; Blind + Sealed = 1,000 mbits; Open ≈ 16.7 bits.
-  - **Completed 2026-11-12.** `src/{math,pricing,leakage,leakage_lut}.rs`; tests in `tests/{math,pricing,leakage}.rs` (25 tests).
+  - **Completed 2026-11-12.** `src/{math,pricing,leakage,leakage_lut}.rs`; tests in `tests/{math,pricing,leakage}.rs` (26 tests). `marginal-core` is at 100% of lines, functions and regions (`make cov-rust`).
     - **AC-2, AC-3, AC-5, AC-41** are property tests, each run at 10⁶ cases (the SPEC's AC-2 bar) with `make props` (38 s, release mode); `make check` runs them at the default 256. Judge factors range over 0, above 100% and `u32::MAX`; floors, budgets (up to `u128::MAX`) and asks are all random.
     - **Blind + Sealed = 1,000 mbits** for any schema. **Open = 16,706 mbits (16.7 bits)** for the knowledge schema: two components at 21 levels and two judges on 11 levels.
     - **Exactness.** `mul_div` uses a 256-bit intermediate and is checked against a big-integer oracle, with the awkward values (`2⁶⁴ ± 1`, `2¹²⁷ ± 1`, `u128::MAX`) over-represented. All 4,096 table entries are checked as "the smallest `k` with `2^k ≥ n^1000`". There are no floats in the crate.
@@ -239,6 +243,7 @@ Each version is deployed once, then its keys are deleted. Every PR gets a second
   - A `config()` view showing the profile and toggles.
   - The `gov` role sets these directly in M1: appraiser registry, token allow-list, issuer key, NEAR AI signer list (with expiry), fee table, compliance key.
   - Typed errors, and views including `get_jobs_for_room`.
+  - Replace the skeleton's local `AssetClass` and `Rule` enums with view types over `marginal-core`'s (they need JSON and Borsh schemas for `cargo near`'s ABI step).
 - [ ] **E4.2 Events and audit chain** · P0 · D8 · §3.10
   - NEP-297 `marginal` events carry `seq` and `head`.
   - Every state change appends an `AuditEntry`, readable through `get_audit(from, limit)`.

@@ -1,13 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { parse } from "smol-toml";
-import { readFileSync } from "node:fs";
 import { fullAccounts, loadProfile, validateProfile } from "./profile.js";
+import { profilePath, repoRoot } from "./paths.js";
+import { sandboxProfile, setPath } from "./testing.js";
 
-const dir = fileURLToPath(new URL("../../deploy/profiles/", import.meta.url));
+const dir = join(repoRoot, "deploy", "profiles");
 const files = readdirSync(dir).filter((f) => f.endsWith(".toml"));
 
 test("every committed profile validates", () => {
@@ -27,47 +26,36 @@ test("HDP values from tasks.md E1.3 hold in every profile", () => {
   }
 });
 
-function raw(): Record<string, unknown> {
-  return parse(readFileSync(join(dir, "sandbox.toml"), "utf8"));
+const rejected: [string, (raw: Record<string, unknown>) => unknown, RegExp][] = [
+  ["a profile that is not a table", () => "text", /profile must be a table/],
+  ["a section that is not a table", (r) => setPath(r, "accounts", []), /accounts must be a table/],
+  ["an empty name", (r) => setPath(r, "profile", ""), /profile.profile must be a non-empty string/],
+  ["a name that is not a string", (r) => setPath(r, "chain_id", 7), /profile.chain_id must be a non-empty string/],
+  ["an unknown network", (r) => setPath(r, "network", "mainnet"), /network must be sandbox or testnet, got mainnet/],
+  ["a negative integer", (r) => setPath(r, "hdp.cooling_blocks", -1), /cooling_blocks must be a non-negative integer/],
+  ["a fractional integer", (r) => setPath(r, "hdp.cooling_blocks", 1.5), /cooling_blocks must be a non-negative integer/],
+  ["a zero challenge window", (r) => setPath(r, "hdp.challenge_window_secs", 0), /must be positive/],
+  ["an unknown rule", (r) => setPath(r, "hdp.rules_enabled", ["R9"]), /unknown value R9/],
+  ["rules that are not a list", (r) => setPath(r, "hdp.rules_enabled", "R1"), /rules_enabled must be a non-empty list/],
+  ["no rules", (r) => setPath(r, "hdp.rules_enabled", []), /rules_enabled must be a non-empty list/],
+  ["a testnet profile without rpc", (r) => setPath(r, "network", "testnet"), /at least one endpoint/],
+  ["rpc that is not a list", (r) => setPath(r, "rpc", "http://x"), /rpc must be a list of http\(s\) URLs/],
+  ["rpc that is not a URL", (r) => setPath(r, "rpc", ["not a url"]), /http\(s\) URLs/],
+  ["a bad MPC account id", (r) => setPath(r, "keypolicy.mpc", "Not A Valid Account"), /not a valid NEAR account id/],
+  ["a one-character deployer", (r) => setPath(r, "accounts.deployer", "a"), /not a valid NEAR account id/],
+  ["an over-long deployer", (r) => setPath(r, "accounts.deployer", "a".repeat(65)), /not a valid NEAR account id/],
+  ["a dotted sub-account name", (r) => setPath(r, "accounts.gov", "a.b"), /single account-id segment/],
+  ["duplicate sub-account names", (r) => setPath(r, "accounts.faucet", "gov"), /must all differ/],
+  ["an over-long sub-account", (r) => setPath(r, "accounts.clearing", "c".repeat(60)), /longer than 64/],
+  ["room policy that is not a list", (r) => setPath(r, "room_policy.platforms", "x"), /must be lists/],
+];
+
+for (const [name, mutate, message] of rejected) {
+  test(`rejects ${name}`, () => assert.throws(() => validateProfile(mutate(sandboxProfile())), message));
 }
 
-test("rejects an unknown rule", () => {
-  const r = raw();
-  (r["hdp"] as Record<string, unknown>)["rules_enabled"] = ["R9"];
-  assert.throws(() => validateProfile(r), /unknown value R9/);
-});
-
-test("rejects a testnet profile without rpc", () => {
-  const r = raw();
-  r["network"] = "testnet";
-  assert.throws(() => validateProfile(r), /at least one endpoint/);
-});
-
-test("rejects a bad account id and a zero challenge window", () => {
-  const r = raw();
-  (r["keypolicy"] as Record<string, unknown>)["mpc"] = "Not A Valid Account";
-  assert.throws(() => validateProfile(r), /not a valid NEAR account id/);
-  const r2 = raw();
-  (r2["hdp"] as Record<string, unknown>)["challenge_window_secs"] = 0;
-  assert.throws(() => validateProfile(r2), /must be positive/);
-});
-
-test("rejects dotted, duplicate or over-long sub-account names and non-URL rpc", () => {
-  const set = (k: string, v: string) => {
-    const r = raw();
-    (r["accounts"] as Record<string, unknown>)[k] = v;
-    return r;
-  };
-  assert.throws(() => validateProfile(set("gov", "a.b")), /single account-id segment/);
-  assert.throws(() => validateProfile(set("faucet", "gov")), /must all differ/);
-  assert.throws(() => validateProfile(set("clearing", "c".repeat(60))), /longer than 64/);
-  const r = raw();
-  r["rpc"] = ["not a url"];
-  assert.throws(() => validateProfile(r), /http\(s\) URLs/);
-});
-
 test("sub-account ids are qualified with the deployer", () => {
-  const a = fullAccounts(loadProfile(join(dir, "sandbox.toml")));
+  const a = fullAccounts(loadProfile(profilePath(repoRoot, "sandbox")));
   assert.equal(a.token, "musdc.sandbox");
   assert.equal(a.keypolicy, "keypolicy.sandbox");
 });

@@ -9,6 +9,10 @@ if [ -s "$HOME/.nvm/nvm.sh" ] && [ -f .nvmrc ]; then
   . "$HOME/.nvm/nvm.sh" >/dev/null && nvm use >/dev/null
 fi
 profile="${1:-}"
+if [ ! -f "deploy/profiles/$profile.toml" ]; then
+  echo "usage: up.sh <profile> [--once]   profiles: $(ls deploy/profiles | sed 's/\.toml$//' | tr '\n' ' ')" >&2
+  exit 1
+fi
 if [ "$profile" != "sandbox" ]; then
   # Real networks get exactly the committed source: a reproducible build, every time.
   echo "reproducible contract build for $profile (make wasm)"

@@ -12,6 +12,16 @@ todo:jay - <task>
 
 Put it at the end of your reply. Say what to do, with the exact commands, and why it blocks. Do everything you can yourself first; a `todo:jay` is for what only the user can do.
 
+## Working rules
+
+The user's standing rules for every task:
+
+1. **100% code coverage.** Lines, functions and regions in Rust; lines, branches and functions in TypeScript. `make check` enforces it, so the pre-commit hook does too (see Coverage below).
+2. **Definition of done, production ready.** A task is done only when its **Done:** line holds for real use, not just a demo path. Verify it, and say what was not verified.
+3. **Do not over-engineer.** The smallest design that meets the task and the SDD. No features, options or abstractions the task does not need.
+4. **Say external costs upfront.** Before anything that costs money or needs an account (paid APIs, hosted services, cloud runs, vendor trials, extra testnet funds), tell the user what and how much, and wait. Free local tools are fine; mention them.
+5. **Put code where it belongs.** Each function lives in the file that needs it. Anything two files need goes in a common file and is reused, never copied. Before writing a function, check whether one exists; before leaving one in a file, ask whether it belongs in a common one.
+
 ## Sources of truth
 
 - `SDD.md`: the design. Section numbers (§x.y) in code comments point here.
@@ -35,9 +45,10 @@ Put it at the end of your reply. Say what to do, with the exact commands, and wh
 | Command | What it does | When |
 | --- | --- | --- |
 | `pnpm install` | Installs JS deps and enables the git hooks | once |
-| `make check` | Rust fmt, clippy (wasm + host), unit and core property tests; eslint, tsc, node tests (~15 s) | constantly |
+| `make check` | Rust fmt, clippy (wasm + host), every test under the 100% coverage gate; eslint, tsc (about 25 s warm; it rebuilds the dev wasm when Rust sources changed) | constantly |
+| `make cov` | Just the two coverage gates: `cov-rust` and `cov-node` | when coverage fails |
 | `make wasm-dev` | Fast contract builds into `target/near/<crate>/<crate>.wasm` | sandbox work |
-| `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (needs wasm) | after contract or deploy changes |
+| `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (rebuilds stale dev wasm first) | after contract or deploy changes |
 | `make wasm` | Reproducible docker builds (needs Docker and a clean, committed tree) | before any testnet deploy |
 | `make props` | marginal-core property tests at 10⁶ cases each (~40 s) | after pricing or leakage changes |
 | `make ci` | `check` + `props` + `wasm` + `e2e`: the full gate | before a deploy or closing an epic |
@@ -45,6 +56,14 @@ Put it at the end of your reply. Say what to do, with the exact commands, and wh
 | `deploy/scripts/up.sh testnet-demo` | Testnet deploy (reproducible build, clean tree only) | E15.1 |
 
 There is **no hosted CI**. `.githooks/pre-commit` runs `make check-rust` and/or `make check-node`, depending on which paths are staged. It also blocks secret keys, `deploy/.keys/`, manifests and `.env` files. The hook checks the working tree, so stage everything you mean to commit. Never commit with `--no-verify`. If the hook fails, fix the cause.
+
+## Coverage
+
+- **Rust** (`make cov-rust`, needs `cargo install cargo-llvm-cov`): every native test runs under instrumentation and must cover 100% of lines, functions and regions. It uses the `cov` profile in `Cargo.toml`: release semantics without inlining. In debug builds near-sdk's `require!` takes its `assert!` branch, which leaves the real check unexecuted and makes 100% impossible.
+- **TypeScript** (`make cov-node`): unit and end-to-end tests run together, because `deploy.ts` and `cli.ts` are exercised against a real local node. It must cover 100% of lines, branches and functions of every `src/*.ts` except `*.test.ts`, `*.e2e.ts` and `testing.ts`.
+- **What is not measured.** The contract sandbox tests (`musdc/tests/sandbox.rs`) run on wasm, which coverage tools cannot see. Contract logic is therefore also covered by native unit tests, and the sandbox tests check on-chain behaviour on top.
+- **Never lower the gate or exclude code to pass it.** If a line is hard to reach, it is usually dead code (delete it) or a check that belongs in a small pure function you can test directly (extract it).
+- **Coverage is not correctness.** Assertions must be able to fail. For money and format code, spot-check by breaking the code on purpose.
 
 ## Repo layout
 
@@ -62,7 +81,7 @@ SDD §3.1 is the layout authority. Keep to it.
 | `contracts/tests/` | Cross-contract near-workspaces suites, `sandbox_*.rs` | Created by E14.1 as a workspace member |
 | `crates/marginal-core` | `no_std` shared types, pricing, leakage, hashing | `marginal-attest` and `marginal-groth16` arrive with their tasks |
 | `room/`, `services/{gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` | TypeScript workspace packages | `indexer`, `relayer`, `attester`, `replay-py`, `cli/` and `sim/` are M2 |
-| `scripts/` | Deploy tooling (`@marginal/scripts`) behind `deploy/scripts/up.sh` | Not in §3.1; kept as the deploy package |
+| `scripts/` | Deploy tooling (`@marginal/scripts`) behind `deploy/scripts/up.sh` | Not in §3.1; kept as the deploy package. `paths.ts` and `chain.ts` are the shared helpers, `cli.ts` is the command, `up.ts` the entry point, `testing.ts` test support |
 | `deploy/{profiles,scripts}` | Profiles and `up.sh`. Generated manifests and `.keys/` are gitignored | Only `sandbox` and `testnet-demo` profiles in M1 |
 | `SDD.md`, `SPEC.md`, `tasks.md`, `CLAUDE.md` | Docs at the root | §3.1 puts SPEC and SDD in `docs/`; new docs (`demo-readiness.md`, runbooks) go in `docs/` |
 | `*-notes/`, `MOONSHOT.md`, `*-template.md`, `SPEC-PROMPT.md` | Research and planning inputs | Read-only; do not add code here |
@@ -76,6 +95,7 @@ SDD §3.1 is the layout authority. Keep to it.
 - **Validate in the contract.** Enforce invariants on-chain with `require!(cond, "message")`, even when the off-chain profile validator checks them too. Error strings are part of the interface: tests match on them.
 - **Borsh gotcha.** A `Vec` of a single-variant (zero-sized) enum fails to serialise ("Cannot serialize the contract state"). Give such enums a second variant, or store something else.
 - **Events.** Anything that changes token supply or balances emits a NEP-297 event (`near_contract_standards::...::events`).
+- **Contract interface types are local to the contract.** `cargo near` generates an ABI and needs JSON and Borsh schemas for every type in a contract's public interface, which `marginal-core`'s types do not have. Host tests and clippy cannot see this: only `make wasm-dev` (run by `make check` when Rust changed) does.
 - **Avoid `unstable` near-sdk features** unless a task needs one. If one does, enable it per crate.
 - **Tests.**
   - Unit tests live in `#[cfg(test)]` and use the `unit-testing` dev feature.

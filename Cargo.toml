@@ -27,3 +27,11 @@ lto = true
 debug = false
 panic = "abort"
 overflow-checks = true
+
+# Used only by `make cov-rust`. Release semantics (debug assertions off, so near-sdk's `require!`
+# takes its real branch) without inlining or LTO, which would hide small functions from the report.
+[profile.cov]
+inherits = "release"
+opt-level = 0
+lto = false
+codegen-units = 16

@@ -31,6 +31,9 @@ pub fn mbits(n: u16) -> Result<u64, CoreError> {
 ///
 /// - **Sealed:** `OUTCOME_MBITS` (1,000), whatever the schema.
 /// - **Open:** also every component's alphabet and `n_judges` judge factors.
+///
+/// The sum saturates instead of overflowing. It cannot overflow for any schema that fits in memory
+/// (each term is at most 12,000), and a saturated debit exceeds every budget, so it would be refused.
 pub fn max_debit(
     schema: &OutputSchema,
     mode: &DisplayMode,
@@ -47,13 +50,10 @@ pub fn max_debit(
     let mut debit = OUTCOME_MBITS;
     if privacy == VerdictPrivacy::Open {
         for alphabet in &schema.component_alphabets {
-            debit = debit
-                .checked_add(mbits(*alphabet)?)
-                .ok_or(CoreError::Arithmetic)?;
+            debit = debit.saturating_add(mbits(*alphabet)?);
         }
         if n_judges > 0 {
-            let judges = u64::from(n_judges) * mbits(schema.judge_scale)?;
-            debit = debit.checked_add(judges).ok_or(CoreError::Arithmetic)?;
+            debit = debit.saturating_add(u64::from(n_judges) * mbits(schema.judge_scale)?);
         }
     }
     Ok(debit)

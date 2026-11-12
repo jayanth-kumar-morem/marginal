@@ -11,6 +11,9 @@
 //! - Features that are not built yet (rules R2–R5, asset classes other than knowledge and dataset,
 //!   and so on) exist as enum variants only, so adding them later is not a format change. The code
 //!   that would act on them returns a `*Disabled` error.
+//! - No JSON here. `cargo near` generates a contract's ABI and needs JSON and Borsh schemas for every
+//!   type in the contract's interface, and `u128` needs string encoding for JavaScript, so contract
+//!   views define their own JSON types (E4).
 //! - AccountIds travel as plain strings. The encoding is identical to `near_sdk::AccountId`, and the
 //!   contract validates ids at its boundary.
 

@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { chmodSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { Account, JsonRpcProvider, KeyPair, actions, baseEncode, type KeyPairString, type SerializedReturnValue } from "near-api-js";
-import { AccountDoesNotExistError } from "near-api-js/rpc-errors";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Account, JsonRpcProvider, KeyPair, actions, baseEncode, type KeyPairString } from "near-api-js";
+import { NEAR, TERA, accountExists, view } from "./chain.js";
 import { fullAccounts, type Profile } from "./profile.js";
 
 export interface DeployContext {
@@ -50,8 +50,6 @@ export interface DeployKeys {
   [accountId: string]: string;
 }
 
-const TERA = 10n ** 12n;
-const NEAR = 10n ** 24n;
 const GAS_INIT = 30n * TERA;
 
 const WASM = { musdc: "musdc", clearing: "clearing", keypolicy: "keypolicy" } as const;
@@ -86,14 +84,35 @@ function readWasm(dir: string, crate: string): { bytes: Uint8Array; sha256: stri
   return { bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-async function exists(provider: JsonRpcProvider, id: string): Promise<boolean> {
-  try {
-    await provider.viewAccount({ accountId: id });
-    return true;
-  } catch (e) {
-    if (e instanceof AccountDoesNotExistError) return false;
-    throw e; // a network or RPC failure must not read as "account is free"
-  }
+export interface ClearingConfig {
+  gov: string;
+  profile: Profile["hdp"] & { profile: string };
+}
+export interface KeyPolicyConfig {
+  registry: string;
+  clearing: string;
+  ckd_domain_id: number;
+}
+
+/**
+ * What must hold after a deploy, read back from the chain. KeyPolicy has no access keys (SDD §3.12.6),
+ * and in M1 its registry is clearing itself.
+ */
+export function verifyDeployment(
+  ids: { gov: string; clearing: string },
+  clearing: ClearingConfig,
+  keypolicy: KeyPolicyConfig,
+  keypolicyAccessKeys: number,
+): void {
+  if (keypolicyAccessKeys !== 0) throw new Error(`keypolicy has ${keypolicyAccessKeys} access key(s); it must have none`);
+  if (clearing.gov !== ids.gov) throw new Error("clearing.gov mismatch");
+  if (keypolicy.registry !== keypolicy.clearing || keypolicy.clearing !== ids.clearing) throw new Error("keypolicy.registry must equal clearing in M1");
+}
+
+/** The chain must hold exactly the wasm we built: its code hash is the base58 of the wasm's SHA-256. */
+export function assertCodeHash(id: string, onChain: string, wasmSha256: string): void {
+  const expected = baseEncode(Buffer.from(wasmSha256, "hex"));
+  if (onChain !== expected) throw new Error(`${id}: on-chain code hash ${onChain} != built wasm ${expected}`);
 }
 
 export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manifest: Manifest; keys: DeployKeys }> {
@@ -111,7 +130,7 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
 
   // Fresh deploys only: refuse to touch accounts that already exist.
   for (const id of [ids.gov, ids.faucet, ids.token, ids.clearing, ids.keypolicy]) {
-    if (await exists(provider, id)) throw new Error(`account ${id} already exists; up.sh only does fresh deploys`);
+    if (await accountExists(provider, id)) throw new Error(`account ${id} already exists; up.sh only does fresh deploys`);
   }
 
   // Fail before creating anything if the deployer cannot fund the whole deploy.
@@ -144,14 +163,9 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
       ctx.saveKeys?.({ ...keys });
     }
     if (opts.wasm) {
-      const onChain = (await provider.viewAccount({ accountId: id })).code_hash;
-      const expected = baseEncode(Buffer.from(opts.wasm.sha256, "hex"));
-      if (onChain !== expected) throw new Error(`${id}: on-chain code hash ${onChain} != built wasm ${expected}`);
+      assertCodeHash(id, (await provider.viewAccount({ accountId: id })).code_hash, opts.wasm.sha256);
     }
   }
-
-  const view = <T extends SerializedReturnValue>(contractId: string, method: string, args: Record<string, unknown> = {}) =>
-    provider.callFunction<T>({ contractId, method, args }) as Promise<T>;
 
   log(`[0/6] creating gov (${ids.gov}) and faucet (${ids.faucet}) accounts`);
   await create(ids.gov, bal.gov);
@@ -201,16 +215,13 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   }
   log("      0 entries in the profile; nothing to seed");
 
-  log("[5/6] asserting keypolicy has no access keys");
+  log("[5/6] reading keypolicy's access keys");
   const left = (await provider.viewAccessKeyList({ accountId: ids.keypolicy })).keys.length;
-  if (left !== 0) throw new Error(`keypolicy has ${left} access key(s); it must have none`);
 
-  log("[6/6] reading back configuration and building the manifest");
-  const clearingCfg = await view<{ gov: string; profile: Profile["hdp"] & { profile: string } }>(ids.clearing, "config");
-  const keypolicyCfg = await view<{ registry: string; clearing: string; ckd_domain_id: number }>(ids.keypolicy, "config");
-  if (clearingCfg.gov !== ids.gov) throw new Error("clearing.gov mismatch");
-  if (keypolicyCfg.registry !== keypolicyCfg.clearing || keypolicyCfg.clearing !== ids.clearing)
-    throw new Error("keypolicy.registry must equal clearing in M1");
+  log("[6/6] verifying the deployment and building the manifest");
+  const clearingCfg = await view<ClearingConfig>(provider, ids.clearing, "config");
+  const keypolicyCfg = await view<KeyPolicyConfig>(provider, ids.keypolicy, "config");
+  verifyDeployment(ids, clearingCfg, keypolicyCfg, left);
 
   const rec = async (account: string, w: { sha256: string }): Promise<ContractRecord> => ({
     account,
@@ -236,10 +247,4 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
     public_keys: pub,
   };
   return { manifest, keys };
-}
-
-export function writeJson(path: string, value: unknown, mode?: number): void {
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(value, null, 2) + "\n", mode === undefined ? undefined : { mode });
-  if (mode !== undefined) chmodSync(path, mode); // `mode` above only applies when the file is new
 }

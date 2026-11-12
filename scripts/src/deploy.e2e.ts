@@ -1,29 +1,29 @@
-// End-to-end check of E1.3: one command deploys a fresh sandbox, and the result matches the task's definition of done.
-// Needs built wasm: `make wasm`. Run with `pnpm --filter @marginal/scripts test:e2e`.
+// End-to-end check of E1.3 against a real local node. Needs built wasm: `make wasm-dev` (or `make wasm`).
+// Run with `pnpm --filter @marginal/scripts test:e2e`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, rmSync, statSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { Account, JsonRpcProvider, KeyPair, baseEncode } from "near-api-js";
-import { Sandbox, DEFAULT_PRIVATE_KEY } from "near-sandbox";
-import type { KeyPairString, SerializedReturnValue } from "near-api-js";
+import type { KeyPairString } from "near-api-js";
+import { NEAR, accountExists, view } from "./chain.js";
 import { deployAll, type Manifest } from "./deploy.js";
+import { keysPath, manifestPath, profilePath, repoRoot, wasmDir } from "./paths.js";
 import { loadProfile } from "./profile.js";
+import { SANDBOX_KEY, withSandbox } from "./testing.js";
 
-const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
-const profile = () => loadProfile(join(root, "deploy", "profiles", "sandbox.toml"));
-const wasmDir = join(root, "target", "near");
+const profile = () => loadProfile(profilePath(repoRoot, "sandbox"));
+const wasm = wasmDir(repoRoot);
 
 test("up.sh sandbox --once deploys everything and writes a correct manifest", () => {
-  const manifestPath = join(root, "deploy", "manifest.sandbox.json");
-  rmSync(manifestPath, { force: true });
-  const r = spawnSync("bash", [join(root, "deploy", "scripts", "up.sh"), "sandbox", "--once"], { encoding: "utf8", timeout: 240_000 });
+  const manifestFile = manifestPath(repoRoot, "sandbox");
+  rmSync(manifestFile, { force: true });
+  const r = spawnSync("bash", [join(repoRoot, "deploy", "scripts", "up.sh"), "sandbox", "--once"], { encoding: "utf8", timeout: 240_000 });
   assert.equal(r.status, 0, `up.sh failed:\n${r.stdout}\n${r.stderr}`);
   // Steps ran in the order the task lists them.
-  const order = ["deploying musdc", "deploying clearing", "deploying keypolicy", "seeding room policy", "asserting keypolicy has no access keys", "building the manifest"];
+  const order = ["deploying musdc", "deploying clearing", "deploying keypolicy", "seeding room policy", "reading keypolicy's access keys", "verifying the deployment"];
   let at = -1;
   for (const s of order) {
     const i = r.stdout.indexOf(s);
@@ -31,13 +31,12 @@ test("up.sh sandbox --once deploys everything and writes a correct manifest", ()
     at = i;
   }
 
-  const m = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
+  const m = JSON.parse(readFileSync(manifestFile, "utf8")) as Manifest;
   assert.equal(m.profile, "sandbox");
   assert.match(m.git?.commit ?? "", /^[0-9a-f]{40}$/, "manifest records the git commit");
   // The keys file holds exactly the keyed accounts, is private, and never includes KeyPolicy.
-  const keysPath = join(root, "deploy", ".keys", "sandbox.json");
-  assert.equal(statSync(keysPath).mode & 0o777, 0o600);
-  const keys = JSON.parse(readFileSync(keysPath, "utf8")) as Record<string, string>;
+  assert.equal(statSync(keysPath(repoRoot, "sandbox")).mode & 0o777, 0o600);
+  const keys = JSON.parse(readFileSync(keysPath(repoRoot, "sandbox"), "utf8")) as Record<string, string>;
   assert.deepEqual(Object.keys(keys).sort(), Object.keys(m.public_keys).sort());
   assert.ok(!(m.contracts.keypolicy.account in keys), "KeyPolicy never had a key");
   assert.equal(m.keypolicy_access_keys, 0);
@@ -46,33 +45,26 @@ test("up.sh sandbox --once deploys everything and writes a correct manifest", ()
   }
   // The deployed wasm is the one on disk.
   for (const [name, c] of Object.entries(m.contracts)) {
-    const crate = name;
-    const disk = createHash("sha256").update(readFileSync(join(wasmDir, crate, `${crate}.wasm`))).digest("hex");
+    const disk = createHash("sha256").update(readFileSync(join(wasm, name, `${name}.wasm`))).digest("hex");
     assert.equal(c.wasm_sha256, disk, `${name} wasm on disk`);
   }
   // Secrets never reach the manifest.
-  assert.ok(!JSON.stringify(m).includes("ed25519:") || Object.values(m.public_keys).every((k) => k.startsWith("ed25519:")));
+  assert.ok(Object.values(m.public_keys).every((k) => k.startsWith("ed25519:")));
   assert.ok(!/secret|private/i.test(JSON.stringify(m)));
 });
 
 test("deployed state: profile values, KeyPolicy immutability, token wiring", async () => {
   const p = profile();
-  const sandbox = await Sandbox.start({});
-  try {
+  await withSandbox(async (sandbox) => {
+    const ctx = { rpcUrl: sandbox.rpcUrl, deployerKey: SANDBOX_KEY, wasmDir: wasm };
     const saved: Record<string, string>[] = [];
-    const { manifest, keys: finalKeys } = await deployAll(p, {
-      rpcUrl: sandbox.rpcUrl,
-      deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString,
-      wasmDir,
-      saveKeys: (k) => saved.push(k),
-    });
+    const { manifest, keys } = await deployAll(p, { ...ctx, saveKeys: (k) => saved.push(k) });
     // Keys are saved after every keyed account, not only at the end.
-    assert.equal(saved.length, Object.keys(finalKeys).length);
-    assert.deepEqual(saved.at(-1), finalKeys);
-    const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
-    const view = <T extends SerializedReturnValue>(c: string, method: string, args: Record<string, unknown> = {}) => provider.callFunction<T>({ contractId: c, method, args }) as Promise<T>;
+    assert.equal(saved.length, Object.keys(keys).length);
+    assert.deepEqual(saved.at(-1), keys);
 
-    const clearing = await view<{ gov: string; tokens: string[]; profile: Record<string, unknown> }>(manifest.contracts.clearing.account, "config");
+    const provider = new JsonRpcProvider({ url: sandbox.rpcUrl });
+    const clearing = await view<{ gov: string; tokens: string[]; profile: Record<string, unknown> }>(provider, manifest.contracts.clearing.account, "config");
     assert.equal(clearing.gov, manifest.accounts.gov);
     assert.deepEqual(clearing.tokens, [manifest.contracts.musdc.account]);
     assert.equal(clearing.profile["cooling_blocks"], 0);
@@ -81,35 +73,38 @@ test("deployed state: profile values, KeyPolicy immutability, token wiring", asy
     assert.deepEqual(clearing.profile["asset_classes_enabled"], ["Knowledge", "Dataset"]);
     assert.equal(clearing.profile["gov_profile"], "demo");
 
-    const kp = await view<{ registry: string; clearing: string; ckd_domain_id: number }>(manifest.contracts.keypolicy.account, "config");
+    const kp = await view<{ registry: string; clearing: string; ckd_domain_id: number }>(provider, manifest.contracts.keypolicy.account, "config");
     assert.equal(kp.registry, manifest.contracts.clearing.account, "registry = clearing");
     assert.equal(kp.ckd_domain_id, 2);
-    const keys = await new Account(manifest.contracts.keypolicy.account, provider).getAccessKeyList();
-    assert.equal(keys.keys.length, 0, "KeyPolicy has no access keys");
+    assert.equal((await new Account(manifest.contracts.keypolicy.account, provider).getAccessKeyList()).keys.length, 0, "KeyPolicy has no access keys");
 
-    const meta = await view<{ decimals: number }>(manifest.contracts.musdc.account, "ft_metadata");
+    const meta = await view<{ decimals: number }>(provider, manifest.contracts.musdc.account, "ft_metadata");
     assert.equal(meta.decimals, 6);
-    assert.equal(await view<string>(manifest.contracts.musdc.account, "faucet"), manifest.accounts.faucet);
+    assert.equal(await view<string>(provider, manifest.contracts.musdc.account, "faucet"), manifest.accounts.faucet);
 
     // Init ran in the creating transaction, so nobody can call `new` again.
-    const gov = new Account(manifest.accounts.gov, provider, finalKeys[manifest.accounts.gov] as KeyPairString);
+    const gov = new Account(manifest.accounts.gov, provider, keys[manifest.accounts.gov] as KeyPairString);
+    const again = { chain_id: "x", registry: "x.sandbox", clearing: "x.sandbox", mpc: "x.sandbox", ckd_domain_id: 0, dcap_verifier: "x.sandbox" };
     await assert.rejects(
-      gov.callFunction({ contractId: manifest.contracts.keypolicy.account, methodName: "new", args: { chain_id: "x", registry: "x.sandbox", clearing: "x.sandbox", mpc: "x.sandbox", ckd_domain_id: 0, dcap_verifier: "x.sandbox" } }),
+      gov.callFunction({ contractId: manifest.contracts.keypolicy.account, methodName: "new", args: again }),
       /already initialized|state already exists|The contract has already been initialized/i,
     );
 
     // An underfunded deployer is refused before any account is created.
-    const poor = "poor.sandbox";
-    const root = new Account("sandbox", provider, DEFAULT_PRIVATE_KEY as KeyPairString);
     const poorKey = KeyPair.fromRandom("ed25519");
-    await root.createAccount({ newAccountId: poor, publicKey: poorKey.getPublicKey().toString(), nearToTransfer: 2n * 10n ** 24n });
-    const pp = { ...p, accounts: { ...p.accounts, deployer: poor } };
-    await assert.rejects(deployAll(pp, { rpcUrl: sandbox.rpcUrl, deployerKey: poorKey.toString() as KeyPairString, wasmDir }), /needs .* NEAR\. Top it up first/);
-    await assert.rejects(provider.viewAccount({ accountId: `gov.${poor}` }), "nothing was created");
+    await new Account("sandbox", provider, SANDBOX_KEY).createAccount({ newAccountId: "poor.sandbox", publicKey: poorKey.getPublicKey().toString(), nearToTransfer: 2n * NEAR });
+    const poor = { ...p, accounts: { ...p.accounts, deployer: "poor.sandbox" } };
+    await assert.rejects(deployAll(poor, { ...ctx, deployerKey: poorKey.toString() as KeyPairString }), /needs .* NEAR\. Top it up first/);
+    assert.equal(await accountExists(provider, "gov.poor.sandbox"), false, "nothing was created");
 
     // A second run into the same chain must refuse rather than overwrite.
-    await assert.rejects(deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: DEFAULT_PRIVATE_KEY as KeyPairString, wasmDir }), /already exists/);
-  } finally {
-    await sandbox.tearDown();
-  }
+    await assert.rejects(deployAll(p, ctx), /already exists/);
+  });
+});
+
+test("a profile that lists room-policy entries is refused until clearing has the module (E4.3)", async () => {
+  const p = { ...profile(), room_policy: { platforms: ["ppid-1"], measurement_sets: [] } };
+  await withSandbox((sandbox) =>
+    assert.rejects(deployAll(p, { rpcUrl: sandbox.rpcUrl, deployerKey: SANDBOX_KEY, wasmDir: wasm }), /profile lists 1 room-policy entries but clearing has no room-policy module yet/),
+  );
 });
