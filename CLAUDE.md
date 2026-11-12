@@ -111,7 +111,7 @@ SDD §3.1 is the layout authority. Keep to it.
 
 - **GitHub.** The repo is `github.com/jayanth-kumar-morem/marginal`, **private**. Use the `jayanth-kumar-morem` gh account for it: `GH_TOKEN=$(gh auth token -u jayanth-kumar-morem) gh ...`. Do not switch the user's active gh account. Plain `git push` and `git fetch` already work: the repo-local git config pins the credential helper to that account.
 - **Pushes.** Pushing committed work to the private `origin` is fine.
-- **Visibility.** Never make the repo public, change its visibility, open it to collaborators or publish packages. A public push is a patent disclosure, so that waits for the licence decision (tasks.md X-2) and the user's say-so.
+- **Visibility.** Never make the repo public, change its visibility, open it to collaborators or publish packages. The user decided on 2026-11-12 to keep it private (tasks.md X-2). Only the user changes that.
 - **Commit identity.** Commits use the account's GitHub noreply address, set in the local git config.
 - **Placeholders.** `deployer` in `deploy/profiles/testnet-demo.toml` names an account the user creates (see the `todo:jay` in `tasks.md` E15.1).
 - **External services.** Never put the user's name, email or company in external requests or web searches.

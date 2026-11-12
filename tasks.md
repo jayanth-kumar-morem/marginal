@@ -70,7 +70,7 @@ These three carry the most risk. Each is the opening step of a task, not a separ
 | ID | Decision | Status | Blocks |
 |---|---|---|---|
 | X-1 | **Repo (OI-10)** | **Decided: a new Marginal repo.** It replaces LETHE as one of your two allowed entries; ChainProof Guard stays the other (Q-015). | E1.1, E15 |
-| X-2 | **Patent and licence (§10).** File a provisional or record a decision not to file, then pick MIT or Apache-2.0. | Acknowledged. Keep the repo private until it is settled, because a public push is a public disclosure. | Public push, E15.3 |
+| X-2 | **Patent and licence (§10).** File a provisional or record a decision not to file, then pick MIT or Apache-2.0. | **Decided 2026-11-12: the repo stays private** (github.com/jayanth-kumar-morem/marginal). Conflict: the hackathon requires a public repo by the deadline (HACKATHON.md "Start here" item 2, Q-012), so a private repo cannot be judged. See E15.5. | Public push, E15.3, E15.5 |
 | X-3 | **Vendor trials (OI-24).** Sumsub and TRM Labs. | Acknowledged; M2 | E18 |
 | X-4 | **Payout-hold "control" (OI-19, DR-16)** | **Decided: minimal.** Holds expire after a contract-fixed maximum (30 days, estimate) unless renewed with a fresh screening. A sanctions match goes to the issuer's freeze or a licensed partner. Counsel confirms before canary. | E16 |
 | X-5 | **CFTC comment (OI-20).** Matters for v3 only. | Open; comments close **2026-11-18** | — |
@@ -451,7 +451,8 @@ Each version is deployed once, then its keys are deleted. Every PR gets a second
 Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may change.
 
 - [ ] **E15.1 Deploy HDP** · P0
-  - todo:jay - create and fund the deployer `marginal-demo.testnet` (16 NEAR); steps in `CLAUDE.md` → Deploys. Needed before the first testnet deploy, not before.
+  - Deployer `marginal-demo.testnet` created 2026-11-12 (faucet-sponsored, 10 NEAR; key in `~/.near-credentials/testnet/`, mode 0600).
+  - todo:jay - top `marginal-demo.testnet` up by at least 6 NEAR (to 16) from a testnet faucet. `up.sh` refuses until it has 16.
   - `up.sh testnet-demo` and register the room.
   - Fund the demo personas with `musdc` and nullifier credentials. Seed listings for D1–D9.
 - [ ] **E15.2 Run DRC-1 to DRC-12** · P0 · §5.4
@@ -465,7 +466,9 @@ Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may c
   - D1 → D2 → D3 → D4 → D11, then the P1 and P2 surfaces.
 - [ ] **E15.5 Submit** · P0 · @jay, done by a person
   - Re-read `HACKATHON.md`. Marginal replaces LETHE as an entry; withdraw or replace LETHE's submission if it was already made.
-  - Make the repo public (after X-2) and submit.
+  - The repo is private by decision (X-2), but judges cannot open a private repo (Q-012).
+  - todo:jay - before 2026-11-14 23:59 UTC, decide: make the repo public and submit, or don't submit Marginal.
+  - Then submit.
   - X post per the rules: "built at NEAR HACKATHON", `@NEARProtocol`, `#NEARHackathon`, with the video.
 
 ---
