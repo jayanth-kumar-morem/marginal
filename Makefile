@@ -15,7 +15,8 @@ wasm-dev:
 
 lint:
 	cargo fmt --all -- --check
-	cargo clippy --workspace --all-targets --target wasm32-unknown-unknown -- -D warnings
+	cargo clippy --workspace --target wasm32-unknown-unknown --locked -- -D warnings
+	cargo clippy --workspace --all-targets --locked -- -D warnings
 	$(NODE_ENV_SETUP); pnpm lint
 
 build:
