@@ -35,11 +35,12 @@ Put it at the end of your reply. Say what to do, with the exact commands, and wh
 | Command | What it does | When |
 | --- | --- | --- |
 | `pnpm install` | Installs JS deps and enables the git hooks | once |
-| `make check` | Rust fmt, clippy (wasm + host), unit tests; eslint, tsc, node tests (~10 s) | constantly |
+| `make check` | Rust fmt, clippy (wasm + host), unit and core property tests; eslint, tsc, node tests (~15 s) | constantly |
 | `make wasm-dev` | Fast contract builds into `target/near/<crate>/<crate>.wasm` | sandbox work |
 | `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (needs wasm) | after contract or deploy changes |
 | `make wasm` | Reproducible docker builds (needs Docker and a clean, committed tree) | before any testnet deploy |
-| `make ci` | `check` + `wasm` + `e2e`: the full gate | before a deploy or closing an epic |
+| `make props` | marginal-core property tests at 10⁶ cases each (~40 s) | after pricing or leakage changes |
+| `make ci` | `check` + `props` + `wasm` + `e2e`: the full gate | before a deploy or closing an epic |
 | `deploy/scripts/up.sh sandbox [--once]` | Local node, full deploy, manifest | demos, manual tests |
 | `deploy/scripts/up.sh testnet-demo` | Testnet deploy (reproducible build, clean tree only) | E15.1 |
 
@@ -80,6 +81,21 @@ SDD §3.1 is the layout authority. Keep to it.
   - Unit tests live in `#[cfg(test)]` and use the `unit-testing` dev feature.
   - Behaviour across contracts, or that needs real gas or storage, goes in near-workspaces tests under `<crate>/tests/`.
   - Every bug fix gets a regression test.
+
+## `marginal-core` (`crates/marginal-core`)
+
+The one implementation of the data model, errors, pricing and leakage arithmetic. The contracts, the room (as wasm) and `replay-ts` all use it, so they agree to the last unit.
+
+- **`no_std` and no floats.** Money, basis points and millibits are integers. `u128` amounts go through `mul_div`, never `a * b / c`.
+- **Checked arithmetic.** Return `CoreError`, do not wrap or panic, on anything that depends on input.
+- **Wire format.**
+  - Enum variant order is the encoding: append only, never reorder or remove.
+  - A layout change needs a version bump (`*_V` constant and `CORE_VERSION`), a migration, and an updated golden test.
+  - The four stored records start with `v: u8`; check it with `Record::decode`.
+- **Errors.** Add codes in `error.rs`. Codes are stable strings; never rename or reuse one. Features that are not built return the matching `*Disabled` error, never a silent default.
+- **Pricing changes** need the AC-2, AC-3, AC-5 and AC-41 properties to still pass at full strength: run `make props` (10⁶ cases per property).
+- **Every function that decides money gets a test that would fail if it were wrong.** Property tests for invariants and a worked example from the SDD. Spot-check by breaking the code on purpose.
+- **Dev dependencies** (`proptest`, `num-bigint`) are test oracles only; nothing in `[dependencies]` besides `borsh`.
 
 ## TypeScript (`room`, `services/*`, `apps/web`, `sdk/ts`, `verifiers/replay-ts`, `scripts`)
 

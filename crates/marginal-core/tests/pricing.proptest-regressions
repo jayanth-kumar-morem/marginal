@@ -1,0 +1,10 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 4d71c9d3eb0efb02a70767e24b42a3087e976d9982c9010f418e6c69d7eaad3f # shrinks to (f, p) = (KnowledgeV1, FormulaParams { delta_star_bps: 0 }), c = [0, 0], l_floor = 0, l = [0, 1], b = 0, a = 1
+cc 453c56f6740806d5287e37bc5fe67b75b36b10ce3639848804d9fe781f5967be # shrinks to (f, p) = (KnowledgeV1, FormulaParams { delta_star_bps: 0 }), c = [0, 0], l_floor = 0, l = [10001], b = 0, a = 1
+cc a8d9f6adb80f471db9acdebfebfa25405300caa69308241a09e11ad739210f44 # shrinks to (f, p) = (KnowledgeV1, FormulaParams { delta_star_bps: 0 }), c = [2, 5000], l_floor = 0, l = [0], which = Index(0), raised = 100010000, b = 0, a = 1
+cc 17367df09af2abcfaa42e9e95893777cd54aa6366b3397f2534048948670b3b3 # shrinks to m = 1, b1 = 1518783211950000, b2 = 1518783211960000, a = 1
