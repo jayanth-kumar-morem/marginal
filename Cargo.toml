@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/marginal-core",
+  "crates/marginal-core-wasm",
   "contracts/clearing",
   "contracts/keypolicy",
   "contracts/test-tokens/musdc",
@@ -17,8 +18,13 @@ repository = "https://github.com/jayanth-kumar-morem/marginal"
 [workspace.dependencies]
 near-sdk = "=5.30.1"
 near-contract-standards = "=5.30.1"
-# marginal-core is no_std: borsh without `std` (it needs only `alloc`). Same version near-sdk resolves to.
+# marginal-core is no_std: these are used without `std` (they need only `alloc`). Versions are the
+# ones near-sdk already resolves to.
 borsh = { version = "=1.8.1", default-features = false, features = ["derive"] }
+sha2 = { version = "=0.10.9", default-features = false }
+hex = { version = "=0.4.3", default-features = false, features = ["alloc"] }
+serde = { version = "=1.0.229", default-features = false, features = ["derive", "alloc"] }
+serde_json = "=1.0.154"
 
 [profile.release]
 codegen-units = 1

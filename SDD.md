@@ -337,6 +337,8 @@ marginal/
 ├── crates/
 │   ├── marginal-core/              no_std: Borsh types, formula registry, pricing rules, leakage LUT, mul_div,
 │   │                               canonical hashing. Used by contracts, by verifier #1, and (as wasm) by the room.
+│   ├── marginal-core-wasm/         marginal-core as a wasm module (JSON in, JSON out) and its npm package @marginal/core-wasm,
+│   │                               which the room and verifiers/replay-ts load; core.wasm is built by `make wasm-core`
 │   ├── marginal-attest/            fork of the near/mpc attestation crate: dcap-qvl wrapper, RTMR3 event-log replay,
 │   │                               report_data binding, collateral checks
 │   └── marginal-groth16/           Groth16 (BN254) verifier over NEAR alt_bn128 host functions
@@ -368,6 +370,7 @@ marginal/
 ├── cli/                            `marginal` CLI (seller, buyer, gov, debug)
 ├── sim/                            economic simulation, red-team harness (Sybil probing, injection corpora)
 ├── deploy/                         profiles/{local,sandbox,testnet-demo,mainnet-canary}.toml, scripts/
+├── fixtures/                       vectors.json: test vectors that marginal-core, the room and replay-ts must all reproduce
 ├── transparency/                   measurements.json, policy-history.json (mirrors on-chain events)
 └── docs/                           SPEC.md, SDD.md, test-plan.md, runbooks/ (incident, revocation drill, deploy)
 ```

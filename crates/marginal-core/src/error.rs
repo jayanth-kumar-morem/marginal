@@ -91,7 +91,9 @@ errors! {
     DisplayDisabled = "E_DISPLAY_DISABLED",
     /// A pricing rule's parameters are out of bounds (for example a posted price of zero).
     RuleParams = "E_RULE_PARAMS",
-    /// Bytes are not a well-formed Borsh encoding of the expected type.
+    /// A job's escrow does not add up: value appeared or disappeared (AC-4).
+    Conservation = "E_CONSERVATION",
+    /// Bytes or JSON are not a well-formed encoding of the expected type.
     Decode = "E_DECODE",
     /// A record carries a version byte this build does not understand.
     Version = "E_VERSION",

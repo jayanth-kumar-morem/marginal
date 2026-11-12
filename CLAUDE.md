@@ -48,6 +48,7 @@ The user's standing rules for every task:
 | `make check` | Rust fmt, clippy (wasm + host), every test under the 100% coverage gate; eslint, tsc (about 25 s warm; it rebuilds the dev wasm when Rust sources changed) | constantly |
 | `make cov` | Just the two coverage gates: `cov-rust` and `cov-node` | when coverage fails |
 | `make wasm-dev` | Fast contract builds into `target/near/<crate>/<crate>.wasm` | sandbox work |
+| `make wasm-core` | Builds marginal-core as `crates/marginal-core-wasm/core.wasm` (plain `cargo build`, rebuilt when Rust changes; `make check` runs it) | working on the room or `replay-ts` |
 | `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (rebuilds stale dev wasm first) | after contract or deploy changes |
 | `make wasm` | Reproducible docker builds (needs Docker and a clean, committed tree) | before any testnet deploy |
 | `make props` | marginal-core property tests at 10⁶ cases each (~40 s) | after pricing or leakage changes |
@@ -79,7 +80,9 @@ SDD §3.1 is the layout authority. Keep to it.
 | `contracts/{clearing,keypolicy}` | Contracts | The room-policy registry is a module inside clearing (`clearing/src/registry.rs`), not `contracts/registry/` (M2, E16.1) |
 | `contracts/test-tokens/musdc` | HDP test stablecoin | Its own sandbox tests live in `musdc/tests/` |
 | `contracts/tests/` | Cross-contract near-workspaces suites, `sandbox_*.rs` | Created by E14.1 as a workspace member |
-| `crates/marginal-core` | `no_std` shared types, pricing, leakage, hashing | `marginal-attest` and `marginal-groth16` arrive with their tasks |
+| `crates/marginal-core` | `no_std` shared types, errors, pricing, leakage, commitments, signing bytes | `marginal-attest` and `marginal-groth16` arrive with their tasks |
+| `crates/marginal-core-wasm` | marginal-core as wasm (JSON in, JSON out) and its npm package `@marginal/core-wasm`, which the room and `replay-ts` load | `core.wasm` is built by `make wasm-core` and gitignored |
+| `fixtures/` | `vectors.json`: test vectors every implementation must reproduce. Later: demo corpora (E14.2) | Generated from `marginal-core-wasm`'s test; never edit by hand |
 | `room/`, `services/{gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` | TypeScript workspace packages | `indexer`, `relayer`, `attester`, `replay-py`, `cli/` and `sim/` are M2 |
 | `scripts/` | Deploy tooling (`@marginal/scripts`) behind `deploy/scripts/up.sh` | Not in §3.1; kept as the deploy package. `paths.ts` and `chain.ts` are the shared helpers, `cli.ts` is the command, `up.ts` the entry point, `testing.ts` test support |
 | `deploy/{profiles,scripts}` | Profiles and `up.sh`. Generated manifests and `.keys/` are gitignored | Only `sandbox` and `testnet-demo` profiles in M1 |
@@ -113,9 +116,13 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
   - A layout change needs a version bump (`*_V` constant and `CORE_VERSION`), a migration, and an updated golden test.
   - The four stored records start with `v: u8`; check it with `Record::decode`.
 - **Errors.** Add codes in `error.rs`. Codes are stable strings; never rename or reuse one. Features that are not built return the matching `*Disabled` error, never a silent default.
+- **Hashes and signing bytes** are `domain ‖ borsh(message)` built through `codec.rs` (`domain_bytes`, `hash_of`, `sha256`). Never hash or encode anywhere else; a message gets its domain constant next to its type.
+- **JSON model** (`json.rs`): types that cross into TypeScript derive serde. Amounts (`u128`) are decimal strings through `json::dec`, bytes are hex through `json::hex*`, and everything else is a JSON number (`u64` ids and heights stay below 2^53). Types that stay in the contracts (`Listing`, `Job`, …) are Borsh only: `cargo near` needs ABI schemas for any type in a contract's interface.
+- **Vectors.** Any change to a formula, hash or layout changes `fixtures/vectors.json`. Regenerate with `UPDATE_VECTORS=1 cargo test -p marginal-core-wasm --test vectors`, review the diff, and bump the version (`*_V`, `CORE_VERSION`) if a stored layout changed. A vector with a `known` answer is worked out by hand: keep it that way.
+- **Sample values for tests** live in `crates/marginal-core/tests/common/mod.rs` and are reused (the wasm crate includes the same file); do not copy them.
 - **Pricing changes** need the AC-2, AC-3, AC-5 and AC-41 properties to still pass at full strength: run `make props` (10⁶ cases per property).
 - **Every function that decides money gets a test that would fail if it were wrong.** Property tests for invariants and a worked example from the SDD. Spot-check by breaking the code on purpose.
-- **Dev dependencies** (`proptest`, `num-bigint`) are test oracles only; nothing in `[dependencies]` besides `borsh`.
+- **Dependencies** are `borsh`, `sha2`, `hex` and `serde`, all without `std`. The dev dependencies (`proptest`, `num-bigint`, `serde_json`) are test oracles only.
 
 ## TypeScript (`room`, `services/*`, `apps/web`, `sdk/ts`, `verifiers/replay-ts`, `scripts`)
 
@@ -125,6 +132,7 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
 - **Tests.**
   - Use `node:test` with `node:assert/strict`, in `src/*.test.ts`.
   - Tests that need a sandbox node or built wasm go in `src/*.e2e.ts` and run under `make e2e`.
+- **marginal-core in TypeScript** is `@marginal/core-wasm`: `call(op, input)` throws a `CoreError` with the stable code. Do not re-implement pricing, hashing or a Borsh layout in TypeScript. The package needs `core.wasm` (`make wasm-core`) and a built `dist/` (`pnpm build`); `make check` does both.
 - **Profile and deploy values.** These come from `deploy/profiles/*.toml` through `scripts/src/profile.ts`, which validates them. Add new profile keys to the validator and its tests, never read raw TOML elsewhere.
 
 ## Deploys and secrets

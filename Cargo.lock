@@ -1885,8 +1885,22 @@ name = "marginal-core"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "hex",
  "num-bigint 0.4.8",
  "proptest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+]
+
+[[package]]
+name = "marginal-core-wasm"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "marginal-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

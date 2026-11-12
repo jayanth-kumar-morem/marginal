@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "typecheck": "pnpm -r typecheck",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
-    "cov": "node --import tsx --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-exclude='**/*.test.ts' --test-coverage-exclude='**/*.e2e.ts' --test-coverage-exclude='**/testing.ts' --test-coverage-include='**/src/*.ts' --test 'room/src/*.test.ts' 'services/*/src/*.test.ts' 'apps/web/src/*.test.ts' 'sdk/ts/src/*.test.ts' 'verifiers/replay-ts/src/*.test.ts' 'scripts/src/*.test.ts' 'scripts/src/*.e2e.ts'"
+    "cov": "node --import tsx --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-exclude='**/*.test.ts' --test-coverage-exclude='**/*.e2e.ts' --test-coverage-exclude='**/testing.ts' --test-coverage-include='**/src/*.ts' --test 'crates/marginal-core-wasm/src/*.test.ts' 'room/src/*.test.ts' 'services/*/src/*.test.ts' 'apps/web/src/*.test.ts' 'sdk/ts/src/*.test.ts' 'verifiers/replay-ts/src/*.test.ts' 'scripts/src/*.test.ts' 'scripts/src/*.e2e.ts'"
   },
   "devDependencies": {
     "@eslint/js": "9.39.4",

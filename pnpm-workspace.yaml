@@ -5,3 +5,4 @@ packages:
   - sdk/ts
   - verifiers/replay-ts
   - scripts
+  - crates/marginal-core-wasm

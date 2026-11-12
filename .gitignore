@@ -14,3 +14,5 @@ deploy/.keys/
 **/src/**/*.js.map
 # local run logs
 claude-spec-run.log
+# the wasm build of marginal-core, made by `make wasm-core`
+crates/marginal-core-wasm/core.wasm

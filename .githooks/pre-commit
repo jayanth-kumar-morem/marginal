@@ -23,7 +23,7 @@ fi
 rust=0; node=0
 echo "$staged" | grep -qE '\.rs$|(^|/)Cargo\.(toml|lock)$|^rust-toolchain\.toml$' && rust=1
 echo "$staged" | grep -qE '\.(ts|tsx|js|mjs|cjs)$|(^|/)package\.json$|^pnpm-(lock|workspace)\.yaml$|tsconfig.*\.json$|^deploy/' && node=1
-echo "$staged" | grep -qE '^Makefile$|^\.githooks/|^\.nvmrc$' && { rust=1; node=1; }
+echo "$staged" | grep -qE '^Makefile$|^\.githooks/|^\.nvmrc$|^fixtures/' && { rust=1; node=1; }
 
 if [ $rust = 0 ] && [ $node = 0 ]; then
   echo "pre-commit: docs-only change, no checks needed"

@@ -39,7 +39,23 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  crates/marginal-core-wasm:
+    devDependencies:
+      '@types/node':
+        specifier: 22.19.17
+        version: 22.19.17
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   room:
+    dependencies:
+      '@marginal/core-wasm':
+        specifier: workspace:*
+        version: link:../crates/marginal-core-wasm
     devDependencies:
       '@types/node':
         specifier: 22.19.17
@@ -122,6 +138,10 @@ importers:
         version: 5.9.3
 
   verifiers/replay-ts:
+    dependencies:
+      '@marginal/core-wasm':
+        specifier: workspace:*
+        version: link:../../crates/marginal-core-wasm
     devDependencies:
       '@types/node':
         specifier: 22.19.17

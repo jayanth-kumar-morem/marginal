@@ -34,6 +34,7 @@ fn stable_codes_do_not_change() {
         (CoreError::Arithmetic, "E_ARITHMETIC"),
         (CoreError::FormulaDisabled, "E_FORMULA_DISABLED"),
         (CoreError::RuleDisabled, "E_RULE_DISABLED"),
+        (CoreError::Conservation, "E_CONSERVATION"),
         (CoreError::Decode, "E_DECODE"),
         (CoreError::Version, "E_VERSION"),
     ] {

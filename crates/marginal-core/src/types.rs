@@ -5,23 +5,28 @@
 //!   `tests/roundtrip.rs` pins every discriminant.
 //! - Amounts are `u128` in the settlement token's smallest unit. Scores are `u32` basis points.
 //!   Heights are `u64` block heights. Hashes and keys are `[u8; 32]`.
-//! - **Version byte.** Each record that is stored or signed on its own ([`Listing`], [`Snapshot`],
-//!   [`Job`], [`SettlementRecord`]) begins with `v: u8`, checked by [`Record::decode`]. The types
-//!   nested inside a record change only together with its version.
+//! - **Version byte.** Each record that is *stored* ([`Listing`], [`Snapshot`], [`Job`],
+//!   [`SettlementRecord`]) begins with `v: u8`, checked by [`Record::decode`]. The types nested inside
+//!   a record change only together with its version. Messages that are *signed or hashed* carry their
+//!   version in their name and signing domain instead (`VerdictV1`, `"marginal/verdict/v1"`).
 //! - Features that are not built yet (rules R2–R5, asset classes other than knowledge and dataset,
 //!   and so on) exist as enum variants only, so adding them later is not a format change. The code
 //!   that would act on them returns a `*Disabled` error.
-//! - No JSON here. `cargo near` generates a contract's ABI and needs JSON and Borsh schemas for every
-//!   type in the contract's interface, and `u128` needs string encoding for JavaScript, so contract
-//!   views define their own JSON types (E4).
+//! - JSON: only the types that cross into TypeScript (through `marginal-core-wasm`) derive serde; see
+//!   [`crate::json`]. Records such as [`Listing`] are Borsh only. `cargo near` generates a contract's
+//!   ABI and needs JSON and Borsh *schemas* for every type in its interface, which these types do not
+//!   have, so contract views define their own types (E4).
 //! - AccountIds travel as plain strings. The encoding is identical to `near_sdk::AccountId`, and the
 //!   contract validates ids at its boundary.
 
 use alloc::string::String;
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 
+use crate::codec::{from_bytes, to_bytes};
 use crate::error::CoreError;
+use crate::json::dec;
 
 /// A NEAR account id. Same Borsh encoding as `near_sdk::AccountId`.
 pub type AccountId = String;
@@ -34,7 +39,7 @@ pub trait Record: BorshSerialize + BorshDeserialize + Sized {
     const VERSION: u8;
 
     fn encode(&self) -> Vec<u8> {
-        borsh::to_vec(self).expect("borsh into a Vec cannot fail for these types")
+        to_bytes(self)
     }
 
     /// Strict: wrong version, truncated or trailing bytes are all errors.
@@ -42,7 +47,7 @@ pub trait Record: BorshSerialize + BorshDeserialize + Sized {
         match bytes.first() {
             None => Err(CoreError::Decode),
             Some(v) if *v != Self::VERSION => Err(CoreError::Version),
-            Some(_) => borsh::from_slice(bytes).map_err(|_| CoreError::Decode),
+            Some(_) => from_bytes(bytes),
         }
     }
 }
@@ -81,7 +86,9 @@ pub enum KeyReleaseMode {
     RoomSealed,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum AttestationMode {
     OnChainDcap,
     AttesterQuorum,
@@ -89,21 +96,25 @@ pub enum AttestationMode {
 }
 
 /// Whether the verdict's components are published (§3.17).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum VerdictPrivacy {
     Open,
     Sealed,
 }
 
 /// What the buyer sees. `Fields` carries field ids from the listing's [`OutputSchema`] (M2).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum DisplayMode {
     Blind,
     Fields(Vec<u8>),
 }
 
 /// Who may see Sealed-mode openings, and when (§3.17). Bound into the job commitment.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum DisclosurePolicy {
     /// Default: the dispute panel only.
     DisputeOnly,
@@ -129,21 +140,30 @@ pub struct CategoryId(pub u16);
 // Pricing and schema
 
 /// Pricing rule. Only R1 (`Posted`) is built; the rest are format-only (§3.7).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum PricingRule {
     /// R1.
-    Posted { ask: u128 },
+    Posted {
+        #[serde(with = "dec")]
+        ask: u128,
+    },
     /// R2.
     ValueIndexed {
+        #[serde(with = "dec")]
         p_min: u128,
+        #[serde(with = "dec")]
         p_full: u128,
         price_quantum_bps: u32,
     },
     /// R3, legacy.
-    SurplusSplitLegacy { ask: u128 },
+    SurplusSplitLegacy {
+        #[serde(with = "dec")]
+        ask: u128,
+    },
     /// R4 (v2).
     SealedRound {
         k: u16,
+        #[serde(with = "dec")]
         reserve: u128,
         close_height: u64,
     },
@@ -152,7 +172,9 @@ pub enum PricingRule {
 }
 
 /// A formula compiled into this crate. The contract evaluates nothing else (§3.7).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum FormulaId {
     KnowledgeV1,
     DatasetLiteV0,
@@ -161,21 +183,32 @@ pub enum FormulaId {
 }
 
 /// Parameters a formula reads besides the components.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Default,
+)]
 pub struct FormulaParams {
     /// `DatasetLiteV0`: the accuracy gain, in bps, that earns the full ceiling.
     pub delta_star_bps: u32,
 }
 
 /// A finite-alphabet output field. No free text.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct FieldSpec {
     pub id: u8,
     pub name: String,
     pub alphabet: u16,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct OutputSchema {
     pub fields: Vec<FieldSpec>,
     /// Quantisation levels, one per component.
@@ -185,7 +218,7 @@ pub struct OutputSchema {
 }
 
 /// `{ id, version, formula_id }` of a registered appraiser.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct AppraiserRef {
     pub id: String,
     pub version: u32,
@@ -342,7 +375,9 @@ impl Record for Snapshot {
 // ---------------------------------------------------------------------------------------------
 // Jobs and settlement
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum JobKind {
     Appraisal,
     Screening,
@@ -361,14 +396,23 @@ pub enum BuyerRef {
 
 /// A job's funds, in named buckets (§3.9.1). Moving value between buckets is the only way funds
 /// move inside clearing.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default,
+)]
 pub struct Buckets {
+    #[serde(with = "dec")]
     pub budget: u128,
+    #[serde(with = "dec")]
     pub compute: u128,
+    #[serde(with = "dec")]
     pub comp_reserved: u128,
+    #[serde(with = "dec")]
     pub fee_reserved: u128,
+    #[serde(with = "dec")]
     pub storage: u128,
+    #[serde(with = "dec")]
     pub held: u128,
+    #[serde(with = "dec")]
     pub refund: u128,
 }
 
@@ -435,7 +479,9 @@ impl Record for Job {
     const VERSION: u8 = JOB_V;
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum Outcome {
     Deal,
     NoDeal,

@@ -1,0 +1,1118 @@
+{
+  "cases": [
+    {
+      "expect": {
+        "ok": 9000
+      },
+      "input": {
+        "factors": [
+          9000,
+          10000
+        ],
+        "l_floor": 5000
+      },
+      "name": "judgement: the lowest factor wins",
+      "op": "judgement_factor"
+    },
+    {
+      "expect": {
+        "ok": 5000
+      },
+      "input": {
+        "factors": [
+          0,
+          10000
+        ],
+        "l_floor": 5000
+      },
+      "name": "judgement: a failed judge resolves to the floor",
+      "op": "judgement_factor"
+    },
+    {
+      "expect": {
+        "ok": 10000
+      },
+      "input": {
+        "factors": [],
+        "l_floor": 5000
+      },
+      "name": "judgement: no judges, no discount",
+      "op": "judgement_factor"
+    },
+    {
+      "expect": {
+        "ok": 10000
+      },
+      "input": {
+        "factors": [
+          4000000000
+        ],
+        "l_floor": 0
+      },
+      "name": "judgement: factors above 100% are clamped",
+      "op": "judgement_factor"
+    },
+    {
+      "expect": {
+        "ok": 8000
+      },
+      "input": {
+        "components": [
+          8000,
+          10000
+        ],
+        "formula": "KnowledgeV1",
+        "params": {
+          "delta_star_bps": 0
+        }
+      },
+      "name": "ceiling: knowledge",
+      "op": "ceiling"
+    },
+    {
+      "expect": {
+        "ok": 4000
+      },
+      "input": {
+        "components": [
+          250,
+          2000
+        ],
+        "formula": "DatasetLiteV0",
+        "params": {
+          "delta_star_bps": 500
+        }
+      },
+      "name": "ceiling: dataset-lite, half the target gain and 20% overlap",
+      "op": "ceiling"
+    },
+    {
+      "expect": {
+        "err": "E_FORMULA_DISABLED"
+      },
+      "input": {
+        "components": [
+          1,
+          2
+        ],
+        "formula": "DatasetV1",
+        "params": {
+          "delta_star_bps": 0
+        }
+      },
+      "name": "ceiling: dataset v1 is not built",
+      "op": "ceiling"
+    },
+    {
+      "expect": {
+        "err": "E_SCHEMA"
+      },
+      "input": {
+        "components": [
+          1
+        ],
+        "formula": "KnowledgeV1",
+        "params": {
+          "delta_star_bps": 0
+        }
+      },
+      "name": "ceiling: the wrong number of components",
+      "op": "ceiling"
+    },
+    {
+      "expect": {
+        "ok": 7200
+      },
+      "input": {
+        "components": [
+          8000,
+          10000
+        ],
+        "factors": [
+          9000,
+          10000
+        ],
+        "formula": "KnowledgeV1",
+        "l_floor": 5000,
+        "params": {
+          "delta_star_bps": 0
+        }
+      },
+      "name": "measured index: D1 example",
+      "op": "measured_index"
+    },
+    {
+      "expect": {
+        "ok": 4000
+      },
+      "input": {
+        "components": [
+          8000,
+          10000
+        ],
+        "factors": [
+          0,
+          10000
+        ],
+        "formula": "KnowledgeV1",
+        "l_floor": 5000,
+        "params": {
+          "delta_star_bps": 0
+        }
+      },
+      "name": "measured index: a failed judge cannot go below the floor",
+      "op": "measured_index"
+    },
+    {
+      "expect": {
+        "ok": "720000000"
+      },
+      "input": {
+        "budget": "1000000000",
+        "m": 7200
+      },
+      "name": "valuation: 1,000 USDC at m = 0.72",
+      "op": "valuation"
+    },
+    {
+      "expect": {
+        "ok": "340282366920938463463374607431768211455"
+      },
+      "input": {
+        "budget": "340282366920938463463374607431768211455",
+        "m": 10000
+      },
+      "name": "valuation: the largest budget does not overflow",
+      "op": "valuation"
+    },
+    {
+      "expect": {
+        "err": "E_SCHEMA"
+      },
+      "input": {
+        "budget": "1000",
+        "m": 10001
+      },
+      "name": "valuation: an index above 100% is refused",
+      "op": "valuation"
+    },
+    {
+      "expect": {
+        "ok": {
+          "Deal": {
+            "price": "400000000"
+          }
+        }
+      },
+      "input": {
+        "budget": "1000000000",
+        "m": 7200,
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        }
+      },
+      "name": "rule: posted price clears at the ask, not at the value",
+      "op": "apply_rule"
+    },
+    {
+      "expect": {
+        "ok": "NoDeal"
+      },
+      "input": {
+        "budget": "399999999",
+        "m": 10000,
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        }
+      },
+      "name": "rule: V just below the ask is no deal",
+      "op": "apply_rule"
+    },
+    {
+      "expect": {
+        "err": "E_RULE_DISABLED"
+      },
+      "input": {
+        "budget": "1000",
+        "m": 5000,
+        "rule": {
+          "ValueIndexed": {
+            "p_full": "2",
+            "p_min": "1",
+            "price_quantum_bps": 100
+          }
+        }
+      },
+      "name": "rule: a rule that is not built",
+      "op": "apply_rule"
+    },
+    {
+      "expect": {
+        "err": "E_RULE_PARAMS"
+      },
+      "input": {
+        "budget": "1000",
+        "m": 5000,
+        "rule": {
+          "Posted": {
+            "ask": "0"
+          }
+        }
+      },
+      "name": "rule: a posted price of zero",
+      "op": "apply_rule"
+    },
+    {
+      "expect": {
+        "ok": 4393
+      },
+      "input": {
+        "n": 21
+      },
+      "name": "mbits: 21 levels",
+      "op": "mbits"
+    },
+    {
+      "expect": {
+        "ok": 3460
+      },
+      "input": {
+        "n": 11
+      },
+      "name": "mbits: 11 levels",
+      "op": "mbits"
+    },
+    {
+      "expect": {
+        "err": "E_SCHEMA_INVALID"
+      },
+      "input": {
+        "n": 0
+      },
+      "name": "mbits: an empty alphabet is refused",
+      "op": "mbits"
+    },
+    {
+      "expect": {
+        "ok": 1000
+      },
+      "input": {
+        "mode": "Blind",
+        "n_judges": 2,
+        "privacy": "Sealed",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            21,
+            21
+          ],
+          "fields": [],
+          "judge_scale": 11
+        }
+      },
+      "name": "max_debit: Blind + Sealed is one bit",
+      "op": "max_debit"
+    },
+    {
+      "expect": {
+        "ok": 16706
+      },
+      "input": {
+        "mode": "Blind",
+        "n_judges": 2,
+        "privacy": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            21,
+            21
+          ],
+          "fields": [],
+          "judge_scale": 11
+        }
+      },
+      "name": "max_debit: Blind + Open is 16.7 bits",
+      "op": "max_debit"
+    },
+    {
+      "expect": {
+        "err": "E_DISPLAY_DISABLED"
+      },
+      "input": {
+        "mode": {
+          "Fields": [
+            0
+          ]
+        },
+        "n_judges": 2,
+        "privacy": "Sealed",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            21,
+            21
+          ],
+          "fields": [],
+          "judge_scale": 11
+        }
+      },
+      "name": "max_debit: shown fields are not built",
+      "op": "max_debit"
+    },
+    {
+      "expect": {
+        "ok": "c102e8c377fcddb95811bc0eb49e86cc225537d355071f08a38950f6b8ff19ca"
+      },
+      "input": {
+        "assigned_rooms": [
+          "0505050505050505050505050505050505050505050505050505050505050505",
+          "0606060606060606060606060606060606060606060606060606060606060606"
+        ],
+        "budget": "1000000000",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "compliance_pk": "0303030303030303030303030303030303030303030303030303030303030303",
+        "context_auth_pk": "0404040404040404040404040404040404040404040404040404040404040404",
+        "deadline_height": 400,
+        "delivery_pk": "0202020202020202020202020202020202020202020202020202020202020202",
+        "disclosure_policy": "DisputeOnly",
+        "formula_params": {
+          "delta_star_bps": 500
+        },
+        "job_id": 11,
+        "kind": "Appraisal",
+        "listing_id": 3,
+        "listing_version": 2,
+        "max_debit_mbits": 16706,
+        "mode": {
+          "Fields": [
+            0,
+            2
+          ]
+        },
+        "privacy": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "snapshot_content_hash": "0101010101010101010101010101010101010101010101010101010101010101",
+        "snapshot_id": 9
+      },
+      "name": "job commitment: every optional field set",
+      "op": "job_commitment"
+    },
+    {
+      "expect": {
+        "ok": "7f75c5bf84be33412968642d97ae960fa1302d38b0f1730a5ee86babceb32054"
+      },
+      "input": {
+        "assigned_rooms": [
+          "0505050505050505050505050505050505050505050505050505050505050505"
+        ],
+        "budget": "1000000000",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "compliance_pk": null,
+        "context_auth_pk": "0404040404040404040404040404040404040404040404040404040404040404",
+        "deadline_height": 400,
+        "delivery_pk": "0202020202020202020202020202020202020202020202020202020202020202",
+        "disclosure_policy": "DisputeOnly",
+        "formula_params": {
+          "delta_star_bps": 500
+        },
+        "job_id": 11,
+        "kind": "Appraisal",
+        "listing_id": 3,
+        "listing_version": 2,
+        "max_debit_mbits": 16706,
+        "mode": "Blind",
+        "privacy": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "snapshot_content_hash": null,
+        "snapshot_id": null
+      },
+      "name": "job commitment: blind, no snapshot",
+      "op": "job_commitment"
+    },
+    {
+      "expect": {
+        "ok": "016918a44472ec53c01f555cc9173e885b87c49dc49f990a8fdb472dd6b2b831"
+      },
+      "input": {
+        "good": "63616e6f6e6963616c20676f6f64",
+        "salt": "0707070707070707070707070707070707070707070707070707070707070707"
+      },
+      "name": "good commitment",
+      "op": "good_commitment"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c656467650100000000000100010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a00000000000084d71700000000000000000000000003000000010203010b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e64000000000000008200000000000000"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "cert_hash": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "delivery_commitment": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "domain": "6d617267696e616c2f76657264696374",
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "listing_id": 3,
+        "listing_version": 2,
+        "nonce": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "open": null,
+        "privacy": "Sealed",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "sealed": {
+          "commitment": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+          "outcome": "Deal",
+          "price": "400000000",
+          "proof": "010203",
+          "shown": []
+        },
+        "status": "Ok",
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "verdict: Sealed, with a delivery commitment",
+      "op": "verdict_encode"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c65646765010000000000000102000000401f00001027000002000000100000005177656e2f5177656e332e382d32374228230000020300000073696d120000007a2d61692f676c6d2d352e332d666c617368102700000008080808080808080808080808080808080808080808080808080808080808080000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e64000000000000008200000000000000"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "cert_hash": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "delivery_commitment": null,
+        "domain": "6d617267696e616c2f76657264696374",
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "listing_id": 3,
+        "listing_version": 2,
+        "nonce": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "open": {
+          "components": [
+            8000,
+            10000
+          ],
+          "factors": [
+            {
+              "factor_bps": 9000,
+              "model_id": "Qwen/Qwen3.8-27B",
+              "proof": {
+                "Simulated": {
+                  "signer": "sim"
+                }
+              }
+            },
+            {
+              "factor_bps": 10000,
+              "model_id": "z-ai/glm-5.3-flash",
+              "proof": {
+                "WeightsInMeasurement": {
+                  "model_hash": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              }
+            }
+          ],
+          "shown": []
+        },
+        "privacy": "Open",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "sealed": null,
+        "status": "Ok",
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "verdict: Open, with judge proofs",
+      "op": "verdict_encode"
+    },
+    {
+      "expect": {
+        "ok": {
+          "appraiser": {
+            "formula_id": "KnowledgeV1",
+            "id": "knowledge",
+            "version": 1
+          },
+          "cert_hash": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+          "chain_id": "testnet",
+          "clearing": "clearing.marginal-demo.testnet",
+          "delivery_commitment": null,
+          "domain": "6d617267696e616c2f76657264696374",
+          "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+          "job_id": 11,
+          "listing_id": 3,
+          "listing_version": 2,
+          "nonce": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+          "open": {
+            "components": [
+              8000,
+              10000
+            ],
+            "factors": [
+              {
+                "factor_bps": 9000,
+                "model_id": "Qwen/Qwen3.8-27B",
+                "proof": {
+                  "Simulated": {
+                    "signer": "sim"
+                  }
+                }
+              },
+              {
+                "factor_bps": 10000,
+                "model_id": "z-ai/glm-5.3-flash",
+                "proof": {
+                  "WeightsInMeasurement": {
+                    "model_hash": "0808080808080808080808080808080808080808080808080808080808080808"
+                  }
+                }
+              }
+            ],
+            "shown": []
+          },
+          "privacy": "Open",
+          "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+          "sealed": null,
+          "status": "Ok",
+          "t_end": 130,
+          "t_start": 100
+        }
+      },
+      "input": {
+        "bytes": "6d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c65646765010000000000000102000000401f00001027000002000000100000005177656e2f5177656e332e382d32374228230000020300000073696d120000007a2d61692f676c6d2d352e332d666c617368102700000008080808080808080808080808080808080808080808080808080808080808080000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e64000000000000008200000000000000"
+      },
+      "name": "verdict: decode",
+      "op": "verdict_decode"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f766572646963742f76316d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c65646765010000000000000102000000401f00001027000002000000100000005177656e2f5177656e332e382d32374228230000020300000073696d120000007a2d61692f676c6d2d352e332d666c617368102700000008080808080808080808080808080808080808080808080808080808080808080000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e64000000000000008200000000000000"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "cert_hash": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "delivery_commitment": null,
+        "domain": "6d617267696e616c2f76657264696374",
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "listing_id": 3,
+        "listing_version": 2,
+        "nonce": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "open": {
+          "components": [
+            8000,
+            10000
+          ],
+          "factors": [
+            {
+              "factor_bps": 9000,
+              "model_id": "Qwen/Qwen3.8-27B",
+              "proof": {
+                "Simulated": {
+                  "signer": "sim"
+                }
+              }
+            },
+            {
+              "factor_bps": 10000,
+              "model_id": "z-ai/glm-5.3-flash",
+              "proof": {
+                "WeightsInMeasurement": {
+                  "model_hash": "0808080808080808080808080808080808080808080808080808080808080808"
+                }
+              }
+            }
+          ],
+          "shown": []
+        },
+        "privacy": "Open",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "sealed": null,
+        "status": "Ok",
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "verdict: signing bytes",
+      "op": "verdict_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f766572646963742f76316d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c656467650100000000000100010a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a00000000000084d71700000000000000000000000003000000010203010b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e64000000000000008200000000000000"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "cert_hash": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "delivery_commitment": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "domain": "6d617267696e616c2f76657264696374",
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "listing_id": 3,
+        "listing_version": 2,
+        "nonce": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
+        "open": null,
+        "privacy": "Sealed",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "sealed": {
+          "commitment": "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a",
+          "outcome": "Deal",
+          "price": "400000000",
+          "proof": "010203",
+          "shown": []
+        },
+        "status": "Ok",
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "verdict: signing bytes, Sealed",
+      "op": "verdict_signing_bytes"
+    },
+    {
+      "expect": {
+        "err": "E_DECODE"
+      },
+      "input": {
+        "bytes": "6d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c65646765010000000000000102000000401f00001027000002000000100000005177656e2f5177656e332e382d32374228230000020300000073696d120000007a2d61692f676c6d2d352e332d666c617368102700000008080808080808080808080808080808080808080808080808080808080808080000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e640000000000000082000000000000"
+      },
+      "name": "verdict: truncated bytes",
+      "op": "verdict_decode"
+    },
+    {
+      "expect": {
+        "err": "E_DECODE"
+      },
+      "input": {
+        "bytes": "6d617267696e616c2f7665726469637407000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740b000000000000000909090909090909090909090909090909090909090909090909090909090909030000000000000002000000090000006b6e6f776c65646765010000000000000102000000401f00001027000002000000100000005177656e2f5177656e332e382d32374228230000020300000073696d120000007a2d61692f676c6d2d352e332d666c617368102700000008080808080808080808080808080808080808080808080808080808080808080000000000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e6400000000000000820000000000000000"
+      },
+      "name": "verdict: trailing bytes",
+      "op": "verdict_decode"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f666f726765740007000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65741f0000006b6579706f6c6963792e6d617267696e616c2d64656d6f2e746573746e65740b0000000000000009090909090909090909090909090909090909090909090909090909090909090300000000000000020000000002000000000102000000141414141414141414141414141414141414141414141414141414141414141415151515151515151515151515151515151515151515151515151515151515150d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040505050505050505050505050505050505050505050505050505050505050505060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606010707070707070707070707070707070707070707070707070707070707070707161616161616161616161616161616161616161616161616161616161616161617171717171717171717171717171717171717171717171717171717171717170004000000000000000100000018181818181818181818181818181818181818181818181818181818181818180200000019191919191919191919191919191919191919191919191919191919191919191a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a640000000000000082000000000000000009"
+      },
+      "input": {
+        "attestation_mode": "OnChainDcap",
+        "attestation_ref": "1717171717171717171717171717171717171717171717171717171717171717",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "domain": "6d617267696e616c2f666f7267657400",
+        "egress_summary": [
+          "1919191919191919191919191919191919191919191919191919191919191919",
+          "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+        ],
+        "input_commitments": [
+          "1414141414141414141414141414141414141414141414141414141414141414",
+          "1515151515151515151515151515151515151515151515151515151515151515"
+        ],
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "key_ids_destroyed": [
+          "1818181818181818181818181818181818181818181818181818181818181818"
+        ],
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "kind": "Appraisal",
+        "listing_id": 3,
+        "listing_version": 2,
+        "measurement": {
+          "compose_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+          "gpu_policy_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "key_provider_digest": "060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+          "mrtd": "010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101",
+          "rtmr0": "020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202",
+          "rtmr1": "030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303",
+          "rtmr2": "040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404"
+        },
+        "non_persistence_basis": 9,
+        "outcome": "Deal",
+        "policy_version": 4,
+        "ppid_hash": "1616161616161616161616161616161616161616161616161616161616161616",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "scope": [
+          "BuyerContext",
+          "GoodPlaintext"
+        ],
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "certificate: encode",
+      "op": "certificate_encode"
+    },
+    {
+      "expect": {
+        "ok": {
+          "attestation_mode": "OnChainDcap",
+          "attestation_ref": "1717171717171717171717171717171717171717171717171717171717171717",
+          "chain_id": "testnet",
+          "clearing": "clearing.marginal-demo.testnet",
+          "domain": "6d617267696e616c2f666f7267657400",
+          "egress_summary": [
+            "1919191919191919191919191919191919191919191919191919191919191919",
+            "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+          ],
+          "input_commitments": [
+            "1414141414141414141414141414141414141414141414141414141414141414",
+            "1515151515151515151515151515151515151515151515151515151515151515"
+          ],
+          "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+          "job_id": 11,
+          "key_ids_destroyed": [
+            "1818181818181818181818181818181818181818181818181818181818181818"
+          ],
+          "keypolicy": "keypolicy.marginal-demo.testnet",
+          "kind": "Appraisal",
+          "listing_id": 3,
+          "listing_version": 2,
+          "measurement": {
+            "compose_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+            "gpu_policy_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+            "key_provider_digest": "060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+            "mrtd": "010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101",
+            "rtmr0": "020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202",
+            "rtmr1": "030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303",
+            "rtmr2": "040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404"
+          },
+          "non_persistence_basis": 9,
+          "outcome": "Deal",
+          "policy_version": 4,
+          "ppid_hash": "1616161616161616161616161616161616161616161616161616161616161616",
+          "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+          "scope": [
+            "BuyerContext",
+            "GoodPlaintext"
+          ],
+          "t_end": 130,
+          "t_start": 100
+        }
+      },
+      "input": {
+        "bytes": "6d617267696e616c2f666f726765740007000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65741f0000006b6579706f6c6963792e6d617267696e616c2d64656d6f2e746573746e65740b0000000000000009090909090909090909090909090909090909090909090909090909090909090300000000000000020000000002000000000102000000141414141414141414141414141414141414141414141414141414141414141415151515151515151515151515151515151515151515151515151515151515150d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040505050505050505050505050505050505050505050505050505050505050505060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606010707070707070707070707070707070707070707070707070707070707070707161616161616161616161616161616161616161616161616161616161616161617171717171717171717171717171717171717171717171717171717171717170004000000000000000100000018181818181818181818181818181818181818181818181818181818181818180200000019191919191919191919191919191919191919191919191919191919191919191a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a640000000000000082000000000000000009"
+      },
+      "name": "certificate: decode",
+      "op": "certificate_decode"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f666f726765742f76316d617267696e616c2f666f726765740007000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65741f0000006b6579706f6c6963792e6d617267696e616c2d64656d6f2e746573746e65740b0000000000000009090909090909090909090909090909090909090909090909090909090909090300000000000000020000000002000000000102000000141414141414141414141414141414141414141414141414141414141414141415151515151515151515151515151515151515151515151515151515151515150d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040505050505050505050505050505050505050505050505050505050505050505060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606010707070707070707070707070707070707070707070707070707070707070707161616161616161616161616161616161616161616161616161616161616161617171717171717171717171717171717171717171717171717171717171717170004000000000000000100000018181818181818181818181818181818181818181818181818181818181818180200000019191919191919191919191919191919191919191919191919191919191919191a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a640000000000000082000000000000000009"
+      },
+      "input": {
+        "attestation_mode": "OnChainDcap",
+        "attestation_ref": "1717171717171717171717171717171717171717171717171717171717171717",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "domain": "6d617267696e616c2f666f7267657400",
+        "egress_summary": [
+          "1919191919191919191919191919191919191919191919191919191919191919",
+          "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+        ],
+        "input_commitments": [
+          "1414141414141414141414141414141414141414141414141414141414141414",
+          "1515151515151515151515151515151515151515151515151515151515151515"
+        ],
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "key_ids_destroyed": [
+          "1818181818181818181818181818181818181818181818181818181818181818"
+        ],
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "kind": "Appraisal",
+        "listing_id": 3,
+        "listing_version": 2,
+        "measurement": {
+          "compose_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+          "gpu_policy_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "key_provider_digest": "060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+          "mrtd": "010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101",
+          "rtmr0": "020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202",
+          "rtmr1": "030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303",
+          "rtmr2": "040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404"
+        },
+        "non_persistence_basis": 9,
+        "outcome": "Deal",
+        "policy_version": 4,
+        "ppid_hash": "1616161616161616161616161616161616161616161616161616161616161616",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "scope": [
+          "BuyerContext",
+          "GoodPlaintext"
+        ],
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "certificate: signing bytes",
+      "op": "certificate_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": "0b53e4721c654d629cd397aa5e06a250e33af965b748ca724b55e56c6941a6c9"
+      },
+      "input": {
+        "attestation_mode": "OnChainDcap",
+        "attestation_ref": "1717171717171717171717171717171717171717171717171717171717171717",
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "domain": "6d617267696e616c2f666f7267657400",
+        "egress_summary": [
+          "1919191919191919191919191919191919191919191919191919191919191919",
+          "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a"
+        ],
+        "input_commitments": [
+          "1414141414141414141414141414141414141414141414141414141414141414",
+          "1515151515151515151515151515151515151515151515151515151515151515"
+        ],
+        "job_commitment": "0909090909090909090909090909090909090909090909090909090909090909",
+        "job_id": 11,
+        "key_ids_destroyed": [
+          "1818181818181818181818181818181818181818181818181818181818181818"
+        ],
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "kind": "Appraisal",
+        "listing_id": 3,
+        "listing_version": 2,
+        "measurement": {
+          "compose_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+          "gpu_policy_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+          "key_provider_digest": "060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606",
+          "mrtd": "010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101010101",
+          "rtmr0": "020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202",
+          "rtmr1": "030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303",
+          "rtmr2": "040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404040404"
+        },
+        "non_persistence_basis": 9,
+        "outcome": "Deal",
+        "policy_version": 4,
+        "ppid_hash": "1616161616161616161616161616161616161616161616161616161616161616",
+        "room_key": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+        "scope": [
+          "BuyerContext",
+          "GoodPlaintext"
+        ],
+        "t_end": 130,
+        "t_start": 100
+      },
+      "name": "certificate: hash",
+      "op": "certificate_hash"
+    },
+    {
+      "expect": {
+        "ok": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e0200000028282828282828282828282828282828282828282828282828282828282828281800000000000000000000000000000000000000000000000000000029292929292929292929292929292929292929292929292929292929292929291900000001010101010101010101010101010101010101010101010101"
+      },
+      "input": {
+        "entries": [
+          {
+            "ciphertext": "000000000000000000000000000000000000000000000000",
+            "recipient": "2828282828282828282828282828282828282828282828282828282828282828"
+          },
+          {
+            "ciphertext": "01010101010101010101010101010101010101010101010101",
+            "recipient": "2929292929292929292929292929292929292929292929292929292929292929"
+          }
+        ],
+        "eph_pk": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e"
+      },
+      "name": "delivery: encode",
+      "op": "delivery_encode"
+    },
+    {
+      "expect": {
+        "ok": {
+          "entries": [
+            {
+              "ciphertext": "000000000000000000000000000000000000000000000000",
+              "recipient": "2828282828282828282828282828282828282828282828282828282828282828"
+            },
+            {
+              "ciphertext": "01010101010101010101010101010101010101010101010101",
+              "recipient": "2929292929292929292929292929292929292929292929292929292929292929"
+            }
+          ],
+          "eph_pk": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e"
+        }
+      },
+      "input": {
+        "bytes": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e0200000028282828282828282828282828282828282828282828282828282828282828281800000000000000000000000000000000000000000000000000000029292929292929292929292929292929292929292929292929292929292929291900000001010101010101010101010101010101010101010101010101"
+      },
+      "name": "delivery: decode",
+      "op": "delivery_decode"
+    },
+    {
+      "expect": {
+        "ok": "a0680b1de8845c82ea59d0e966e4c701fb01514c76134a60f556cbc550156340"
+      },
+      "input": {
+        "entries": [
+          {
+            "ciphertext": "000000000000000000000000000000000000000000000000",
+            "recipient": "2828282828282828282828282828282828282828282828282828282828282828"
+          },
+          {
+            "ciphertext": "01010101010101010101010101010101010101010101010101",
+            "recipient": "2929292929292929292929292929292929292929292929292929292929292929"
+          }
+        ],
+        "eph_pk": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e"
+      },
+      "name": "delivery: hash (h_D)",
+      "op": "delivery_hash"
+    },
+    {
+      "expect": {
+        "ok": "ad29008de2fcabdc6930942954ec56832ab6b447b193afb5eff5062cd23d0ac5"
+      },
+      "input": {
+        "entry": {
+          "height": 1001,
+          "kind": "JobRequested",
+          "payload_hash": "3232323232323232323232323232323232323232323232323232323232323232",
+          "seq": 1,
+          "subject_id": 11
+        },
+        "prev_head": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "name": "audit: the first entry after genesis",
+      "op": "audit_step"
+    },
+    {
+      "expect": {
+        "ok": "a4ebcb6d72d7ffac7dc0fe7cb1bf85ba18cc1943bca4bed332f99a9af83b6bfd"
+      },
+      "input": {
+        "entry": {
+          "height": 1002,
+          "kind": "JobRequested",
+          "payload_hash": "3232323232323232323232323232323232323232323232323232323232323232",
+          "seq": 2,
+          "subject_id": 11
+        },
+        "prev_head": "ad29008de2fcabdc6930942954ec56832ab6b447b193afb5eff5062cd23d0ac5"
+      },
+      "name": "audit: the next entry",
+      "op": "audit_step"
+    },
+    {
+      "expect": {
+        "ok": null
+      },
+      "input": {
+        "buckets": {
+          "budget": "0",
+          "comp_reserved": "0",
+          "compute": "0",
+          "fee_reserved": "11",
+          "held": "400",
+          "refund": "590",
+          "storage": "13"
+        },
+        "deposit": "1026",
+        "moved_out": "12"
+      },
+      "name": "conservation: a settled deal",
+      "op": "check_conservation"
+    },
+    {
+      "expect": {
+        "err": "E_CONSERVATION"
+      },
+      "input": {
+        "buckets": {
+          "budget": "0",
+          "comp_reserved": "0",
+          "compute": "0",
+          "fee_reserved": "11",
+          "held": "400",
+          "refund": "590",
+          "storage": "13"
+        },
+        "deposit": "1026",
+        "moved_out": "11"
+      },
+      "name": "conservation: a unit missing",
+      "op": "check_conservation"
+    },
+    {
+      "expect": {
+        "err": "E_ARITHMETIC"
+      },
+      "input": {
+        "buckets": {
+          "budget": "340282366920938463463374607431768211455",
+          "comp_reserved": "0",
+          "compute": "1",
+          "fee_reserved": "0",
+          "held": "0",
+          "refund": "0",
+          "storage": "0"
+        },
+        "deposit": "0",
+        "moved_out": "0"
+      },
+      "name": "conservation: the sum overflows",
+      "op": "check_conservation"
+    },
+    {
+      "expect": {
+        "err": "E_DECODE"
+      },
+      "input": {},
+      "name": "an unknown operation",
+      "op": "no_such_op"
+    },
+    {
+      "expect": {
+        "err": "E_DECODE"
+      },
+      "input": {
+        "n": "21"
+      },
+      "name": "input that is not the operation's shape",
+      "op": "mbits"
+    }
+  ],
+  "format": 1
+}

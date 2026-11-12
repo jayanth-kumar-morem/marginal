@@ -11,7 +11,10 @@
 //! - **AC-41** a judge can only discount: a factor of 0 (a parse failure) gives the floor, and the
 //!   index never exceeds the deterministic ceiling.
 
+use serde::Serialize;
+
 use crate::error::CoreError;
+use crate::json::dec;
 use crate::math::{mul_div, mul_div_u32};
 use crate::types::{FormulaId, FormulaParams, PricingRule};
 
@@ -74,9 +77,12 @@ pub fn valuation(budget: u128, m: u32) -> Result<u128, CoreError> {
     mul_div(budget, u128::from(m), u128::from(BPS))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RuleOutcome {
-    Deal { price: u128 },
+    Deal {
+        #[serde(with = "dec")]
+        price: u128,
+    },
     NoDeal,
 }
 

@@ -4,7 +4,7 @@
 CONTRACTS := contracts/clearing contracts/keypolicy contracts/test-tokens/musdc
 NODE := . $$HOME/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1 || true
 
-.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm props wasm wasm-dev e2e ci
+.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core props wasm wasm-dev e2e ci
 
 hooks:
 	git config core.hooksPath .githooks
@@ -19,9 +19,9 @@ check-rust:
 	cargo clippy --workspace --all-targets --locked -- -D warnings
 	$(MAKE) cov-rust
 
-# eslint, tsc, then every unit and end-to-end test under the 100% coverage gate.
+# eslint, then (tsc and) every unit and end-to-end test under the 100% coverage gate.
 check-node:
-	$(NODE); pnpm install --frozen-lockfile --silent && pnpm lint && pnpm typecheck
+	$(NODE); pnpm install --frozen-lockfile --silent && pnpm lint
 	$(MAKE) cov-node
 
 # Coverage is required to be 100%. Rust: lines, functions and regions, from the unit tests and
@@ -32,15 +32,24 @@ check-node:
 # the report), and keeps the compiled dependencies. Needs cargo-llvm-cov (`cargo install cargo-llvm-cov`).
 cov-rust:
 	cargo llvm-cov clean --workspace
-	cargo clean -p marginal-core -p clearing -p keypolicy -p musdc --profile cov --target-dir target/llvm-cov-target
-	cargo llvm-cov --no-report --profile cov --workspace --lib --locked
-	cargo llvm-cov --no-report --profile cov -p marginal-core --tests --locked
+	cargo clean -p marginal-core -p marginal-core-wasm -p clearing -p keypolicy -p musdc --profile cov --target-dir target/llvm-cov-target
+	cargo llvm-cov --no-report --profile cov --workspace --exclude marginal-core --exclude marginal-core-wasm --lib --locked
+	cargo llvm-cov --no-report --profile cov -p marginal-core -p marginal-core-wasm --tests --locked
 	cargo llvm-cov report --profile cov --ignore-filename-regex 'tests/' --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 
 # TypeScript: unit and end-to-end tests together (deploy.ts and cli.ts are exercised end to end),
 # 100% of lines, branches and functions. Needs built wasm (`make wasm-dev`).
-cov-node: ensure-wasm
-	$(NODE); pnpm cov
+cov-node: ensure-wasm wasm-core
+	$(NODE); pnpm build && pnpm cov
+
+# marginal-core as wasm, for the room and replay-ts (`@marginal/core-wasm` loads it). Rebuilt whenever
+# a Rust source or manifest changes. Needs no extra tools: it is plain `cargo build`.
+CORE_WASM := crates/marginal-core-wasm/core.wasm
+wasm-core: $(CORE_WASM)
+
+$(CORE_WASM): $(shell find crates -name '*.rs' -o -name Cargo.toml) Cargo.toml Cargo.lock
+	cargo build -p marginal-core-wasm --target wasm32-unknown-unknown --release --locked
+	cp target/wasm32-unknown-unknown/release/marginal_core_wasm.wasm $@
 
 # The end-to-end tests deploy real wasm to a local node. Rebuild it (fast, non-reproducible) whenever
 # a Rust source or manifest is newer than the last build, so they never run against stale contracts.

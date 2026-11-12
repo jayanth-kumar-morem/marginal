@@ -1,34 +1,12 @@
 //! E2.1: every §3.3 type round-trips through Borsh, enum discriminants are pinned (they are the
 //! wire format), and the four stored records decode strictly.
 
-use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Debug;
 use marginal_core::*;
 use proptest::prelude::*;
 
-/// Encode, decode, compare, and check the encoding is canonical. Returns the bytes.
-fn rt<T: BorshSerialize + BorshDeserialize + PartialEq + Debug>(v: &T) -> Vec<u8> {
-    let bytes = borsh::to_vec(v).unwrap();
-    let back: T = borsh::from_slice(&bytes).unwrap();
-    assert_eq!(&back, v);
-    assert_eq!(
-        borsh::to_vec(&back).unwrap(),
-        bytes,
-        "encoding is canonical"
-    );
-    bytes
-}
-
-/// Variants listed in declaration order: variant `i` must encode with discriminant `i`.
-fn pin<T: BorshSerialize + BorshDeserialize + PartialEq + Debug>(variants: Vec<T>) {
-    for (i, v) in variants.iter().enumerate() {
-        assert_eq!(rt(v)[0], i as u8, "discriminant of {v:?}");
-    }
-}
-
-fn h(n: u8) -> [u8; 32] {
-    [n; 32]
-}
+mod common;
+use common::{h, pin, rt};
 
 #[test]
 fn enum_discriminants_are_pinned() {
