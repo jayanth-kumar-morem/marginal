@@ -1,0 +1,69 @@
+{
+  "_source": "near/mpc tag 3.19.0, crates/test-utils/assets/tcb_info.json (event_log entries with imr 3): the RTMR3 event log of a real dstack TDX CVM, whose replay is the rtmr3 of the quote in fixtures/tee-verifier-reply.borsh. Not our room: it uses a KMS-style key provider, so our room policy refuses it (tests/attest.rs).",
+  "rtmr3": "86f1808cffc050f3c0c09d29da2bfcec7eba3e8fa52016a7341f28884230f9ca8b56400413d57bce00b578e36790b555",
+  "events": [
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "f9974020ef507068183313d0ca808e0d1ca9b2d1ad0c61f5784e7157c362c06536f5ddacdad4451693f48fcc72fff624",
+      "event": "system-preparing",
+      "event_payload": ""
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "b1973088d6103fcf15809c6fd26bb0d7ae94e4bbdddc3ce833b597cecf792b2208f167f672fdbb03a065c05b97e3a4b4",
+      "event": "app-id",
+      "event_payload": "2911e1f733466216dedb862d6d669e11256ee7a3"
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "3a92ea2799c1a30a19b304278eabff69b3d3bd1e5bf7869d09615576dbc8af1c700fd9406eb6357832aed1f6aeecf8f0",
+      "event": "compose-hash",
+      "event_payload": "2911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895"
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "305a62e30e8f4ca791946c3ede6755cfacebe02be9101f0bccf2591509a0c8e8095bc83b3d53bfc5d70d6c7cf7813fc5",
+      "event": "instance-id",
+      "event_payload": ""
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "98bd7e6bd3952720b65027fd494834045d06b4a714bf737a06b874638b3ea00ff402f7f583e3e3b05e921c8570433ac6",
+      "event": "boot-mr-done",
+      "event_payload": ""
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "61ce56b6be756a9e45af7715b13c15040a4e6090cc740be24e2cc02e33b4fb53ae4e3c945c9af83e2a26c6d5efa414a8",
+      "event": "key-provider",
+      "event_payload": "7b226e616d65223a226c6f63616c2d736778222c226964223a2236623565643032653534396131633330616161386533313731613034356631663434396230303137333533656635393565373865333963333438633938643031227d"
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "ba51104636900268b0e059fa3d266419d079d1e94aea26fb9fcbb8d764bf4c89a67ac271b8a0d1a3989945132a111fc7",
+      "event": "storage-fs",
+      "event_payload": "7a6673"
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "1a76b2a80a0be71eae59f80945d876351a7a3fb8e9fd1ff1cede5734aa84ea11fd72b4edfbb6f04e5a85edd114c751bd",
+      "event": "system-ready",
+      "event_payload": ""
+    },
+    {
+      "imr": 3,
+      "event_type": 134217729,
+      "digest": "0405a5706797115cdcccb66841205179fa5c2d989ad42fee2e2fab4c5b52bb6d9aa9bf8a86755d37e8566fdaabebc468",
+      "event": "mpc-image-digest",
+      "event_payload": "564a5aebc33495d5610626d23cb9e3da8e9d531d0edff9e38aa1ccaf059c15d3"
+    }
+  ]
+}

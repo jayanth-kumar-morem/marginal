@@ -10,8 +10,8 @@ use crate::json::hex;
 /// The head before the first entry.
 pub const AUDIT_GENESIS: [u8; 32] = [0; 32];
 
-/// The event catalogue of clearing's chain, in the order of SDD §3.10. KeyPolicy and the registry
-/// keep their own chains.
+/// The event catalogue, in the order of SDD §3.10: clearing's, then KeyPolicy's. Each contract keeps
+/// its own chain; the registry's kinds are added when it is built.
 #[derive(
     BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
 )]
@@ -44,6 +44,11 @@ pub enum AuditKind {
     PolicyExecuted,
     Pause,
     Unpause,
+    // KeyPolicy's own chain (SDD §3.10: same standard, own sequence).
+    RoomRegistered,
+    PinsSet,
+    TicketIssued,
+    KeyDerived,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

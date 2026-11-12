@@ -7,11 +7,11 @@ import { loadProfile } from "./profile.js";
 import { profilePath, repoRoot } from "./paths.js";
 import { SANDBOX_KEY } from "./testing.js";
 
-test("the testnet deploy needs 16 NEAR in the deployer", () => {
-  assert.equal(requiredDeployerBalance("testnet"), 16n * NEAR);
+test("the testnet deploy needs 18 NEAR in the deployer", () => {
+  assert.equal(requiredDeployerBalance("testnet"), 18n * NEAR);
   assert.equal(requiredDeployerBalance("sandbox"), 81n * NEAR);
   const testnet = balances("testnet");
-  assert.deepEqual(Object.values(testnet).map((v) => v / NEAR), [1n, 1n, 3n, 8n, 2n]);
+  assert.deepEqual(Object.values(testnet).map((v) => v / NEAR), [1n, 1n, 3n, 8n, 4n]);
 });
 
 test("the code hash on chain must be the base58 of the wasm's SHA-256", () => {

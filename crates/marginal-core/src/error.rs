@@ -78,6 +78,29 @@ errors! {
     ReportData = "E_REPORT_DATA",
     Nonce = "E_NONCE",
     Rtmr3Replay = "E_RTMR3_REPLAY",
+    /// The RTMR3 event log breaks the room policy: a required event is missing or repeated, an
+    /// event has the wrong payload, a forbidden event is present, or an event is not a dstack event.
+    Rtmr3Events = "E_RTMR3_EVENTS",
+    /// The platform's PPID is missing or not 16 bytes.
+    Ppid = "E_PPID",
+    /// The key-release ticket does not exist, was used, or expired.
+    Ticket = "E_TICKET",
+    /// The room has no attestation, or its attestation expired.
+    AttestationExpired = "E_ATTESTATION_EXPIRED",
+    /// A key path is not a well-formed `listing/{hash}/v{n}`.
+    Path = "E_PATH",
+    /// The attached deposit does not cover the storage the call creates.
+    Deposit = "E_DEPOSIT",
+    /// A registered room key cannot change its measurement, platform or box key.
+    RoomKeyInUse = "E_ROOM_KEY_IN_USE",
+    /// The locked quote verifier did not answer (the promise failed or its reply was too large).
+    VerifierUnavailable = "E_VERIFIER_UNAVAILABLE",
+    /// The registry did not answer.
+    RegistryUnavailable = "E_REGISTRY_UNAVAILABLE",
+    /// Clearing refused to authorise the release (state, caps, pause or a commitment mismatch).
+    ReleaseDenied = "E_RELEASE_DENIED",
+    /// The MPC network did not return the derived key. The ticket is kept until it expires.
+    DeriveFailed = "E_DERIVE_FAILED",
     MeasurementNotApproved = "E_MEASUREMENT_NOT_APPROVED",
     PlatformNotAdmitted = "E_PLATFORM_NOT_ADMITTED",
     // Core: arithmetic, formats, features not built yet

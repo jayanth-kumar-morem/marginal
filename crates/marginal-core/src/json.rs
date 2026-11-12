@@ -23,6 +23,11 @@ pub fn to_hex(bytes: &[u8]) -> String {
     ::hex::encode(bytes)
 }
 
+/// Parses hex into a byte array or `Vec<u8>`; `None` if it is not hex or the length is wrong.
+pub fn parse_hex<T: TryFrom<Vec<u8>>>(text: &str) -> Option<T> {
+    T::try_from(::hex::decode(text).ok()?).ok()
+}
+
 fn from_hex<T: TryFrom<Vec<u8>>, E: Error>(text: &str) -> Result<T, E> {
     let bytes = ::hex::decode(text).map_err(E::custom)?;
     T::try_from(bytes).map_err(|_| E::custom("wrong number of bytes"))

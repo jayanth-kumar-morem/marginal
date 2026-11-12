@@ -903,6 +903,7 @@ version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
 dependencies = [
+ "pkcs8",
  "signature",
 ]
 
@@ -915,8 +916,10 @@ dependencies = [
  "curve25519-dalek",
  "ed25519",
  "rand_core 0.6.4",
+ "serde",
  "sha2 0.10.9",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -1813,7 +1816,16 @@ dependencies = [
 name = "keypolicy"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "borsh",
+ "ed25519-dalek",
+ "hex",
+ "marginal-core",
  "near-sdk",
+ "near-workspaces",
+ "serde_json",
+ "tokio",
+ "wasmparser",
 ]
 
 [[package]]
@@ -1898,9 +1910,11 @@ name = "marginal-core-wasm"
 version = "0.1.0"
 dependencies = [
  "borsh",
+ "hex",
  "marginal-core",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
@@ -1934,6 +1948,14 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "mocks"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "near-sdk",
 ]
 
 [[package]]
@@ -4477,6 +4499,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3b1f9c3798725016c6ee5f2f57869ec0831e8bbc0ab0310a86e787e97f41389e"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.243.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6d8db401b0528ec316dfbe579e6ab4152d61739cfe076706d2009127970159d"
+dependencies = [
+ "bitflags 2.13.2",
+ "indexmap 2.14.2",
 ]
 
 [[package]]

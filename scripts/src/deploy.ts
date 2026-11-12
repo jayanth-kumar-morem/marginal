@@ -61,7 +61,7 @@ const WASM = { musdc: "musdc", clearing: "clearing", keypolicy: "keypolicy" } as
 export function balances(network: string) {
   return network === "sandbox"
     ? { gov: 5n * NEAR, faucet: 5n * NEAR, token: 10n * NEAR, clearing: 50n * NEAR, keypolicy: 10n * NEAR }
-    : { gov: 1n * NEAR, faucet: 1n * NEAR, token: 3n * NEAR, clearing: 8n * NEAR, keypolicy: 2n * NEAR };
+    : { gov: 1n * NEAR, faucet: 1n * NEAR, token: 3n * NEAR, clearing: 8n * NEAR, keypolicy: 4n * NEAR };
 }
 
 /** Gas and rounding headroom the deployer keeps on top of the balances it hands out. */

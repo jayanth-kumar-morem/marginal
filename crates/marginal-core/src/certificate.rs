@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
 use serde::{Deserialize, Serialize};
 
-use crate::codec::{domain_bytes, hash_of};
+use crate::codec::{domain_bytes, hash_of, sha256};
 use crate::json::{hex, hex_opt, hex_vec};
 use crate::types::{AccountId, AttestationMode, JobKind, Outcome};
 
@@ -98,6 +98,14 @@ impl ForgetCertificateV1 {
 /// The bytes the room signs and verifiers check.
 pub fn forget_signing_bytes(certificate: &ForgetCertificateV1) -> Vec<u8> {
     domain_bytes(FORGET_SIGNING_DOMAIN, certificate)
+}
+
+/// Domain of [`measurement_hash`].
+pub const MEASUREMENT_DOMAIN: &[u8] = b"marginal/measurement/v1";
+
+/// The hash a seller pins: `SHA-256("marginal/measurement/v1" ‖ borsh(measurement))`.
+pub fn measurement_hash(measurement: &Measurement) -> [u8; 32] {
+    sha256(&[&domain_bytes(MEASUREMENT_DOMAIN, measurement)])
 }
 
 /// `SHA-256(borsh(certificate))`: the blob key (`certs/{hash}`), and the hash anchored on chain.

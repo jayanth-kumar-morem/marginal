@@ -71,7 +71,9 @@ pub enum AssetClass {
 }
 
 /// Thresholds are set by governance; k-of-n verdicts at `H` and above are v2.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum ValueClass {
     L,
     M,
@@ -138,6 +140,18 @@ pub struct CategoryId(pub u16);
 
 // ---------------------------------------------------------------------------------------------
 // Pricing and schema
+
+/// What a room is for (SDD §3.11). Only `K` (knowledge, on CPU TEEs) exists in the demo.
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
+pub enum RoomClass {
+    K,
+    Kcpu,
+    S,
+    G,
+    D,
+}
 
 /// Pricing rule. Only R1 (`Posted`) is built; the rest are format-only (§3.7).
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

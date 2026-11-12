@@ -1,23 +1,58 @@
-//! KeyPolicy: immutable after deployment. No setter and no upgrade method.
-//! Init-only configuration is fixed by `new` (SDD §3.12.2). Epic E3 adds the rest.
-use near_sdk::{near, AccountId, PanicOnDefault};
+//! KeyPolicy (SDD §3.12, §3.13): the immutable gatekeeper of every listing key. It verifies a
+//! room's attestation through NEAR One's locked verifier, stores what the room proved, takes the
+//! seller's pins, and turns a room's signed request into a one-use ticket for a key from the NEAR MPC
+//! network. The policy is in `marginal-core` (`attest`, `keyrelease`); this crate is state and promises.
+//!
+//! **Immutable.** There is no setter, no upgrade method and no owner. The account's access keys are
+//! deleted at deployment (here: it is created without any), and nothing in this code can deploy a
+//! contract, add a key or delete one: the sandbox tests check that the built wasm imports none of those
+//! host functions. A fix is a new KeyPolicy at a new account, which derives different keys.
+//!
+//! **Caller pays.** Every method that stores a record charges a fee that covers it, so the contract
+//! cannot be drained by calling it.
+
+#[cfg(all(feature = "sim-attestation", feature = "mainnet"))]
+compile_error!("`sim-attestation` and `mainnet` cannot be enabled together: simulated rooms must never reach mainnet");
+
+mod calls;
+mod events;
+mod fees;
+mod pins;
+mod registration;
+mod release;
+#[cfg(feature = "sim-attestation")]
+mod sim;
+mod store;
+mod views;
+
+#[cfg(test)]
+mod tests;
+
+pub use fees::{ATTESTATION_FEE, NONCE_FEE, PINS_FEE, TICKET_FEE};
+pub use registration::NONCE_TTL_BLOCKS;
+pub use release::{CkdResponse, TICKET_TTL_BLOCKS};
+pub use views::KeyPolicyConfig;
+
+use marginal_core::audit::AUDIT_GENESIS;
+use marginal_core::CoreError;
+use near_sdk::{env, near, AccountId, PanicOnDefault};
 
 pub const KEYPOLICY_VERSION: u8 = 1;
 
-#[near(serializers = [json])]
-pub struct KeyPolicyConfig {
-    pub version: u8,
-    pub chain_id: String,
-    pub registry: AccountId,
-    pub clearing: AccountId,
-    pub mpc: AccountId,
-    pub ckd_domain_id: u32,
-    pub dcap_verifier: AccountId,
+/// Refuses with the stable error code of `error`.
+pub(crate) fn fail(error: CoreError) -> ! {
+    env::panic_str(error.code())
+}
+
+/// The block time in Unix seconds.
+pub(crate) fn now_secs() -> u64 {
+    env::block_timestamp() / 1_000_000_000
 }
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct KeyPolicy {
+    // Fixed at `new`; nothing can change them (SDD §3.12.2).
     chain_id: String,
     /// In M1 the registry is a module inside clearing, so this equals `clearing`.
     registry: AccountId,
@@ -25,6 +60,11 @@ pub struct KeyPolicy {
     mpc: AccountId,
     ckd_domain_id: u32,
     dcap_verifier: AccountId,
+    // Counters.
+    nonce_counter: u64,
+    next_ticket: u64,
+    audit_seq: u64,
+    audit_head: [u8; 32],
 }
 
 #[near]
@@ -45,39 +85,10 @@ impl KeyPolicy {
             mpc,
             ckd_domain_id,
             dcap_verifier,
+            nonce_counter: 0,
+            next_ticket: 1,
+            audit_seq: 0,
+            audit_head: AUDIT_GENESIS,
         }
-    }
-
-    pub fn config(&self) -> KeyPolicyConfig {
-        KeyPolicyConfig {
-            version: KEYPOLICY_VERSION,
-            chain_id: self.chain_id.clone(),
-            registry: self.registry.clone(),
-            clearing: self.clearing.clone(),
-            mpc: self.mpc.clone(),
-            ckd_domain_id: self.ckd_domain_id,
-            dcap_verifier: self.dcap_verifier.clone(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_roundtrip() {
-        let a = |s: &str| s.parse::<AccountId>().unwrap();
-        let kp = KeyPolicy::new(
-            "testnet".into(),
-            a("c.test"),
-            a("c.test"),
-            a("mpc.test"),
-            2,
-            a("v.test"),
-        );
-        let c = kp.config();
-        assert_eq!(c.ckd_domain_id, 2);
-        assert_eq!(c.registry, c.clearing);
     }
 }

@@ -7,14 +7,23 @@
 //! If a case changed on purpose: `UPDATE_VECTORS=1 cargo test -p marginal-core-wasm --test vectors`,
 //! then review the diff. Cases with a `known` answer also assert a value worked out by hand.
 
+use marginal_core::attest::{evaluate_quote, room_report_data, RegisterRoomRequest};
+use marginal_core::codec::{from_bytes, to_bytes};
+use marginal_core::json::to_hex;
+use marginal_core::verifier::{Collateral, VerificationResult};
+use marginal_core::RoomClass;
 use marginal_core_wasm::call;
 use serde_json::{json, to_value, Value};
+use sha2::{Digest, Sha256, Sha512};
 use std::path::PathBuf;
 
 // The same sample builders the core tests use, not a copy.
 #[path = "../../marginal-core/tests/common/mod.rs"]
 mod common;
-use common::{audit_entry, certificate, delivery, h, job_core, verdict};
+use common::{
+    audit_entry, binding, certificate, delivery, h, job_core, key_request, real_events,
+    real_reply_bytes, seller, valid_log, verdict, verified_for, NOW,
+};
 
 const USDC: u64 = 1_000_000;
 
@@ -70,6 +79,188 @@ fn schema() -> Value {
     json!({"fields": [], "component_alphabets": [21, 21], "judge_scale": 11})
 }
 
+fn sha256_of(parts: &[&[u8]]) -> String {
+    let mut hasher = Sha256::new();
+    parts.iter().for_each(|p| hasher.update(p));
+    to_hex(&hasher.finalize())
+}
+
+/// The attestation and key-release cases (SDD §3.12, §3.13). Their answers include ones taken from
+/// a REAL TDX quote and a REAL dstack event log (see `fixtures/`).
+fn attestation_cases() -> Vec<Case> {
+    let real: VerificationResult = from_bytes(&real_reply_bytes()).unwrap();
+    let VerificationResult::Verified { report, .. } = &real else {
+        panic!("the real reply is a verified report")
+    };
+    let td = report.report.as_td10().unwrap();
+    let real_reply = to_hex(&real_reply_bytes());
+    let real_evaluate = |report_data: &[u8; 64], now: u64| json!({"reply": real_reply, "events": to_value(real_events()).unwrap(), "report_data": to_hex(report_data), "now_secs": now});
+
+    let good_log = valid_log();
+    let data = room_report_data(&binding());
+    let good_reply = to_hex(&to_bytes(&verified_for(&good_log, data)));
+    let attested = evaluate_quote(&verified_for(&good_log, data), &good_log, &data, NOW).unwrap();
+    let mut without_storage = good_log.clone();
+    without_storage.retain(|e| e.name != "storage-encrypted");
+    let mut odd_type = good_log.clone();
+    odd_type[0].event_type = 1;
+
+    let request = RegisterRoomRequest {
+        quote: vec![1, 2, 3],
+        collateral: Collateral {
+            pck_crl_issuer_chain: "a".into(),
+            root_ca_crl: vec![1],
+            pck_crl: vec![2],
+            tcb_info_issuer_chain: "b".into(),
+            tcb_info: "{}".into(),
+            tcb_info_signature: vec![3],
+            qe_identity_issuer_chain: "c".into(),
+            qe_identity: "{}".into(),
+            qe_identity_signature: vec![4],
+            pck_certificate_chain: Some("d".into()),
+        },
+        events: good_log.clone(),
+        sign_pk: h(1),
+        box_pk: h(2),
+        nonce: h(3),
+        class: RoomClass::K,
+        sign_sig: [9; 64],
+    };
+    let key_request = key_request();
+    let path = key_request.path.clone();
+    let id = sha256_of(&[
+        b"marginal/listing-key/v1",
+        &borsh::to_vec(&(seller(), 3u64)).unwrap(),
+    ]);
+    let signing = [
+        b"marginal/keyreq/v1".as_slice(),
+        &borsh::to_vec(&key_request).unwrap(),
+    ]
+    .concat();
+    let ppid = [0xab_u8; 16];
+    let mut sha512 = Sha512::new();
+    sha512.update(b"marginal-room-v1");
+    sha512.update(borsh::to_vec(&binding()).unwrap());
+
+    vec![
+        known(
+            "report data: the binding of a registration",
+            "room_report_data",
+            to_value(binding()).unwrap(),
+            ok(json!(to_hex(&sha512.finalize()))),
+        ),
+        known(
+            "proof of possession: what the room signs to register",
+            "room_pop_signing_bytes",
+            to_value(binding()).unwrap(),
+            ok(json!(to_hex(
+                &[
+                    b"marginal/room-pop/v1".as_slice(),
+                    &room_report_data(&binding())
+                ]
+                .concat()
+            ))),
+        ),
+        known(
+            "rtmr3: a REAL dstack event log replays to the REAL quote's RTMR3",
+            "rtmr3_replay",
+            json!({"events": to_value(real_events()).unwrap()}),
+            ok(json!(to_hex(&td.rt_mr3))),
+        ),
+        case(
+            "rtmr3: replay of the sample room's log",
+            "rtmr3_replay",
+            json!({"events": to_value(&good_log).unwrap()}),
+        ),
+        known(
+            "rtmr3: an event that is not a dstack event",
+            "rtmr3_replay",
+            json!({"events": to_value(&odd_type).unwrap()}),
+            err("E_RTMR3_EVENTS"),
+        ),
+        case(
+            "room events: the sample room meets the policy",
+            "room_events",
+            json!({"events": to_value(&good_log).unwrap()}),
+        ),
+        known(
+            "room events: storage-encrypted missing",
+            "room_events",
+            json!({"events": to_value(&without_storage).unwrap()}),
+            err("E_RTMR3_EVENTS"),
+        ),
+        case(
+            "evaluate: the sample room is accepted",
+            "evaluate_quote",
+            json!({"reply": good_reply, "events": to_value(&good_log).unwrap(), "report_data": to_hex(&data), "now_secs": NOW}),
+        ),
+        known(
+            "evaluate: the report data is for another registration",
+            "evaluate_quote",
+            json!({"reply": good_reply, "events": to_value(&good_log).unwrap(), "report_data": "00".repeat(64), "now_secs": NOW}),
+            err("E_REPORT_DATA"),
+        ),
+        known(
+            "evaluate: a REAL quote passes the hardware checks and fails our event policy",
+            "evaluate_quote",
+            real_evaluate(&td.report_data, 1_794_443_800),
+            err("E_RTMR3_EVENTS"),
+        ),
+        known(
+            "evaluate: the same REAL quote after its collateral expired",
+            "evaluate_quote",
+            real_evaluate(&td.report_data, 1_797_033_011),
+            err("E_COLLATERAL_STALE"),
+        ),
+        known(
+            "evaluate: bytes that are not a verifier reply",
+            "evaluate_quote",
+            json!({"reply": "00", "events": [], "report_data": "00".repeat(64), "now_secs": NOW}),
+            err("E_DECODE"),
+        ),
+        case(
+            "register_room: the operator's request",
+            "register_room_encode",
+            to_value(&request).unwrap(),
+        ),
+        known(
+            "key request: the bytes a room signs",
+            "key_request_signing_bytes",
+            to_value(&key_request).unwrap(),
+            ok(json!(to_hex(&signing))),
+        ),
+        known(
+            "listing path",
+            "listing_path",
+            json!({"seller": seller(), "listing_id": 3, "version": 1}),
+            ok(json!(format!("listing/{id}/v1"))),
+        ),
+        known(
+            "path hash",
+            "path_hash",
+            json!({"path": &path}),
+            ok(json!(sha256_of(&[b"marginal/path/v1", path.as_bytes()]))),
+        ),
+        case(
+            "measurement hash",
+            "measurement_hash",
+            to_value(&attested.measurement).unwrap(),
+        ),
+        known(
+            "ppid hash",
+            "ppid_hash",
+            json!({"ppid": to_hex(&ppid)}),
+            ok(json!(sha256_of(&[b"marginal/ppid/v1", &ppid]))),
+        ),
+        known(
+            "ppid hash of the real platform",
+            "ppid_hash",
+            json!({"ppid": to_hex(&report.ppid)}),
+            ok(json!(sha256_of(&[b"marginal/ppid/v1", &report.ppid]))),
+        ),
+    ]
+}
+
 fn cases() -> Vec<Case> {
     let blind = json!("Blind");
     let posted = json!({"Posted": {"ask": (400 * USDC).to_string()}});
@@ -90,7 +281,7 @@ fn cases() -> Vec<Case> {
     let deliv_bytes = hex_of("delivery_encode", &deliv);
     let entry = to_value(audit_entry(1)).unwrap();
 
-    vec![
+    let mut all = vec![
         // Pricing (SDD §3.7). The D1 example: D = 0.8, judges 0.9 and 1.0, floor 0.5.
         known(
             "judgement: the lowest factor wins",
@@ -344,7 +535,9 @@ fn cases() -> Vec<Case> {
             json!({"n": "21"}),
             err("E_DECODE"),
         ),
-    ]
+    ];
+    all.extend(attestation_cases());
+    all
 }
 
 fn vectors_path() -> PathBuf {
@@ -415,6 +608,17 @@ fn the_cases_cover_every_operation_and_error() {
         "delivery_hash",
         "audit_step",
         "check_conservation",
+        "room_report_data",
+        "room_pop_signing_bytes",
+        "rtmr3_replay",
+        "room_events",
+        "evaluate_quote",
+        "register_room_encode",
+        "key_request_signing_bytes",
+        "listing_path",
+        "path_hash",
+        "measurement_hash",
+        "ppid_hash",
     ] {
         assert!(ops.contains(op), "no vector for {op}");
     }

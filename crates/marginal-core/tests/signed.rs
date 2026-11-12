@@ -77,6 +77,10 @@ fn enum_discriminants_are_pinned() {
         PolicyExecuted,
         Pause,
         Unpause,
+        RoomRegistered,
+        PinsSet,
+        TicketIssued,
+        KeyDerived,
     ]);
 }
 

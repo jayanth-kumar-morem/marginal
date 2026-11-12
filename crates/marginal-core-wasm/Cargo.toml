@@ -13,3 +13,8 @@ marginal-core = { path = "../marginal-core" }
 borsh.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
+# The tests include marginal-core's shared sample builders, which read fixtures.
+hex.workspace = true
+sha2.workspace = true

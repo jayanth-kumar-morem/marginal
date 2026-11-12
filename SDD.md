@@ -333,6 +333,7 @@ marginal/
 │   ├── keypolicy/                  IMMUTABLE: quote verification, attestation records, pins, tickets, MPC calls
 │   ├── assurance/                  [v2] bonds, challenges, k-of-n tallies
 │   ├── test-tokens/musdc/          [HDP] NEP-141 test stablecoin (6 decimals)
+│   ├── test-mocks/mocks/           [HDP] test doubles for KeyPolicy's sandbox tests (verifier, registry and clearing, MPC); never deployed
 │   └── tests/                      near-workspaces suites: sandbox_*.rs (one per scenario family)
 ├── crates/
 │   ├── marginal-core/              no_std: Borsh types, formula registry, pricing rules, leakage LUT, mul_div,

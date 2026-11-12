@@ -6,6 +6,7 @@ members = [
   "contracts/clearing",
   "contracts/keypolicy",
   "contracts/test-tokens/musdc",
+  "contracts/test-mocks/mocks",
 ]
 
 [workspace.package]

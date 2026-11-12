@@ -13,11 +13,14 @@
 //! - [`verdict`], [`certificate`], [`delivery`]: the signed and hashed messages (SDD §3.17-§3.19),
 //!   with their signing bytes and hashes.
 //! - [`audit`]: the audit hash chain step (SDD §3.10).
+//! - [`keyrelease`]: the key request a room signs, key paths and pins (SDD §3.12).
+//! - [`attest`], [`verifier`]: room attestation checks and the locked verifier's types (SDD §3.13).
 //! - [`conservation`]: the AC-4 invariant (SDD §3.9.1).
 //! - [`codec`]: Borsh and SHA-256, shared by the above. [`json`]: the JSON model for non-Rust consumers.
 
 extern crate alloc;
 
+pub mod attest;
 pub mod audit;
 pub mod certificate;
 pub mod codec;
@@ -26,12 +29,14 @@ pub mod conservation;
 pub mod delivery;
 pub mod error;
 pub mod json;
+pub mod keyrelease;
 pub mod leakage;
 mod leakage_lut;
 pub mod math;
 pub mod pricing;
 pub mod types;
 pub mod verdict;
+pub mod verifier;
 
 pub use error::CoreError;
 pub use types::*;

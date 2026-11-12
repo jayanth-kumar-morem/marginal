@@ -6,7 +6,7 @@ rpc = ["https://test.rpc.fastnear.com"]
 
 [accounts]                            # created as <name>.<deployer>
 # The user's testnet account; its key is in ~/.near-credentials/testnet/<deployer>.json
-# (or $NEAR_DEPLOYER_KEY). It needs 16 NEAR: up.sh checks before creating anything.
+# (or $NEAR_DEPLOYER_KEY). It needs 18 NEAR: up.sh checks before creating anything.
 deployer = "marginal-demo.testnet"
 gov = "gov"
 faucet = "faucet"

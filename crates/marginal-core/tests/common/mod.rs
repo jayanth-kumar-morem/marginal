@@ -4,14 +4,20 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use core::fmt::Debug;
+use marginal_core::attest::{RoomBinding, Rtmr3Event, DSTACK_EVENT_TYPE, KEY_PROVIDER_NONE};
 use marginal_core::audit::{AuditEntry, AuditKind};
 use marginal_core::certificate::{
     ForgetCertificateV1, Measurement, Scope, NP_PROCESS_EXIT, NP_TEE_MEMORY,
 };
 use marginal_core::commit::JobCore;
 use marginal_core::delivery::{DeliveryEntry, DeliveryV1};
+use marginal_core::keyrelease::{listing_path, AppKey, KeyRequest};
 use marginal_core::verdict::{
     JudgeFactor, ModelProof, OpenBody, SealedBody, ShownField, VerdictStatus, VerdictV1,
+};
+use marginal_core::verifier::{
+    CollateralDates, Report, TDReport10, TcbStatus, TcbStatusWithAdvisory, VerificationResult,
+    VerifiedReport,
 };
 use marginal_core::*;
 
@@ -216,10 +222,13 @@ pub type Edit<T> = (&'static str, fn(&mut T));
 
 /// A digest must commit to every field: each edit must change `base`, change its digest, and give a
 /// digest no other edit gives.
-pub fn assert_every_edit_changes_the_digest<T: Clone + PartialEq + Debug>(
+pub fn assert_every_edit_changes_the_digest<
+    T: Clone + PartialEq + Debug,
+    D: Eq + std::hash::Hash,
+>(
     base: &T,
     edits: &[Edit<T>],
-    digest: impl Fn(&T) -> [u8; 32],
+    digest: impl Fn(&T) -> D,
 ) {
     let mut seen = std::collections::HashSet::from([digest(base)]);
     for (name, edit) in edits {
@@ -230,5 +239,151 @@ pub fn assert_every_edit_changes_the_digest<T: Clone + PartialEq + Debug>(
             seen.insert(digest(&changed)),
             "{name} is not committed to by the digest"
         );
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Attestation
+
+/// A fixed "now" (Unix seconds) for attestation tests.
+pub const NOW: u64 = 1_794_000_000;
+
+/// Directory of the committed fixtures, from any crate under `crates/`.
+pub fn fixture(name: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures")
+        .join(name)
+}
+
+/// The real reply of the live testnet verifier for a real quote (see `tests/verifier.rs`).
+pub fn real_reply_bytes() -> Vec<u8> {
+    std::fs::read(fixture("tee-verifier-reply.borsh")).unwrap()
+}
+
+/// The real dstack RTMR3 events of that quote, from near/mpc's test assets.
+pub fn real_events() -> Vec<Rtmr3Event> {
+    let file: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture("dstack-rtmr3-events.json")).unwrap())
+            .unwrap();
+    file["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| Rtmr3Event {
+            event_type: e["event_type"].as_u64().unwrap() as u32,
+            name: e["event"].as_str().unwrap().into(),
+            payload: hex::decode(e["event_payload"].as_str().unwrap()).unwrap(),
+        })
+        .collect()
+}
+
+pub fn binding() -> RoomBinding {
+    RoomBinding {
+        chain_id: "testnet".into(),
+        keypolicy: "keypolicy.marginal-demo.testnet".into(),
+        sign_pk: h(1),
+        box_pk: h(2),
+        nonce: h(3),
+    }
+}
+
+pub fn event(name: &str, payload: &[u8]) -> Rtmr3Event {
+    Rtmr3Event {
+        event_type: DSTACK_EVENT_TYPE,
+        name: name.into(),
+        payload: payload.to_vec(),
+    }
+}
+
+/// The compose hash of the sample room.
+pub const COMPOSE: [u8; 32] = [0xc0; 32];
+
+/// An event log that meets the room policy, in dstack's order.
+pub fn valid_log() -> Vec<Rtmr3Event> {
+    vec![
+        event("system-preparing", b""),
+        event("app-id", &COMPOSE[..20]),
+        event("compose-hash", &COMPOSE),
+        event("instance-id", b""),
+        event("boot-mr-done", b""),
+        event("key-provider", KEY_PROVIDER_NONE),
+        event("storage-fs", b"zfs"),
+        event("storage-encrypted", b"1"),
+        event("system-ready", b""),
+    ]
+}
+
+pub fn td10(report_data: [u8; 64], rtmr3: [u8; 48]) -> TDReport10 {
+    TDReport10 {
+        tee_tcb_svn: [1; 16],
+        mr_seam: [2; 48],
+        mr_signer_seam: [3; 48],
+        seam_attributes: [4; 8],
+        td_attributes: [0, 0, 0, 0x10, 0, 0, 0, 0],
+        xfam: [6; 8],
+        mr_td: [7; 48],
+        mr_config_id: [8; 48],
+        mr_owner: [9; 48],
+        mr_owner_config: [10; 48],
+        rt_mr0: [11; 48],
+        rt_mr1: [12; 48],
+        rt_mr2: [13; 48],
+        rt_mr3: rtmr3,
+        report_data,
+    }
+}
+
+pub fn up_to_date() -> TcbStatusWithAdvisory {
+    TcbStatusWithAdvisory {
+        status: TcbStatus::UpToDate,
+        advisory_ids: vec![],
+    }
+}
+
+/// A verified report for a room with these events and report data.
+pub fn verified_for(events: &[Rtmr3Event], report_data: [u8; 64]) -> VerificationResult {
+    VerificationResult::Verified {
+        report: VerifiedReport {
+            status: "UpToDate".into(),
+            advisory_ids: vec![],
+            report: Report::TD10(td10(
+                report_data,
+                marginal_core::attest::replay_rtmr3(events).unwrap(),
+            )),
+            ppid: vec![0xab; 16],
+            qe_status: up_to_date(),
+            platform_status: up_to_date(),
+        },
+        collateral_dates: CollateralDates {
+            earliest_issue_date: 1,
+            latest_issue_date: NOW - 86_400,
+            earliest_expiration_date: NOW + 10 * 86_400,
+            qe_iden_earliest_issue_date: 1,
+            qe_iden_latest_issue_date: NOW - 86_400,
+            qe_iden_earliest_expiration_date: NOW + 10 * 86_400,
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Key release
+
+pub fn seller() -> AccountId {
+    "seller.testnet".into()
+}
+
+pub fn key_request() -> KeyRequest {
+    KeyRequest {
+        chain_id: "testnet".into(),
+        keypolicy: "keypolicy.marginal-demo.testnet".into(),
+        room_key: h(1),
+        job_id: 11,
+        path: listing_path(&seller(), 3, 1),
+        app_key: AppKey {
+            pk1: [5; 48],
+            pk2: [6; 96],
+        },
+        job_commitment: h(7),
+        value_class: ValueClass::M,
     }
 }

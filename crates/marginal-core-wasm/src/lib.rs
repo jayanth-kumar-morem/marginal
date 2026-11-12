@@ -10,19 +10,27 @@
 //! is no JS glue generator: the module imports nothing and exports these three functions and its
 //! memory.
 
+use marginal_core::attest::{
+    evaluate_quote, ppid_hash, replay_rtmr3, room_events, room_pop_signing_bytes, room_report_data,
+    RegisterRoomRequest, RoomBinding, Rtmr3Event,
+};
 use marginal_core::audit::{audit_step, AuditEntry};
-use marginal_core::certificate::{certificate_hash, forget_signing_bytes, ForgetCertificateV1};
+use marginal_core::certificate::{
+    certificate_hash, forget_signing_bytes, measurement_hash, ForgetCertificateV1, Measurement,
+};
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::commit::{good_commitment, job_commitment, JobCore};
 use marginal_core::conservation::check_conservation;
 use marginal_core::delivery::{delivery_hash, DeliveryV1};
 use marginal_core::json::{dec, hex};
+use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
 use marginal_core::pricing::{apply_rule, ceiling, judgement_factor, measured_index, valuation};
 use marginal_core::verdict::{verdict_signing_bytes, VerdictV1};
+use marginal_core::verifier::VerificationResult;
 use marginal_core::{
-    Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, OutputSchema, PricingRule,
-    VerdictPrivacy,
+    AccountId, Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, OutputSchema,
+    PricingRule, VerdictPrivacy,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -102,6 +110,40 @@ struct ConservationIn {
 }
 
 #[derive(Deserialize)]
+struct EventsIn {
+    events: Vec<Rtmr3Event>,
+}
+
+#[derive(Deserialize)]
+struct ListingPathIn {
+    seller: AccountId,
+    listing_id: u64,
+    version: u32,
+}
+
+#[derive(Deserialize)]
+struct PathIn {
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct PpidIn {
+    #[serde(with = "hex")]
+    ppid: Vec<u8>,
+}
+
+/// A verifier reply as the Borsh bytes it came in, plus what KeyPolicy checks it against.
+#[derive(Deserialize)]
+struct EvaluateIn {
+    #[serde(with = "hex")]
+    reply: Vec<u8>,
+    events: Vec<Rtmr3Event>,
+    #[serde(with = "hex")]
+    report_data: [u8; 64],
+    now_secs: u64,
+}
+
+#[derive(Deserialize)]
 struct Bytes {
     #[serde(with = "hex")]
     bytes: Vec<u8>,
@@ -173,6 +215,30 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
         "delivery_encode" => encode::<DeliveryV1>(input),
         "delivery_decode" => decode::<DeliveryV1>(input),
         "delivery_hash" => run(input, |d: DeliveryV1| Ok(Hex(delivery_hash(&d)))),
+        "room_report_data" => run(input, |b: RoomBinding| Ok(Hex(room_report_data(&b)))),
+        "room_pop_signing_bytes" => {
+            run(input, |b: RoomBinding| Ok(Hex(room_pop_signing_bytes(&b))))
+        }
+        "rtmr3_replay" => run(input, |i: EventsIn| replay_rtmr3(&i.events).map(Hex)),
+        "room_events" => run(input, |i: EventsIn| room_events(&i.events)),
+        "evaluate_quote" => run(input, |i: EvaluateIn| {
+            evaluate_quote(
+                &from_bytes::<VerificationResult>(&i.reply)?,
+                &i.events,
+                &i.report_data,
+                i.now_secs,
+            )
+        }),
+        "register_room_encode" => encode::<RegisterRoomRequest>(input),
+        "key_request_signing_bytes" => run(input, |r: KeyRequest| {
+            Ok(Hex(key_request_signing_bytes(&r)))
+        }),
+        "listing_path" => run(input, |i: ListingPathIn| {
+            Ok(listing_path(&i.seller, i.listing_id, i.version))
+        }),
+        "path_hash" => run(input, |i: PathIn| Ok(Hex(path_hash(&i.path)))),
+        "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
+        "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),
         "audit_step" => run(input, |i: AuditIn| {
             Ok(Hex(audit_step(&i.prev_head, &i.entry)))
         }),

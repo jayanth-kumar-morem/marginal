@@ -2,7 +2,7 @@
 
 use alloc::vec::Vec;
 use borsh::{BorshDeserialize, BorshSerialize};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha384, Sha512};
 
 use crate::error::CoreError;
 
@@ -16,13 +16,28 @@ pub fn from_bytes<T: BorshDeserialize>(bytes: &[u8]) -> Result<T, CoreError> {
     borsh::from_slice(bytes).map_err(|_| CoreError::Decode)
 }
 
-/// SHA-256 of the concatenation of `parts`.
-pub fn sha256(parts: &[&[u8]]) -> [u8; 32] {
-    let mut hasher = Sha256::new();
+/// The hash `D` of the concatenation of `parts`.
+fn digest<D: Digest>(parts: &[&[u8]]) -> sha2::digest::Output<D> {
+    let mut hasher = D::new();
     for part in parts {
         hasher.update(part);
     }
-    hasher.finalize().into()
+    hasher.finalize()
+}
+
+/// SHA-256 of the concatenation of `parts`.
+pub fn sha256(parts: &[&[u8]]) -> [u8; 32] {
+    digest::<Sha256>(parts).into()
+}
+
+/// SHA-384 of the concatenation of `parts` (TDX measurement registers).
+pub fn sha384(parts: &[&[u8]]) -> [u8; 48] {
+    digest::<Sha384>(parts).into()
+}
+
+/// SHA-512 of the concatenation of `parts` (the 64-byte report data of a TDX quote).
+pub fn sha512(parts: &[&[u8]]) -> [u8; 64] {
+    digest::<Sha512>(parts).into()
 }
 
 /// SHA-256 of the Borsh bytes of `value`.

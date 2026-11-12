@@ -79,8 +79,9 @@ SDD §3.1 is the layout authority. Keep to it.
 | --- | --- | --- |
 | `contracts/{clearing,keypolicy}` | Contracts | The room-policy registry is a module inside clearing (`clearing/src/registry.rs`), not `contracts/registry/` (M2, E16.1) |
 | `contracts/test-tokens/musdc` | HDP test stablecoin | Its own sandbox tests live in `musdc/tests/` |
+| `contracts/test-mocks/mocks` | One wasm of test doubles (verifier, registry and clearing, MPC network) for KeyPolicy's sandbox tests | Test only, never deployed by `deploy.ts`. Retire a double when its real contract lands (E4.3, E5.6) and the sandbox runs the real one |
 | `contracts/tests/` | Cross-contract near-workspaces suites, `sandbox_*.rs` | Created by E14.1 as a workspace member |
-| `crates/marginal-core` | `no_std` shared types, errors, pricing, leakage, commitments, signing bytes | `marginal-attest` and `marginal-groth16` arrive with their tasks |
+| `crates/marginal-core` | `no_std` shared types, errors, pricing, leakage, commitments, signing bytes, and attestation (`verifier.rs`, `attest.rs`, `keyrelease.rs`: the locked verifier's types, RTMR3 replay, report-data binding, key-request bytes) | There is no `marginal-attest` crate (tasks.md SDD issue 19); `marginal-groth16` arrives with its task |
 | `crates/marginal-core-wasm` | marginal-core as wasm (JSON in, JSON out) and its npm package `@marginal/core-wasm`, which the room and `replay-ts` load | `core.wasm` is built by `make wasm-core` and gitignored |
 | `fixtures/` | `vectors.json`: test vectors every implementation must reproduce. Later: demo corpora (E14.2) | Generated from `marginal-core-wasm`'s test; never edit by hand |
 | `room/`, `services/{gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` | TypeScript workspace packages | `indexer`, `relayer`, `attester`, `replay-py`, `cli/` and `sim/` are M2 |
@@ -94,6 +95,9 @@ SDD §3.1 is the layout authority. Keep to it.
 - **Pins.** near-sdk and near-contract-standards are pinned to `=5.30.1`, Rust to `rust-toolchain.toml`, and the cargo-near docker image in each contract's `Cargo.toml`. Bump them only on purpose, all together, then rerun `make ci`.
 - **Builds.** Build contract wasm with `cargo near build`, never plain `cargo build`. Tests read `target/near/<crate>/<crate>.wasm`.
 - **KeyPolicy is immutable.** No setters, no upgrade method, no owner. It is created keyless, so it never has an access key. Every init argument is fixed forever. Treat any change to its interface as a new KeyPolicy version (SDD §3.12).
+- **KeyPolicy makes function calls only.** Every promise goes through `contracts/keypolicy/src/calls.rs` (`env::promise_*` directly). Never use near-sdk's `Promise` builder there: it can also deploy code, add or delete a key, stake and transfer. The sandbox test `the_built_contract_cannot_change_itself_or_move_funds` parses the built wasm against an import allow-list; a change that adds an import fails it and needs a deliberate review.
+- **KeyPolicy's public interface is primitives, JSON and opaque Borsh bytes** (`Base64VecU8`), decoded with `marginal_core::codec::from_bytes`. Its storage is paid by the caller (`fees.rs`): a new record type needs a fee that covers its largest value and a test that checks the fee against the storage used. A room must prove it holds its signing key (`room_pop_signing_bytes`), and a nonce belongs to the account that asked for it: keep both when changing registration.
+- **`keypolicy-sim`** is the same contract plus `register_room_simulated` (feature `sim-attestation`, a `compile_error!` with `mainnet`). It is built by `make wasm-dev` into `target/near/keypolicy-sim/`, and only sandbox tests deploy it. A test checks it differs from the real build by that one method.
 - **Init is atomic.** `deploy.ts` creates, funds, deploys and calls `new` in one transaction. Do not add a separate init step.
 - **Validate in the contract.** Enforce invariants on-chain with `require!(cond, "message")`, even when the off-chain profile validator checks them too. Error strings are part of the interface: tests match on them.
 - **Borsh gotcha.** A `Vec` of a single-variant (zero-sized) enum fails to serialise ("Cannot serialize the contract state"). Give such enums a second variant, or store something else.
@@ -146,8 +150,8 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
   near account create-account sponsor-by-faucet-service marginal-demo.testnet \
     autogenerate-new-keypair save-to-legacy-keychain network-config testnet create
   ```
-  This writes `~/.near-credentials/testnet/marginal-demo.testnet.json`, which `up.sh` reads. Then top the account up to 16 NEAR from a testnet faucet (docs.near.org/getting-started/faucet).
-- **Funding.** The deployer must hold the total of `balances()` in `scripts/src/deploy.ts` plus 1 NEAR (16 NEAR on testnet). Otherwise the deploy is refused before anything is created.
+  This writes `~/.near-credentials/testnet/marginal-demo.testnet.json`, which `up.sh` reads. Then top the account up to 18 NEAR from a testnet faucet (docs.near.org/getting-started/faucet).
+- **Funding.** The deployer must hold the total of `balances()` in `scripts/src/deploy.ts` plus 1 NEAR (18 NEAR on testnet). Otherwise the deploy is refused before anything is created.
 - **Keys.** Created account keys are written to `deploy/.keys/<profile>.json` (mode 0600, gitignored) as each account is created. Back up the testnet file. `up.sh` refuses to overwrite it.
 - Never print, log or commit secret keys. Manifests contain public keys only.
 

@@ -1112,6 +1112,729 @@
       },
       "name": "input that is not the operation's shape",
       "op": "mbits"
+    },
+    {
+      "expect": {
+        "ok": "2265ca21ee49326d76224b71eb2893ba1b3bee876eb992300e59c66721bafd7fdd973cdf39908649d881649ea59f34006147b4035fe7393f997729da896d6040"
+      },
+      "input": {
+        "box_pk": "0202020202020202020202020202020202020202020202020202020202020202",
+        "chain_id": "testnet",
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "nonce": "0303030303030303030303030303030303030303030303030303030303030303",
+        "sign_pk": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "name": "report data: the binding of a registration",
+      "op": "room_report_data"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f726f6f6d2d706f702f76312265ca21ee49326d76224b71eb2893ba1b3bee876eb992300e59c66721bafd7fdd973cdf39908649d881649ea59f34006147b4035fe7393f997729da896d6040"
+      },
+      "input": {
+        "box_pk": "0202020202020202020202020202020202020202020202020202020202020202",
+        "chain_id": "testnet",
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "nonce": "0303030303030303030303030303030303030303030303030303030303030303",
+        "sign_pk": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "name": "proof of possession: what the room signs to register",
+      "op": "room_pop_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": "86f1808cffc050f3c0c09d29da2bfcec7eba3e8fa52016a7341f28884230f9ca8b56400413d57bce00b578e36790b555"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a3"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226c6f63616c2d736778222c226964223a2236623565643032653534396131633330616161386533313731613034356631663434396230303137333533656635393565373865333963333438633938643031227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "mpc-image-digest",
+            "payload": "564a5aebc33495d5610626d23cb9e3da8e9d531d0edff9e38aa1ccaf059c15d3"
+          }
+        ]
+      },
+      "name": "rtmr3: a REAL dstack event log replays to the REAL quote's RTMR3",
+      "op": "rtmr3_replay"
+    },
+    {
+      "expect": {
+        "ok": "efb7d1b95f9042e78dfafa92fa82591121e381522ba3bb93ebb4793a1d464e72c276adfb6f8c7d12f5dc7607bb1d0e23"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ]
+      },
+      "name": "rtmr3: replay of the sample room's log",
+      "op": "rtmr3_replay"
+    },
+    {
+      "expect": {
+        "err": "E_RTMR3_EVENTS"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 1,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ]
+      },
+      "name": "rtmr3: an event that is not a dstack event",
+      "op": "rtmr3_replay"
+    },
+    {
+      "expect": {
+        "ok": {
+          "compose_hash": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+          "gpu_policy_hash": null,
+          "key_provider_digest": "7f788209b6106d43ad4b0cef85797120c234f175a10b7cb609a73ec1f4285adfe7abca2e1e3d3bd2ba058c2b78d1771d"
+        }
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ]
+      },
+      "name": "room events: the sample room meets the policy",
+      "op": "room_events"
+    },
+    {
+      "expect": {
+        "err": "E_RTMR3_EVENTS"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ]
+      },
+      "name": "room events: storage-encrypted missing",
+      "op": "room_events"
+    },
+    {
+      "expect": {
+        "ok": {
+          "collateral_issued_at": 1793913600,
+          "expires_at": 1794086400,
+          "measurement": {
+            "compose_hash": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+            "gpu_policy_hash": null,
+            "key_provider_digest": "7f788209b6106d43ad4b0cef85797120c234f175a10b7cb609a73ec1f4285adfe7abca2e1e3d3bd2ba058c2b78d1771d",
+            "mrtd": "070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707",
+            "rtmr0": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+            "rtmr1": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "rtmr2": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+          },
+          "ppid_hash": "49b35b3b3174e9dfe407c22e718d868c925a43229fe510e0d70d0cb3fd89af57",
+          "tcb_status": "UpToDate",
+          "tee_tcb_svn": "01010101010101010101010101010101"
+        }
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ],
+        "now_secs": 1794000000,
+        "reply": "00080000005570546f446174650000000001010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030404040404040404000000100000000006060606060606060707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0defb7d1b95f9042e78dfafa92fa82591121e381522ba3bb93ebb4793a1d464e72c276adfb6f8c7d12f5dc7607bb1d0e232265ca21ee49326d76224b71eb2893ba1b3bee876eb992300e59c66721bafd7fdd973cdf39908649d881649ea59f34006147b4035fe7393f997729da896d604010000000abababababababababababababababab00000000000000000000010000000000000000f3ec6a000000008073fb6a00000000010000000000000000f3ec6a000000008073fb6a00000000",
+        "report_data": "2265ca21ee49326d76224b71eb2893ba1b3bee876eb992300e59c66721bafd7fdd973cdf39908649d881649ea59f34006147b4035fe7393f997729da896d6040"
+      },
+      "name": "evaluate: the sample room is accepted",
+      "op": "evaluate_quote"
+    },
+    {
+      "expect": {
+        "err": "E_REPORT_DATA"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ],
+        "now_secs": 1794000000,
+        "reply": "00080000005570546f446174650000000001010101010101010101010101010101010202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030404040404040404000000100000000006060606060606060707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080808080909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0defb7d1b95f9042e78dfafa92fa82591121e381522ba3bb93ebb4793a1d464e72c276adfb6f8c7d12f5dc7607bb1d0e232265ca21ee49326d76224b71eb2893ba1b3bee876eb992300e59c66721bafd7fdd973cdf39908649d881649ea59f34006147b4035fe7393f997729da896d604010000000abababababababababababababababab00000000000000000000010000000000000000f3ec6a000000008073fb6a00000000010000000000000000f3ec6a000000008073fb6a00000000",
+        "report_data": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "name": "evaluate: the report data is for another registration",
+      "op": "evaluate_quote"
+    },
+    {
+      "expect": {
+        "err": "E_RTMR3_EVENTS"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a3"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226c6f63616c2d736778222c226964223a2236623565643032653534396131633330616161386533313731613034356631663434396230303137333533656635393565373865333963333438633938643031227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "mpc-image-digest",
+            "payload": "564a5aebc33495d5610626d23cb9e3da8e9d531d0edff9e38aa1ccaf059c15d3"
+          }
+        ],
+        "now_secs": 1794443800,
+        "reply": "00080000005570546f4461746500000000010b0104000000000000000000000000007bf063280e94fb051f5dd7b1fc59ce9aac42bb961df8d44b709c9b0ff87a7b4df648657ba6d1189589feab1d5a3c9a9d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000e702060000000000f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077012911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e673be2f70beefb70b48a6109eed4715d7270d4683b3bf356fa25fafbf1aa76e39e9127e6e688ccda98bdab1d4d47f46b598fde9491427341bc4683b75d10d3e36770af3a36a6954d8b6b7b22aa66358f13e1f172e51b7d6e6710d99a8d8532fc812d42bfff1c75382e91a37c867ab117b97eb5e8d6797488928ea38e5fd38b5ed2f87d9613d392507f1c3af94657c9386f1808cffc050f3c0c09d29da2bfcec7eba3e8fa52016a7341f28884230f9ca8b56400413d57bce00b578e36790b5550001e4faaedae8199148eb0fe1cc9a52ecbb09045014a11342b85ed8bd727a03ceb03ccb16857e2ba693145050f84cb2f758000000000000000000000000000010000000d208dfb1002346ae1bb4ef2a3c0552920000000000000000000036a3025b00000000150af56a00000000338c1c6b0000000036a3025b00000000b905f56a00000000b9921c6b00000000",
+        "report_data": "0001e4faaedae8199148eb0fe1cc9a52ecbb09045014a11342b85ed8bd727a03ceb03ccb16857e2ba693145050f84cb2f7580000000000000000000000000000"
+      },
+      "name": "evaluate: a REAL quote passes the hardware checks and fails our event policy",
+      "op": "evaluate_quote"
+    },
+    {
+      "expect": {
+        "err": "E_COLLATERAL_STALE"
+      },
+      "input": {
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a3"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "2911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226c6f63616c2d736778222c226964223a2236623565643032653534396131633330616161386533313731613034356631663434396230303137333533656635393565373865333963333438633938643031227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "mpc-image-digest",
+            "payload": "564a5aebc33495d5610626d23cb9e3da8e9d531d0edff9e38aa1ccaf059c15d3"
+          }
+        ],
+        "now_secs": 1797033011,
+        "reply": "00080000005570546f4461746500000000010b0104000000000000000000000000007bf063280e94fb051f5dd7b1fc59ce9aac42bb961df8d44b709c9b0ff87a7b4df648657ba6d1189589feab1d5a3c9a9d00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000000e702060000000000f06dfda6dce1cf904d4e2bab1dc370634cf95cefa2ceb2de2eee127c9382698090d7a4a13e14c536ec6c9c3c8fa87077012911e1f733466216dedb862d6d669e11256ee7a34ce4dbc66c4b807ba7a9c895000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e673be2f70beefb70b48a6109eed4715d7270d4683b3bf356fa25fafbf1aa76e39e9127e6e688ccda98bdab1d4d47f46b598fde9491427341bc4683b75d10d3e36770af3a36a6954d8b6b7b22aa66358f13e1f172e51b7d6e6710d99a8d8532fc812d42bfff1c75382e91a37c867ab117b97eb5e8d6797488928ea38e5fd38b5ed2f87d9613d392507f1c3af94657c9386f1808cffc050f3c0c09d29da2bfcec7eba3e8fa52016a7341f28884230f9ca8b56400413d57bce00b578e36790b5550001e4faaedae8199148eb0fe1cc9a52ecbb09045014a11342b85ed8bd727a03ceb03ccb16857e2ba693145050f84cb2f758000000000000000000000000000010000000d208dfb1002346ae1bb4ef2a3c0552920000000000000000000036a3025b00000000150af56a00000000338c1c6b0000000036a3025b00000000b905f56a00000000b9921c6b00000000",
+        "report_data": "0001e4faaedae8199148eb0fe1cc9a52ecbb09045014a11342b85ed8bd727a03ceb03ccb16857e2ba693145050f84cb2f7580000000000000000000000000000"
+      },
+      "name": "evaluate: the same REAL quote after its collateral expired",
+      "op": "evaluate_quote"
+    },
+    {
+      "expect": {
+        "err": "E_DECODE"
+      },
+      "input": {
+        "events": [],
+        "now_secs": 1794000000,
+        "reply": "00",
+        "report_data": "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "name": "evaluate: bytes that are not a verifier reply",
+      "op": "evaluate_quote"
+    },
+    {
+      "expect": {
+        "ok": "030000000102030100000061010000000101000000020100000062020000007b7d01000000030100000063020000007b7d010000000401010000006409000000010000081000000073797374656d2d707265706172696e670000000001000008060000006170702d696414000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0010000080c000000636f6d706f73652d6861736820000000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0010000080b000000696e7374616e63652d696400000000010000080c000000626f6f742d6d722d646f6e6500000000010000080c0000006b65792d70726f7669646572170000007b226e616d65223a226e6f6e65222c226964223a22227d010000080a00000073746f726167652d6673030000007a6673010000081100000073746f726167652d656e637279707465640100000031010000080c00000073797374656d2d7265616479000000000101010101010101010101010101010101010101010101010101010101010101020202020202020202020202020202020202020202020202020202020202020203030303030303030303030303030303030303030303030303030303030303030009090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909"
+      },
+      "input": {
+        "box_pk": "0202020202020202020202020202020202020202020202020202020202020202",
+        "class": "K",
+        "collateral": {
+          "pck_certificate_chain": "d",
+          "pck_crl": "02",
+          "pck_crl_issuer_chain": "a",
+          "qe_identity": "{}",
+          "qe_identity_issuer_chain": "c",
+          "qe_identity_signature": "04",
+          "root_ca_crl": "01",
+          "tcb_info": "{}",
+          "tcb_info_issuer_chain": "b",
+          "tcb_info_signature": "03"
+        },
+        "events": [
+          {
+            "event_type": 134217729,
+            "name": "system-preparing",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "app-id",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "compose-hash",
+            "payload": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0"
+          },
+          {
+            "event_type": 134217729,
+            "name": "instance-id",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "boot-mr-done",
+            "payload": ""
+          },
+          {
+            "event_type": 134217729,
+            "name": "key-provider",
+            "payload": "7b226e616d65223a226e6f6e65222c226964223a22227d"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-fs",
+            "payload": "7a6673"
+          },
+          {
+            "event_type": 134217729,
+            "name": "storage-encrypted",
+            "payload": "31"
+          },
+          {
+            "event_type": 134217729,
+            "name": "system-ready",
+            "payload": ""
+          }
+        ],
+        "nonce": "0303030303030303030303030303030303030303030303030303030303030303",
+        "quote": "010203",
+        "sign_pk": "0101010101010101010101010101010101010101010101010101010101010101",
+        "sign_sig": "09090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909090909"
+      },
+      "name": "register_room: the operator's request",
+      "op": "register_room_encode"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f6b65797265712f763107000000746573746e65741f0000006b6579706f6c6963792e6d617267696e616c2d64656d6f2e746573746e657401010101010101010101010101010101010101010101010101010101010101010b000000000000004b0000006c697374696e672f353632363062316636356237393463353263666631326261623131336333383935363534656635616665383732343563313639356339316361333061316335392f7631050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606070707070707070707070707070707070707070707070707070707070707070701"
+      },
+      "input": {
+        "app_key": {
+          "pk1": "050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505050505",
+          "pk2": "060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606060606"
+        },
+        "chain_id": "testnet",
+        "job_commitment": "0707070707070707070707070707070707070707070707070707070707070707",
+        "job_id": 11,
+        "keypolicy": "keypolicy.marginal-demo.testnet",
+        "path": "listing/56260b1f65b794c52cff12bab113c3895654ef5afe87245c1695c91ca30a1c59/v1",
+        "room_key": "0101010101010101010101010101010101010101010101010101010101010101",
+        "value_class": "M"
+      },
+      "name": "key request: the bytes a room signs",
+      "op": "key_request_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": "listing/56260b1f65b794c52cff12bab113c3895654ef5afe87245c1695c91ca30a1c59/v1"
+      },
+      "input": {
+        "listing_id": 3,
+        "seller": "seller.testnet",
+        "version": 1
+      },
+      "name": "listing path",
+      "op": "listing_path"
+    },
+    {
+      "expect": {
+        "ok": "9ea87131ef2a588fdfd5affe1978e4d266b1134c24b9143ebd6eb50cc8e28233"
+      },
+      "input": {
+        "path": "listing/56260b1f65b794c52cff12bab113c3895654ef5afe87245c1695c91ca30a1c59/v1"
+      },
+      "name": "path hash",
+      "op": "path_hash"
+    },
+    {
+      "expect": {
+        "ok": "ad307404ff6b9704fca168f57478bcc91b27bfc4f7de9927ac9f628af18870e4"
+      },
+      "input": {
+        "compose_hash": "c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0",
+        "gpu_policy_hash": null,
+        "key_provider_digest": "7f788209b6106d43ad4b0cef85797120c234f175a10b7cb609a73ec1f4285adfe7abca2e1e3d3bd2ba058c2b78d1771d",
+        "mrtd": "070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707070707",
+        "rtmr0": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "rtmr1": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "rtmr2": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d"
+      },
+      "name": "measurement hash",
+      "op": "measurement_hash"
+    },
+    {
+      "expect": {
+        "ok": "49b35b3b3174e9dfe407c22e718d868c925a43229fe510e0d70d0cb3fd89af57"
+      },
+      "input": {
+        "ppid": "abababababababababababababababab"
+      },
+      "name": "ppid hash",
+      "op": "ppid_hash"
+    },
+    {
+      "expect": {
+        "ok": "85fa788eb1f0019d5e6f7c0ba4992d30356b6bb1e41f5cd771670f8b89c7da8c"
+      },
+      "input": {
+        "ppid": "d208dfb1002346ae1bb4ef2a3c055292"
+      },
+      "name": "ppid hash of the real platform",
+      "op": "ppid_hash"
     }
   ],
   "format": 1

@@ -2,6 +2,10 @@
 # runs `check-rust` and/or `check-node` for the staged paths, and `make ci` is the full gate.
 # Contracts go through cargo-near, never plain `cargo build`.
 CONTRACTS := contracts/clearing contracts/keypolicy contracts/test-tokens/musdc
+# Built for the sandbox tests only, never reproducibly and never deployed: the test doubles, and
+# KeyPolicy with simulated rooms (`keypolicy-sim`, in its own directory so it cannot be mistaken for
+# the real one).
+TEST_CONTRACTS := contracts/test-mocks/mocks
 NODE := . $$HOME/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1 || true
 
 .PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core props wasm wasm-dev e2e ci
@@ -16,7 +20,9 @@ check: check-rust check-node
 check-rust:
 	cargo fmt --all -- --check
 	cargo clippy --workspace --target wasm32-unknown-unknown --locked -- -D warnings
+	cargo clippy -p keypolicy --features sim-attestation --target wasm32-unknown-unknown --locked -- -D warnings
 	cargo clippy --workspace --all-targets --locked -- -D warnings
+	cargo clippy -p keypolicy --features sim-attestation --all-targets --locked -- -D warnings
 	$(MAKE) cov-rust
 
 # eslint, then (tsc and) every unit and end-to-end test under the 100% coverage gate.
@@ -34,6 +40,7 @@ cov-rust:
 	cargo llvm-cov clean --workspace
 	cargo clean -p marginal-core -p marginal-core-wasm -p clearing -p keypolicy -p musdc --profile cov --target-dir target/llvm-cov-target
 	cargo llvm-cov --no-report --profile cov --workspace --exclude marginal-core --exclude marginal-core-wasm --lib --locked
+	cargo llvm-cov --no-report --profile cov -p keypolicy --features sim-attestation --lib --locked
 	cargo llvm-cov --no-report --profile cov -p marginal-core -p marginal-core-wasm --tests --locked
 	cargo llvm-cov report --profile cov --ignore-filename-regex 'tests/' --fail-under-lines 100 --fail-under-functions 100 --fail-under-regions 100
 
@@ -68,9 +75,10 @@ props:
 wasm:
 	@for c in $(CONTRACTS); do echo "== reproducible build: $$c"; (cd $$c && cargo near build reproducible-wasm) || exit 1; done
 
-# Fast local build, same output paths. Sandbox only.
+# Fast local build, same output paths. Sandbox only. Also builds the test doubles and keypolicy-sim.
 wasm-dev:
-	@for c in $(CONTRACTS); do echo "== dev build: $$c"; (cd $$c && cargo near build non-reproducible-wasm --locked) || exit 1; done
+	@for c in $(CONTRACTS) $(TEST_CONTRACTS); do echo "== dev build: $$c"; (cd $$c && cargo near build non-reproducible-wasm --locked) || exit 1; done
+	@echo "== dev build: contracts/keypolicy (sim-attestation)"; (cd contracts/keypolicy && cargo near build non-reproducible-wasm --locked --features sim-attestation --out-dir ../../target/near/keypolicy-sim) || exit 1
 
 # Needs built wasm: sandbox contract tests and the deploy end-to-end.
 e2e: ensure-wasm

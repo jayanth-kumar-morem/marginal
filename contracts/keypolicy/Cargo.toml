@@ -15,8 +15,26 @@ image_digest = "sha256:c9655eaf7436b90c87ea8b25739f91063032c5c30ba24cfeafe72c142
 passed_env = []
 container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "--locked"]
 
+[features]
+# A build that also accepts simulated rooms, for contract tests only (SDD §6.1). It is deployed as
+# `keypolicy-sim` and marks every record `Simulated`.
+sim-attestation = []
+# Reserved for the mainnet canary profile. Combining it with `sim-attestation` fails to compile.
+mainnet = []
+
 [dependencies]
 near-sdk.workspace = true
+marginal-core = { path = "../../crates/marginal-core" }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }
+# Signs room requests in the unit tests, and the shared sample builders of marginal-core's tests.
+ed25519-dalek = "=2.2.0"
+borsh.workspace = true
+hex.workspace = true
+serde_json.workspace = true
+# The sandbox tests (tests/sandbox.rs): a local chain, and an independent reader of the built wasm.
+near-workspaces = { version = "0.24", features = ["unstable"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+wasmparser = { version = "=0.243.0", default-features = false, features = ["std"] }
