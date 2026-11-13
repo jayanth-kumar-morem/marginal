@@ -32,6 +32,19 @@ These three carry the most risk. Each is the opening step of a task, not a separ
 2. **E8.2** Derive a key through MPC CKD from a dev account and recover it in TypeScript. Spike S-1.
 3. **E3.3** Register that quote through the locked tee-verifier. Spike S-2.
 
+### Paid and account-gated steps (jay)
+
+Everything only the user can do, in one place: each row is a step I cannot take, what it costs, and what stays blocked until it happens. Costs are stated before they are incurred (CLAUDE.md working rule 4); nothing here has been bought. `todo:jay` lines in my replies point at these ids.
+
+| # | Step | Needs | Cost | Blocks | Do it when |
+|---|---|---|---|---|---|
+| P-1 | Boot the room CVM (E7.1) | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
+| P-2 | A NEAR AI Cloud API key (E9.1) | A NEAR AI account | Under **$0.003 per appraisal** ([SDD §1.5](SDD.md)); a few cents for the demo | E9.1, D6, DRC-6. The judge port has a test double, so everything else runs without it | Before E9.1. Not needed for E3–E6 |
+| P-3 | Fund the testnet deployer (E15.1) | The `marginal-demo.testnet` account, already created | **Free** (testnet faucet): 18 NEAR, up from 16 since KeyPolicy grew to 235 KB | Every testnet Done line: E3.3, E3.6, E15.1. `up.sh` refuses before creating anything if the balance is short | Before the first testnet deploy. Independent of P-1, so it can be done any time |
+| P-4 | Submit (E15.5) | A person: the repo visibility decision (X-2), an X post, the submission form | **Free** | E15.5 | Last. Re-read the rules first; they may have changed |
+
+**Nothing above is bought or started by me.** P-1 and P-2 cost money, so I stop and ask; P-3 and P-4 are free but only the user holds the account.
+
 ## Simplicity rules
 
 1. **M1 is the demo.** A task that does not help some DRC pass belongs in M2.
@@ -230,6 +243,8 @@ To fix in SDD v0.3.
 
 Each version is deployed once, then its keys are deleted. There is no second reviewer (decision 2026-11-13), so each task's note below records the adversarial self-review instead: what was attacked, what that found, and the bugs injected on purpose to prove the tests can fail.
 
+**Status 2026-11-14: the contract is finished and nothing in E3 is waiting on me.** All seven tasks are built, and E3.1, E3.4, E3.5 and E3.7 are closed. E3.2, E3.3 and E3.6 stay open because their **Done** lines name things that only exist on a live room or testnet, not because code is missing: they need [P-1](#paid-and-account-gated-steps-jay) (the Phala CVM) and [P-3](#paid-and-account-gated-steps-jay) (the funded deployer). Each carries a **To close** line with the exact steps and the errors to expect, so finishing them is a run, not a rewrite. Verified meanwhile: 100% coverage; the full `make ci` gate; the real locked verifier in the sandbox at 125 of its 200 TGas; two real dstack CVMs whose event logs replay to their own quoted RTMR3; 31 injected bugs all caught.
+
 - [x] **E3.1 State, init, views** · P0 · §3.12.2
   - Fixed at init: `chain_id`, `registry` (= clearing in M1), `clearing`, `mpc`, `ckd_domain_id = 2` and `dcap_verifier`.
   - No setters and no upgrade method.
@@ -238,7 +253,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
     - **Interface.** Request types cross the interface as opaque Borsh bytes (`Base64VecU8`) and views return JSON, because `cargo near` needs ABI schemas for every public type and core's types have none. Views: `config` (including the fees and TTLs), `get_attestation`, `get_pins`, `get_ticket`, `audit_head`. Every state change emits a NEP-297 event carrying `seq` and `head` of KeyPolicy's own audit hash chain.
     - **Storage is paid by the caller.** KeyPolicy has no owner to top it up, so it must not be possible to drain it by calling it. `issue_nonce` 0.002 NEAR, `register_room` 0.01, `set_pins` 0.01, `authorize` 0.005, kept and not refunded. A test stores each method's largest record and checks the fee covers the storage actually used. **Cost:** a demo run pays these from the operator's and seller's testnet accounts; testnet NEAR only.
     - **Deploy balance.** The wasm is 235 KB, about 2.4 NEAR of storage, so the testnet balance for `keypolicy` goes from 2 to 4 NEAR and the deployer needs **18 NEAR** (was 16); `scripts/src/deploy.ts`, its test, `CLAUDE.md`, the profile comment and E15.1 are updated.
-- [ ] **E3.2 Attestation checks** · P0 · §3.13
+- [ ] **E3.2 Attestation checks** · P0 · §3.13 · code done; Done line **blocked on [P-1](#paid-and-account-gated-steps-jay)**
   - Depend on near/mpc's attestation crate at a pinned revision (vendor it only if it will not build standalone). It does the parsing and the RTMR3 replay.
   - Add the `report_data` binding and the required and forbidden event checks.
   - **Done:** the E7.1 fixture replays to its quoted RTMR3.
@@ -268,7 +283,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
       - The locked verifier's Borsh types are mirrored in `verifier.rs`; the real reply (680 B) decodes and re-encodes to the same bytes, the real arguments round-trip, and the sandbox runs the real verifier wasm, so any skew in that layout fails a test rather than a deploy.
     - **Checks, in a fixed order** (`evaluate_quote`): quote signature (the verifier's own verdict), TCB `UpToDate`, not a debug TD, `report_data`, 16-byte PPID, collateral not stale, RTMR3 replay equals the quoted value, then the event policy, which is §3.13's list in full: exactly one each of `compose-hash`, `key-provider` (payload exactly `{"name":"none","id":""}`), `app-id` (equal to the first 20 bytes of the compose hash), `instance-id` (empty), `storage-encrypted` (= `1`) and `system-ready`; no `os-image-hash`, no `init-script-hash`; at most one `gpu-policy-hash`. Any other event is ignored: the measurement pins what runs. An attestation lasts the earlier of the collateral's expiry and 24 h from now.
     - **Hardening beyond §3.13.** (1) `report_data = SHA-512("marginal-room-v1" ‖ borsh(binding))`, not a plain concatenation: Borsh length-prefixes the two strings, so no two bindings give the same bytes (a test tries). (2) **Proof of possession.** A quote shows what software runs, not who holds a key; with only the quote, anyone with a TDX machine could register a room's public key with a box key of their own in a race with the room. The room signs `"marginal/room-pop/v1" ‖ report_data` with its signing key and the contract checks it. (3) A registered key keeps its box key, class, measurement and PPID: a renewal that changes any of them is refused (`E_ROOM_KEY_IN_USE`). (4) Only TCB `UpToDate` passes; there is no `OutOfDate` allowance in M1.
-- [ ] **E3.3 `issue_nonce` and `register_room`** · P0 · D3 · §3.13 · needs E7.1, E3.2, E4.3
+- [ ] **E3.3 `issue_nonce` and `register_room`** · P0 · D3 · §3.13 · code done; Done line **blocked on [P-1](#paid-and-account-gated-steps-jay) and [P-3](#paid-and-account-gated-steps-jay)** · needs E7.1, E3.2, E4.3
   - **First (S-2):** call `tee-verifier-2026-11-02.testnet` with the E7.1 quote. Check that its code hash is `8SrqVCh3RtHz6mG2eiMwBGZDPkmccA5JiVvqrDYT3VL3`.
   - Calls: `verify_quote_with_collateral_dates` (200 TGas), then `on_quote_verified` (60 TGas).
   - Callback checks:
@@ -281,6 +296,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
   - **Built and verified in the sandbox 2026-11-13; stays open: no live room, no testnet.** What is demonstrated, on built wasm in a local chain: the verifier's code hash is `8SrqVCh3…VL3` (the exact wasm NEAR One locked, in `fixtures/tee-verifier.wasm`, deployed in the sandbox); KeyPolicy calls it with the real argument layout and gets the real reply, so **S-2's contract-side risk is retired**; the verifier burns **125 TGas of the 200** it is given (whole call 137 TGas), inside near/mpc's own 90% guard. With a real quote that is not bound to our registration, KeyPolicy gets a real `Verified` and refuses at the `report_data` check; stores nothing. Debug TD, wrong report data, RTMR3 mismatch, a stale collateral, a wrong PPID length and every missing, repeated or forbidden event are each a unit test, and the verifier answering `Rejected` or being unreachable are distinct errors (`E_QUOTE_SIG`, `E_VERIFIER_UNAVAILABLE`).
     - **Not verified:** that Phala's quote passes (E7.1: its PPID, its TCB status, its event log); anything on testnet; the registry side (`admit_room` is a test double until E4.3). The AttesterQuorum fallback is not built, because nothing has failed.
     - **Nonces.** 32 random bytes, valid for 5,000 blocks (about 80 minutes), **bound to the account that asked for them**, spent by the first `register_room` whatever happens next (an operator that must retry asks for a new one). Issuer binding is a self-review finding: without it anyone could watch the chain for a nonce, spend it, and force the operator to start over.
+    - **To close E3.3**, once [P-3](#paid-and-account-gated-steps-jay) funds the deployer and [P-1](#paid-and-account-gated-steps-jay) boots the room: deploy with `up.sh testnet-demo`, have the operator agent call `issue_nonce` and relay the room's real quote to `register_room`, and check the receipts show the real verifier called with 200 TGas, `room_registered` emitted and `admit_room` reached. Then repeat with the three copies the fixtures already cover (a debug TD, wrong report data, a tampered event log), which must be refused on chain with `E_DEBUG_TD`, `E_REPORT_DATA` and `E_RTMR3_REPLAY` (DRC-3). The native and sandbox tests assert all of this already; what testnet adds is the real room, the real registry and real gas.
 - [x] **E3.4 `set_pins`** · P0 · §3.12.2
   - `Explicit` or `FollowGovernance`. The path hash uses the predecessor, so only the seller can write it. A missing pin set denies release.
   - **Completed 2026-11-13.** The key is `(predecessor, listing_id, version)` through `listing_key_id`, so only the seller's own account writes its listing's pins, and the same pins path is recomputed from the room's `KeyRequest.path` at `authorize`. `Explicit` takes 1 to 16 distinct measurement hashes (`E_NOT_PINNED` for none, too many or a duplicate); `None` means `FollowGovernance`. Calling again replaces the pins for that `(listing, version)`, so a seller can drop a measurement they stop trusting; keys already released stay released. Pins only narrow who gets a key: the registry's `check_room` still runs for every release, so pinning a room governance has not approved gets nothing. A missing pin set denies release. Tests: another account's pins are a different record; each invalid pin set; the fee; the event.
@@ -294,11 +310,12 @@ Each version is deployed once, then its keys are deleted. There is no second rev
     - **Sandbox, on built wasm with the test doubles for E4.3 and E5.6 (`contracts/test-mocks/mocks`):** no pins, pins for another version only, a wrong chain, a bad signature, a room the registry no longer admits (`E_ROOM_REVOKED`) and a commitment mismatch (clearing's refusal, `E_RELEASE_DENIED`) are each refused with the right code and **no ticket is stored**; the whole path (register, pin, authorize, derive) succeeds across real contracts.
     - **Expiry is a native test only.** An attestation lasts 24 h, and the sandbox's clock cannot be moved a day in test time (90,000 blocks took over ten minutes, so the attempt was dropped). The check is one comparison, covered by a native test with the clock set past it, and a mutation that removed it was caught. The registry's own expiry (`admit_room` sets 24 h, E4.3) reaches KeyPolicy as `check_room` saying no, which the sandbox shows.
     - **Not verified:** against the real clearing and registry. `authorize_release` and `check_room` are doubles until E4.3 and E5.6; their argument shape is fixed here (see the handoff notes under those tasks). Clearing's platform-cap refusal is the double's own unit test only.
-- [ ] **E3.6 `derive`** · P0 · §3.12.3 · needs E8.2
+- [ ] **E3.6 `derive`** · P0 · §3.12.3 · code done; Done line **blocked on [P-1](#paid-and-account-gated-steps-jay) and [P-3](#paid-and-account-gated-steps-jay)** · needs E8.2
   - Calls `request_app_private_key` (domain 2, `AppPublicKeyPV`) with 1 yocto and 30 TGas, plus whatever the relayer adds. The ticket is marked used only on success.
   - **Done:** a key derived through KeyPolicy on testnet passes the room's check.
   - **Built and verified in the sandbox 2026-11-13; stays open: no testnet, no real MPC (S-1 / E8.2).** `derive(ticket_id)` is callable by anyone (the answer is encrypted to the room's app key, so it is useless to anyone else, and the relayer pays the gas). It sends `request_app_private_key` with the near/mpc argument layout copied from a real call (`fixtures/tee-verifier-args.borsh` and the near/mpc 3.19.0 types: `AppPublicKeyPV {pk1: bls12381g1:…, pk2: bls12381g2:…}`, base58), 1 yocto, 30 TGas, domain 2. The ticket is marked used only when the MPC answer comes back (`on_derived`): a failed or timed-out MPC call keeps the ticket, a retry succeeds until it expires (sandbox test, with the ticket's expiry moved past by `fast_forward`); a spent or expired ticket is refused; two derives racing both get the answer, one `key_derived` event.
     - **Not verified:** that the real MPC network accepts these arguments and that the recovered key passes the room's check. That is E8.2's first step (S-1) and the Done line. The argument shape is copied from near/mpc's source at 3.19.0 and the mock accepts exactly it, which a wrong guess would not survive, but it is not the same as a testnet call.
+    - **To close E3.6**, in this order: E8.2's first step proves CKD works at all from a dev account (free, needs only [P-3](#paid-and-account-gated-steps-jay)); then, with the room up ([P-1](#paid-and-account-gated-steps-jay)), `authorize` a real job and call `derive`, and check the room recovers `sk_L` from `big_y`/`big_c` and decrypts what it was sent. If the MPC network refuses the argument shape, only `derive` in `release.rs` changes: the ticket, the pins and the audit chain do not.
 - [x] **E3.7 Test build** · P0 · §6.1
   - A `sim-attestation` feature (`keypolicy-sim`, with `compile_error!` alongside `mainnet`), and a mock MPC contract that returns fixed bytes. Contract tests only.
   - **Completed 2026-11-13.** Feature `sim-attestation` adds one method, `register_room_simulated`, that takes a room's keys, class, measurement and PPID hash directly (core's `SimRoom`) and skips the quote; it still spends the nonce, charges the fee, and goes through the same `record_room` as a real registration. Enabling it together with `mainnet` is a `compile_error!` (a test builds both). `make wasm-dev` builds it as `target/near/keypolicy-sim/`, and the sandbox test checks that its imports and exports differ from the real build's by exactly that method. The test doubles are one wasm, `contracts/test-mocks/mocks`, that plays the verifier (replies with configured bytes), the registry and clearing (`admit_room`, `check_room`, `authorize_release`, with the platform-cap and commitment-mismatch refusals) and the MPC network (records requests, can be set down). That path is added to SDD §3.1 and `CLAUDE.md` in this commit.
@@ -393,7 +410,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
 
 ## E7. Room image and supervisor
 
-- [ ] **E7.1 Phala CVM and quote fixture** · P0 · §3.13 · needs @jay: Phala account and payment · **do first (S-4)**
+- [ ] **E7.1 Phala CVM and quote fixture** · P0 · §3.13 · **blocked on [P-1](#paid-and-account-gated-steps-jay)** · **do first (S-4)**
   - A `tdx.large` on a pinned node, deployed with `--no-gateway --no-pre-launch-script` and `key_provider: "none"`.
   - **Check the image version first:** `phala os-images --prod --json`. The guest must be **dstack ≥ 0.6.0**, or KeyPolicy refuses every registration: the `storage-encrypted` event §3.13 requires does not exist before 0.6.0, and §3.13's "apps cannot add RTMR3 events" is also a 0.6.0 property. Upstream's stable line was still 0.5.14 on 2026-11-13 with 0.6.4 pre-release, and Phala does not publish which it deploys. If prod has no 0.6.x image, stop and decide before paying for a CVM (E3.2 note).
   - Deploy it as a **new app**, never as an upgrade, and do not pin an `app_id`: KeyPolicy requires `app-id` to be the first 20 bytes of the compose hash.
@@ -457,7 +474,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
 
 ## E9. Judges
 
-- [ ] **E9.1 NEAR AI Cloud judges** · P1 · D6 · §3.16 · needs @jay: a NEAR AI API key
+- [ ] **E9.1 NEAR AI Cloud judges** · P1 · D6 · §3.16 · **blocked on [P-2](#paid-and-account-gated-steps-jay)**
   - **First (S-5):** strict JSON, with reasoning off and `signature_kind == provider_tee`.
   - Models: `Qwen/Qwen3.8-27B` and `z-ai/glm-5.3-flash` (`reasoning_effort: "low"`).
   - Request: temperature 0, `stream: false`, headers `x-no-aliasing: true` and `Accept-Encoding: identity`, LETHE's delimiter prompt.
@@ -552,7 +569,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
 Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may change.
 
 - [ ] **E15.1 Deploy HDP** · P0
-  - todo:jay - create and fund the deployer `marginal-demo.testnet` (18 NEAR; was 16 before KeyPolicy grew to 235 KB, E3); steps in `CLAUDE.md` → Deploys. Needed before the first testnet deploy, not before.
+  - **Blocked on [P-3](#paid-and-account-gated-steps-jay)**: fund `marginal-demo.testnet` with 18 NEAR (free faucet; 16 before KeyPolicy grew to 235 KB). Steps in `CLAUDE.md` → Deploys. The room half also needs [P-1](#paid-and-account-gated-steps-jay).
   - `up.sh testnet-demo` and register the room.
   - Fund the demo personas with `musdc` and nullifier credentials. Seed listings for D1–D9.
 - [ ] **E15.2 Run DRC-1 to DRC-12** · P0 · §5.4
@@ -564,7 +581,7 @@ Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may c
   - Names ChainProof Guard as the other entry (Q-015). LICENSE file (X-2).
 - [ ] **E15.4 Demo video** · P0
   - D1 → D2 → D3 → D4 → D11, then the P1 and P2 surfaces.
-- [ ] **E15.5 Submit** · P0 · @jay, done by a person
+- [ ] **E15.5 Submit** · P0 · **[P-4](#paid-and-account-gated-steps-jay)**, done by a person
   - Re-read `HACKATHON.md`. Marginal replaces LETHE as an entry; withdraw or replace LETHE's submission if it was already made.
   - Make the repo public (after X-2) and submit.
   - X post per the rules: "built at NEAR HACKATHON", `@NEARProtocol`, `#NEARHackathon`, with the video.
