@@ -21,9 +21,10 @@ use std::path::PathBuf;
 #[path = "../../marginal-core/tests/common/mod.rs"]
 mod common;
 use common::{
-    audit_entry, binding, certificate, delivery, h, job_core, key_request, real_events,
-    real_reply_bytes, seller, valid_log, verdict, verified_for, NOW,
+    audit_entry, binding, certificate, delivery, h, job_core, key_request, provisioning,
+    real_events, real_reply_bytes, screening, seller, valid_log, verdict, verified_for, NOW,
 };
+use marginal_core::reports::{ScreeningResult, FLAG_MNPI};
 
 const USDC: u64 = 1_000_000;
 
@@ -257,6 +258,36 @@ fn attestation_cases() -> Vec<Case> {
             "ppid_hash",
             json!({"ppid": to_hex(&report.ppid)}),
             ok(json!(sha256_of(&[b"marginal/ppid/v1", &report.ppid]))),
+        ),
+        // What a room signs about a listing (SDD §3.4, E4).
+        known(
+            "provisioning: what the room signs with the listing key it derived",
+            "provisioning_signing_bytes",
+            to_value(provisioning()).unwrap(),
+            ok(json!(to_hex(
+                &[
+                    b"marginal/provisioning/v1".as_slice(),
+                    &to_bytes(&provisioning())
+                ]
+                .concat()
+            ))),
+        ),
+        known(
+            "screening: what the room signs when a listing passes",
+            "screening_signing_bytes",
+            to_value(screening(ScreeningResult::Pass)).unwrap(),
+            ok(json!(to_hex(
+                &[
+                    b"marginal/screening/v1".as_slice(),
+                    &to_bytes(&screening(ScreeningResult::Pass))
+                ]
+                .concat()
+            ))),
+        ),
+        case(
+            "screening: a listing flagged for MNPI",
+            "screening_signing_bytes",
+            to_value(screening(ScreeningResult::Flag { reason: FLAG_MNPI })).unwrap(),
         ),
     ]
 }
@@ -619,6 +650,8 @@ fn the_cases_cover_every_operation_and_error() {
         "path_hash",
         "measurement_hash",
         "ppid_hash",
+        "provisioning_signing_bytes",
+        "screening_signing_bytes",
     ] {
         assert!(ops.contains(op), "no vector for {op}");
     }

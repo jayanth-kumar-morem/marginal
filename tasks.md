@@ -147,6 +147,9 @@ To fix in SDD v0.3.
 | 21 | §3.13 requires `storage-encrypted = 1` without saying it needs a guest image of dstack ≥ 0.6.0, where that event was added. On 0.5.x there is only `storage-fs` | State the minimum guest version in §3.13; E7.1 checks `phala os-images --prod --json` before booting | SDD v0.3 |
 | 22 | §3.13 treats `app-id = compose_hash[..20]` as a property of dstack. It is only the default: 0.6.x lets a deployment pin an explicit app id even without a KMS, and upstream says a relying party must then gate the compose hash separately | Keep the check (it is the tightening that stops an app id outliving its compose) and record in §3.13 that it is our policy, not dstack's guarantee. E7.1 must not pin an app id | SDD v0.3 |
 | 23 | §3.13's event order omits `gpu-policy-hash` on CPU-only rooms and the opt-in V2 (canonical-JSON) event-log digest. On 0.6.x `gpu-policy-hash` is emitted unconditionally (`sha256("{}")` with no GPU policy), and `event_log_version: 2` changes every digest | Note both in §3.13. The policy already allows one `gpu-policy-hash`; E7.2 leaves `event_log_version` unset, and our replay implements V1 only | SDD v0.3 |
+| 24 | §3.4 gives `submit_provisioning` and `submit_screening` a `sig` but never says what it signs. A relayer account sends both calls, so the room's signature is the only authority: it has to cover the key that gets stored and the result that gets applied, not just the certificate | `marginal_core::reports`: `ProvisioningV1` and `ScreeningV1`, each with its own signing domain, binding chain, contract, job, listing version, room key and payload. Implemented and vectored in E4 | SDD v0.3 |
+| 25 | §3.4's `create_listing` row lists the checks but not where they live, and §3.3 gives no input type for them | `ListingSpec` and `validate_spec` in `marginal_core::listing`, so the contract, the SDK and the seller's tooling make the same checks; the contract keeps the ones that need its state (appraiser, token, profile). `PublishSpec` is the same for `publish_listing` | SDD v0.3 |
+| 26 | §3.11 has `admit_room` apply "class requirements" and a TCB policy table. In M1 KeyPolicy already admits only `UpToDate`, and no demo surface has a GPU room | The registry checks the platform and the measurement set; class is handled by `eligible`, which only ever offers a room to work for its own class. The TCB table and GPU corroboration stay v2 | E16 |
 
 ---
 
@@ -309,7 +312,7 @@ Each version is deployed once, then its keys are deleted. There is no second rev
   - **Completed 2026-11-13.** `release.rs`. The room signs `"marginal/keyreq/v1" ‖ borsh(KeyRequest {chain_id, keypolicy, room_key, job_id, path, app_key, job_commitment, value_class})` with its registered signing key; `chain_id` and `keypolicy` are in the bytes, so a signature made for one chain or contract is useless on another. The checks, in order: fee; binding; signature; attestation exists and is unexpired; the path is the canonical `listing/{hex}/v{n}` form (re-rendered and compared, so no two strings name one listing); pins exist and allow the room's measurement; then `registry.check_room` and `clearing.authorize_release` run in parallel (`.and()`), and only if both say yes is the `Ticket` stored (50 blocks).
     - **Sandbox, on built wasm with the test doubles for E4.3 and E5.6 (`contracts/test-mocks/mocks`):** no pins, pins for another version only, a wrong chain, a bad signature, a room the registry no longer admits (`E_ROOM_REVOKED`) and a commitment mismatch (clearing's refusal, `E_RELEASE_DENIED`) are each refused with the right code and **no ticket is stored**; the whole path (register, pin, authorize, derive) succeeds across real contracts.
     - **Expiry is a native test only.** An attestation lasts 24 h, and the sandbox's clock cannot be moved a day in test time (90,000 blocks took over ten minutes, so the attempt was dropped). The check is one comparison, covered by a native test with the clock set past it, and a mutation that removed it was caught. The registry's own expiry (`admit_room` sets 24 h, E4.3) reaches KeyPolicy as `check_room` saying no, which the sandbox shows.
-    - **Not verified:** against the real clearing and registry. `authorize_release` and `check_room` are doubles until E4.3 and E5.6; their argument shape is fixed here (see the handoff notes under those tasks). Clearing's platform-cap refusal is the double's own unit test only.
+    - **Not verified:** against the real clearing's `authorize_release`, which is E5.6; it stays a double until then, and clearing's platform-cap refusal is the double's own unit test only. The registry half is no longer mocked: E4.3 runs `admit_room` and `check_room` on the real clearing against the real KeyPolicy (`contracts/clearing/tests/sandbox.rs`), inside the 15 TGas KeyPolicy attaches.
 - [ ] **E3.6 `derive`** · P0 · §3.12.3 · code done; Done line **blocked on [P-1](#paid-and-account-gated-steps-jay) and [P-3](#paid-and-account-gated-steps-jay)** · needs E8.2
   - Calls `request_app_private_key` (domain 2, `AppPublicKeyPV`) with 1 yocto and 30 TGas, plus whatever the relayer adds. The ticket is marked used only on success.
   - **Done:** a key derived through KeyPolicy on testnet passes the room's check.
@@ -327,30 +330,63 @@ Each version is deployed once, then its keys are deleted. There is no second rev
 
 ## E4. Clearing: rooms, listings, snapshots
 
-- [ ] **E4.1 Scaffold and gov setters** · P0 · §3.4, §6.2
+**Status 2026-11-14: built and closed.** All six tasks are done, verified natively, as built wasm on a local chain, and against the real KeyPolicy. What is not verified is named in each note. 100% coverage holds; 30 injected bugs were all caught.
+
+Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s types travel as Borsh bytes and views return JSON built in `views.rs`, because `cargo near`'s ABI step needs a JSON and Borsh schema for every type in the interface and core's types have none. So there is one encoding of a record — core's — and the SDK builds it through `@marginal/core-wasm`.
+
+- [x] **E4.1 Scaffold and gov setters** · P0 · §3.4, §6.2
   - A `config()` view showing the profile and toggles.
   - The `gov` role sets these directly in M1: appraiser registry, token allow-list, issuer key, NEAR AI signer list (with expiry), fee table, compliance key.
   - Typed errors, and views including `get_jobs_for_room`.
   - Replace the skeleton's local `AssetClass` and `Rule` enums with view types over `marginal-core`'s (they need JSON and Borsh schemas for `cargo near`'s ABI step).
-- [ ] **E4.2 Events and audit chain** · P0 · D8 · §3.10
+  - **Completed 2026-11-14.** `contracts/clearing/src/`: `lib.rs` (state, `new`, `config`), `gov.rs`, `registry.rs`, `listing.rs`, `snapshot.rs`, `views.rs`, and three helpers the rest share: `events.rs` (NEP-297 plus the audit chain), `fees.rs`, `store.rs` (raw storage, one prefix per table).
+    - **Setters.** `set_appraiser` (by `id@version`, naming a core `FormulaId` this build actually has), `set_tokens`, `set_issuer_key`, `set_compliance_key`, `set_ai_signer` (with an expiry; setting one in the past removes it), `set_fees`. Each is gov-only, bumps `policy_version` and emits `policy_executed`, so a record says which policy produced it. The fee table is validated on the way in: rates are fractions and the three shares add up to one whole.
+    - **No local enums left.** The skeleton's `AssetClass`/`Rule` are gone: the profile carries plain strings (`"R1"`, `"Knowledge"`) that are checked against core's enums when a listing is created, and the listing itself stores core's types.
+    - **Views:** `config`, `get_listing`, `get_leakage`, `get_job`, `get_jobs_for_room` (SDD issue 5), `get_snapshot`, `get_room`, `audit_head`, `get_audit`. Amounts are decimal strings so JavaScript cannot round them.
+    - **Deploy.** `new` now takes `keypolicy` and `chain_id` as well: `admit_room` must know the one account allowed to call it, and every report a room signs names the chain. `deploy.ts` passes both and `verifyDeployment` checks `clearing.keypolicy` is the account that was deployed.
+    - **Not done:** the time-lock queue and `pause`. M1 cuts both (E19); `gov` is a dev account (`gov.profile = demo`).
+- [x] **E4.2 Events and audit chain** · P0 · D8 · §3.10
   - NEP-297 `marginal` events carry `seq` and `head`.
   - Every state change appends an `AuditEntry`, readable through `get_audit(from, limit)`.
   - **Done:** recomputing the chain from `get_audit` matches `audit_head`.
-- [ ] **E4.3 Room policy module** · P0 · D3 · §3.11
+  - **Completed 2026-11-14.** `events.rs` appends the entry, stores it under its sequence number and logs the event in one place, so an event and an entry cannot disagree. The **Done line is a test**: `the_chain_recomputed_from_get_audit_matches_the_head` replays every entry from the view through core's `audit_step` and compares the result with `audit_head`, and the sandbox test does the same across the whole listing path on chain. A second test tampers with each entry in turn and shows every later head changes.
+    - `get_audit` pages from 1, never runs past the head, and is capped at 100 entries a call, so one view cannot run out of gas.
+    - The kinds are core's `AuditKind` catalogue (SDD §3.10), asserted in order for a full path: policy, listing created, job assigned, provisioned, published, screening result, snapshot anchored.
+- [x] **E4.3 Room policy module** · P0 · D3 · §3.11
   - The registry, as a module inside clearing:
     - gov approves a measurement set and admits a platform (PPID exactly 16 bytes);
     - `admit_room` is KeyPolicy-only and sets a 24 h expiry;
     - `check_room` and `eligible`.
   - **Done:** a test per deny reason; Phala PPIDs and the E7.3 measurement are seeded on testnet.
-- [ ] **E4.4 `create_listing` and provisioning** · P0 · §3.4
+  - **Completed 2026-11-14, except the testnet seeding, which needs [P-1](#paid-and-account-gated-steps-jay) and [P-3](#paid-and-account-gated-steps-jay).** `registry.rs`. `approve_measurement_set` indexes every member by its measurement hash, so admission is one lookup rather than a scan. `admit_platform` takes the **PPID itself** and refuses anything that is not exactly 16 bytes (Phala's published list contains an empty entry, SDD §3.13), then stores it hashed the way KeyPolicy records it.
+    - **`admit_room` is proved against the real KeyPolicy, not a mock.** KeyPolicy's wasm is already built, so its call is fixed: `contracts/clearing/tests/sandbox.rs` deploys the real clearing and the real `keypolicy-sim`, registers a room through KeyPolicy and checks the record lands in the registry. It also measures the cost: **2 TGas of the 15** KeyPolicy attaches, so the budget holds with room to spare. The mocks in E3 stay for KeyPolicy's own tests.
+    - **A test per deny reason:** `unknown` (no record), `expired` (a day on), and `platform_not_admitted` (the platform record removed, as E16's deny side will do). A room whose record is gone altogether is also skipped, and `eligible` drops all of them from the pool.
+    - **Expiry** is the earlier of KeyPolicy's own expiry and 24 h from admission, so the registry's limit holds even if an attestation would last longer. A renewal replaces the record in place and does not grow the pool.
+    - **The pool is capped** at 32 rooms per class, and a full pool first drops the rooms that are no longer current, so a dead room cannot hold a place forever.
+    - **Not done:** the deny-side methods and the time-lock (E16, E19: M1 cuts them), the TCB policy table (KeyPolicy already admits only `UpToDate`), GPU corroboration (v2), and `cap_per_epoch` is recorded but not counted against (the counters are E5.6 and E16).
+- [x] **E4.4 `create_listing` and provisioning** · P0 · §3.4
   - Checks: appraiser enabled; finite alphabets with no free-text field; R1 bounds; `max_copies ≥ 1`.
   - `begin_provisioning` creates the job; `submit_provisioning` stores `pk_l` and anchors the certificate.
-- [ ] **E4.5 Publish and screening** · P0 (Held: P1, D8) · §3.4
+  - **Completed 2026-11-14.** The checks that depend only on the seller's input are core's (`marginal_core::listing::validate_spec`), so the SDK and the seller's tooling make exactly the same ones: finite alphabets (an alphabet of zero levels is a free-text field and has its own code), distinct named fields, R1 with a positive ask, `max_copies ≥ 1`, a floor that is a fraction, positive deadlines, and a fresh leakage account whose counters are zero. The state checks stay in the contract: the appraiser version is registered, enabled and matches the formula the listing names; the token is allow-listed; the asset class and R1 are enabled by the profile.
+    - The listing's `key_path_hash` is fixed at creation from `(seller, listing_id, version)` with core's `listing_path`, so it is the path KeyPolicy will derive and the seller pins against.
+    - `begin_provisioning` opens a provisioning job and assigns one room at random from the eligible pool (`env::random_seed`, `n = 1` below value class H). `submit_provisioning` stores `pk_l` and returns the listing to `Draft`.
+    - **Certificates are anchored in the audit chain**, not stored: the event carries `cert_hash`, and the chain commits to the event. The certificate itself lives in the blob store (§3.18).
+- [x] **E4.5 Publish and screening** · P0 (Held: P1, D8) · §3.4
   - `publish_listing(good_commitment, ciphertext, payout)` creates a screening job.
   - No cross-contract pin check: KeyPolicy denies release without pins, and the SDK always sets pins first.
   - `submit_screening` moves the listing to `Active` (with `publish_height`) or to `Held`.
-- [ ] **E4.6 `anchor_snapshot`** · P0 · §3.4
+  - **Completed 2026-11-14.** `publish_listing` takes a core `PublishSpec` (commitment, ciphertext ref, payout route), refuses a Ckd listing with no `pk_l`, and opens the screening job. `Pass` makes the listing `Active` and records `publish_height`; `Flag { reason }` holds it (M1 has one reason, MNPI, D8). A `RoomSealed` listing publishes straight from `Draft`, since it has no listing key to provision.
+    - **No cross-contract pin check**, as the task says: KeyPolicy denies release for a listing with no pins, so the check would cost an async hop to learn what KeyPolicy enforces anyway.
+    - **`resolve_held` is not built.** SDD §3.4 gives it to the seller (withdraw) or the compliance reviewer (clear after a consented review); no demo surface shows either, and the review path is E17. A flagged listing stays `Held`.
+- [x] **E4.6 `anchor_snapshot`** · P0 · §3.4
   - Storage-paid; records `anchor_height`.
+  - **Completed 2026-11-14.** `snapshot.rs`: the buyer pays, owns the record, and the contract records the height it was anchored at, which is what E5's cooling and R2 checks read (AC-6).
+  - **Storage is paid by whoever creates a record**, as in KeyPolicy: 0.03 NEAR a listing, 0.02 to publish, 0.01 a snapshot, 0.02 a measurement set, 0.01 a platform. `admit_room` is the exception: KeyPolicy attaches 1 yocto, only KeyPolicy can call it and the pool is capped, so clearing's own balance covers a bounded number of rooms.
+  - **Review of E4 as a whole, 2026-11-14** (no second reviewer):
+    - **Injected bugs: 30, every one caught by a failing test.** The room signature unchecked; any room answering any job; a stale room answering; the job kind and state unchecked; the chain, contract and listing bindings unchecked; anyone moving a seller's listing; publishing without provisioning; publishing from any status; a flag publishing the listing; the listing fee not charged; the token allow-list, appraiser and asset-class checks ignored; anyone admitting a room or setting policy; the platform and measurement checks ignored; a room's expiry uncapped; expired rooms staying current; the PPID length unchecked; fee shares that need not add up; an audit chain that ignores the previous head or the payload; free text, an empty component list, duplicate field ids, a zero ask and preset leakage counters all allowed; and a signing domain dropped.
+    - **Two checks were dead and were deleted, not covered up.** `submit_provisioning` and `submit_screening` each re-checked the listing's status, but a job is `Assigned` only while its listing is in the matching state, so the job-state check is the status check. A mutation showed no test depended on either, which is what found them.
+    - **Not verified:** anything on testnet (needs [P-3](#paid-and-account-gated-steps-jay)); a real room's own signatures (E7/E8 — the sandbox signs with a test key); the appraisal path, funding, leakage counters and settlement, which are E5 and E6.
+    - **Handoffs.** *E5:* `request_appraisal` reads `get_leakage`, the listing's `eligibility` and `publish_height`; jobs are already stored as core `Job` records with their commitment, and `store::add_open_job`/`close_job` keep a room's queue. *E5.6:* `authorize_release` is the one method KeyPolicy still calls that clearing does not have; `admit_room` and `check_room` are live, so only the release half is mocked now. *E7/E8:* a room signs `provisioning_signing_bytes` and `screening_signing_bytes` (both are `@marginal/core-wasm` operations, with vectors).
 
 ## E5. Clearing: jobs, funding, leakage, agents
 

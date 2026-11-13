@@ -12,6 +12,8 @@ use marginal_core::certificate::{
 use marginal_core::commit::JobCore;
 use marginal_core::delivery::{DeliveryEntry, DeliveryV1};
 use marginal_core::keyrelease::{listing_path, AppKey, KeyRequest};
+use marginal_core::listing::ListingSpec;
+use marginal_core::reports::{ProvisioningV1, ScreeningResult, ScreeningV1};
 use marginal_core::verdict::{
     JudgeFactor, ModelProof, OpenBody, SealedBody, ShownField, VerdictStatus, VerdictV1,
 };
@@ -385,5 +387,90 @@ pub fn key_request() -> KeyRequest {
         },
         job_commitment: h(7),
         value_class: ValueClass::M,
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Listings (E4)
+
+/// A schema that passes every check: two components, one shown field, an 11-level judge scale.
+pub fn schema() -> OutputSchema {
+    OutputSchema {
+        fields: vec![FieldSpec {
+            id: 1,
+            name: "sector".into(),
+            alphabet: 8,
+        }],
+        component_alphabets: vec![16, 16],
+        judge_scale: 11,
+    }
+}
+
+pub fn provisioning() -> ProvisioningV1 {
+    ProvisioningV1 {
+        domain: ProvisioningV1::DOMAIN,
+        chain_id: "testnet".into(),
+        clearing: "clearing.marginal-demo.testnet".into(),
+        job_id: 4,
+        listing_id: 3,
+        listing_version: 1,
+        room_key: h(1),
+        pk_l: h(9),
+        cert_hash: h(8),
+    }
+}
+
+pub fn screening(result: ScreeningResult) -> ScreeningV1 {
+    ScreeningV1 {
+        domain: ScreeningV1::DOMAIN,
+        chain_id: "testnet".into(),
+        clearing: "clearing.marginal-demo.testnet".into(),
+        job_id: 5,
+        listing_id: 3,
+        listing_version: 1,
+        room_key: h(1),
+        result,
+        cert_hash: h(8),
+    }
+}
+
+/// A listing a seller could create: knowledge, posted price, one copy.
+pub fn spec() -> ListingSpec {
+    ListingSpec {
+        asset_class: AssetClass::Knowledge,
+        category: CategoryId(1),
+        licence_class: 1,
+        key_mode: KeyReleaseMode::Ckd,
+        appraiser: AppraiserRef {
+            id: "knowledge".into(),
+            version: 1,
+            formula_id: FormulaId::KnowledgeV1,
+        },
+        schema: schema(),
+        rule: PricingRule::Posted { ask: 400_000_000 },
+        token: "musdc.marginal-demo.testnet".into(),
+        max_copies: 1,
+        l_floor_bps: 1_000,
+        external_judges_allowed: true,
+        privacy_default: VerdictPrivacy::Open,
+        disclosure_policy: DisclosurePolicy::DisputeOnly,
+        leakage: LeakageAccount {
+            budget_mbits: 100_000,
+            reserved_mbits: 0,
+            spent_mbits: 0,
+            price_per_bit: 1_000,
+            sub_budget_mbits_per_identity: 0,
+            verified_reserve_bps: 0,
+        },
+        value_class: ValueClass::M,
+        eligibility: Eligibility {
+            min_tier: Tier::Id1,
+            min_anonymity_set: 0,
+            nullifier_gated: false,
+            cooling_blocks: 0,
+        },
+        challenge_window_blocks: 100,
+        delivery_deadline_blocks: 200,
+        dossier_hash: None,
     }
 }

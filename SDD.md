@@ -327,8 +327,10 @@ One monorepo, `marginal/`. Paths below are where each change lives.
 marginal/
 ├── contracts/                      Rust, near-sdk 5.30 (LETHE's pin), built with `cargo near build reproducible-wasm`
 │   ├── clearing/                   upgradeable via gov time-lock
-│   │   └── src/ lib.rs  listing.rs  snapshot.rs  job.rs  verdict.rs  settle.rs  escrow.rs  ft.rs
-│   │            leakage.rs  caps.rs  agent.rs  identity.rs  payout.rs  zk.rs  audit.rs  events.rs  gov.rs
+│   │   ├── src/ lib.rs  listing.rs  snapshot.rs  job.rs  verdict.rs  settle.rs  escrow.rs  ft.rs
+│   │   │        leakage.rs  caps.rs  agent.rs  identity.rs  payout.rs  zk.rs  audit.rs  events.rs  gov.rs
+│   │   │        registry.rs [M1: the room policy of §3.11]  store.rs  fees.rs  views.rs
+│   │   └── tests/                  near-workspaces: clearing with the real KeyPolicy
 │   ├── registry/                   room / platform / measurement policy; time-lock queue; room pool
 │   ├── keypolicy/                  IMMUTABLE: quote verification, attestation records, pins, tickets, MPC calls
 │   ├── assurance/                  [v2] bonds, challenges, k-of-n tallies

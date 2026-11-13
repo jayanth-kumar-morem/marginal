@@ -10,6 +10,7 @@
 //! - [`pricing`]: judgement factor, ceiling, measured index, valuation, rules (SDD §3.7).
 //! - [`leakage`]: the millibit table and `max_debit` (SDD §3.8).
 //! - [`commit`]: the job commitment and the salted good commitment (SDD §3.12.3).
+//! - [`listing`]: what a listing must satisfy; [`reports`]: what a room signs about one (SDD §3.4).
 //! - [`verdict`], [`certificate`], [`delivery`]: the signed and hashed messages (SDD §3.17-§3.19),
 //!   with their signing bytes and hashes.
 //! - [`audit`]: the audit hash chain step (SDD §3.10).
@@ -32,8 +33,10 @@ pub mod json;
 pub mod keyrelease;
 pub mod leakage;
 mod leakage_lut;
+pub mod listing;
 pub mod math;
 pub mod pricing;
+pub mod reports;
 pub mod types;
 pub mod verdict;
 pub mod verifier;

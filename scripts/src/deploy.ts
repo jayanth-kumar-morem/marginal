@@ -86,6 +86,8 @@ function readWasm(dir: string, crate: string): { bytes: Uint8Array; sha256: stri
 
 export interface ClearingConfig {
   gov: string;
+  keypolicy: string;
+  chain_id: string;
   profile: Profile["hdp"] & { profile: string };
 }
 export interface KeyPolicyConfig {
@@ -99,13 +101,14 @@ export interface KeyPolicyConfig {
  * and in M1 its registry is clearing itself.
  */
 export function verifyDeployment(
-  ids: { gov: string; clearing: string },
+  ids: { gov: string; clearing: string; keypolicy: string },
   clearing: ClearingConfig,
   keypolicy: KeyPolicyConfig,
   keypolicyAccessKeys: number,
 ): void {
   if (keypolicyAccessKeys !== 0) throw new Error(`keypolicy has ${keypolicyAccessKeys} access key(s); it must have none`);
   if (clearing.gov !== ids.gov) throw new Error("clearing.gov mismatch");
+  if (clearing.keypolicy !== ids.keypolicy) throw new Error("clearing.keypolicy mismatch: only keypolicy may admit rooms");
   if (keypolicy.registry !== keypolicy.clearing || keypolicy.clearing !== ids.clearing) throw new Error("keypolicy.registry must equal clearing in M1");
 }
 
@@ -179,6 +182,8 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
     wasm: wasms.clearing,
     init: {
       gov: ids.gov,
+      keypolicy: ids.keypolicy,
+      chain_id: p.chain_id,
       tokens: [ids.token],
       profile: {
         profile: p.profile,

@@ -26,6 +26,9 @@ use marginal_core::json::{dec, hex};
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
 use marginal_core::pricing::{apply_rule, ceiling, judgement_factor, measured_index, valuation};
+use marginal_core::reports::{
+    provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningV1,
+};
 use marginal_core::verdict::{verdict_signing_bytes, VerdictV1};
 use marginal_core::verifier::VerificationResult;
 use marginal_core::{
@@ -237,6 +240,12 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
             Ok(listing_path(&i.seller, i.listing_id, i.version))
         }),
         "path_hash" => run(input, |i: PathIn| Ok(Hex(path_hash(&i.path)))),
+        "provisioning_signing_bytes" => run(input, |r: ProvisioningV1| {
+            Ok(Hex(provisioning_signing_bytes(&r)))
+        }),
+        "screening_signing_bytes" => {
+            run(input, |r: ScreeningV1| Ok(Hex(screening_signing_bytes(&r))))
+        }
         "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
         "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),
         "audit_step" => run(input, |i: AuditIn| {

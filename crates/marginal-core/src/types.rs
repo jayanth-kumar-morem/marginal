@@ -359,7 +359,9 @@ impl Record for Listing {
     const VERSION: u8 = LISTING_V;
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum ContextKind {
     Notes,
     DataIndex,

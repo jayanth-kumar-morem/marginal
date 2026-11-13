@@ -1,32 +1,49 @@
-//! Clearing: listings, jobs, escrow, pricing, leakage. This is the E1 skeleton: it holds
-//! the deployment profile so that `config()` shows which toggles produced a record
-//! (SDD §6.3 rule 2). Epics E4 to E6 add the rest.
-use near_sdk::{near, require, AccountId, PanicOnDefault};
+//! Clearing: listings, jobs, escrow, pricing, leakage, and the room-policy registry (SDD §3.4,
+//! §3.10, §3.11). E4 builds the parts a listing needs: governance policy, the audit chain, the
+//! registry, listings from `create_listing` to `Active`, and snapshots. E5 and E6 add jobs, funding
+//! and settlement.
+//!
+//! **Interface shape.** Arguments that carry `marginal-core`'s types travel as Borsh bytes
+//! (`Base64VecU8`) and views return JSON built here, because `cargo near`'s ABI step needs a JSON
+//! and Borsh schema for every type in the interface and core's types have none (SDD §3.3). The one
+//! encoding of a record is therefore core's, and every client builds it through `@marginal/core-wasm`.
+use marginal_core::audit::AUDIT_GENESIS;
+use marginal_core::CoreError;
+use near_sdk::{env, near, require, AccountId, PanicOnDefault};
+
+mod events;
+mod fees;
+mod gov;
+mod listing;
+pub mod registry;
+mod snapshot;
+mod store;
+mod views;
+
+#[cfg(test)]
+mod tests;
+
+pub use fees::{LISTING_FEE, PLATFORM_FEE, PUBLISH_FEE, ROOM_FEE, SET_FEE, SNAPSHOT_FEE};
+pub use gov::{AppraiserEntry, FeeTable};
+pub use registry::MeasurementSet;
 
 pub const CLEARING_VERSION: u8 = 1;
 
-// These two mirror marginal-core's `AssetClass` and `PricingRule` kinds. They are local because
-// `cargo near` needs a JSON and Borsh schema for every type in a contract's interface; E4.1 replaces
-// them with the real view types.
-#[near(serializers = [json, borsh])]
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum AssetClass {
-    Knowledge,
-    Dataset,
+/// Refuses the call with a stable error code (SDD §4.1). Returns `!`, so it reads as the end of a
+/// branch and the compiler keeps the arms honest.
+pub(crate) fn fail(error: CoreError) -> ! {
+    env::panic_str(error.code())
 }
 
-#[near(serializers = [json, borsh])]
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Rule {
-    /// Posted price: the only rule enabled in M1.
-    R1,
-    /// Value-indexed price (M2).
-    R2,
-    /// Legacy surplus split, behind a flag (M2).
-    R3,
+/// Block time in whole seconds.
+pub(crate) fn now_secs() -> u64 {
+    env::block_timestamp_ms() / 1_000
 }
 
 /// Profile values from `deploy/profiles/<profile>.toml` that change contract behaviour.
+///
+/// `rules_enabled` and `asset_classes_enabled` are plain strings here (`"R1"`, `"Knowledge"`): they
+/// are the deploy profile's own names, checked against core's enums when a listing is created.
 #[near(serializers = [json, borsh])]
 #[derive(Clone, Debug)]
 pub struct ProfileConfig {
@@ -36,147 +53,71 @@ pub struct ProfileConfig {
     pub cooling_blocks: u64,
     /// Challenge window W, in seconds.
     pub challenge_window_secs: u64,
-    pub rules_enabled: Vec<Rule>,
-    pub asset_classes_enabled: Vec<AssetClass>,
-}
-
-#[near(serializers = [json])]
-pub struct ClearingConfig {
-    pub version: u8,
-    pub gov: AccountId,
-    pub tokens: Vec<AccountId>,
-    pub profile: ProfileConfig,
+    pub rules_enabled: Vec<String>,
+    pub asset_classes_enabled: Vec<String>,
 }
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
 pub struct Clearing {
-    gov: AccountId,
-    tokens: Vec<AccountId>,
-    profile: ProfileConfig,
+    pub(crate) gov: AccountId,
+    /// The only account `admit_room` accepts (SDD §3.11). KeyPolicy is immutable, so this is fixed.
+    pub(crate) keypolicy: AccountId,
+    pub(crate) chain_id: String,
+    pub(crate) tokens: Vec<AccountId>,
+    pub(crate) profile: ProfileConfig,
+    pub(crate) fees: FeeTable,
+    /// Issuer of identity credentials (E5 checks them).
+    pub(crate) issuer_key: Option<[u8; 32]>,
+    /// The compliance reviewer's key (E4.5 `resolve_held` is E16; stored for E5 and E6).
+    pub(crate) compliance_key: Option<[u8; 32]>,
+    /// Bumped by every governance change, and copied into each listing so a record says which policy
+    /// produced it (SDD §3.4: changes apply to new listings and jobs only).
+    pub(crate) policy_version: u64,
+    pub(crate) next_listing_id: u64,
+    pub(crate) next_job_id: u64,
+    pub(crate) next_snapshot_id: u64,
+    pub(crate) audit_seq: u64,
+    pub(crate) audit_head: [u8; 32],
 }
 
 #[near]
 impl Clearing {
+    /// Every argument is fixed at deploy time except the governance policy, which `gov` sets after.
     #[init]
-    pub fn new(gov: AccountId, tokens: Vec<AccountId>, profile: ProfileConfig) -> Self {
+    pub fn new(
+        gov: AccountId,
+        keypolicy: AccountId,
+        chain_id: String,
+        tokens: Vec<AccountId>,
+        profile: ProfileConfig,
+    ) -> Self {
         require!(!tokens.is_empty(), "no settlement token");
+        require!(!chain_id.is_empty(), "no chain id");
         require!(!profile.rules_enabled.is_empty(), "no rule enabled");
-        let has_asset_class = !profile.asset_classes_enabled.is_empty();
-        require!(has_asset_class, "no asset class enabled");
-        let has_window = profile.challenge_window_secs > 0;
-        require!(has_window, "challenge window must be positive");
+        require!(
+            !profile.asset_classes_enabled.is_empty(),
+            "no asset class enabled"
+        );
+        require!(
+            profile.challenge_window_secs > 0,
+            "challenge window must be positive"
+        );
         Self {
             gov,
+            keypolicy,
+            chain_id,
             tokens,
             profile,
+            fees: FeeTable::default(),
+            issuer_key: None,
+            compliance_key: None,
+            policy_version: 0,
+            next_listing_id: 1,
+            next_job_id: 1,
+            next_snapshot_id: 1,
+            audit_seq: 0,
+            audit_head: AUDIT_GENESIS,
         }
-    }
-
-    pub fn config(&self) -> ClearingConfig {
-        ClearingConfig {
-            version: CLEARING_VERSION,
-            gov: self.gov.clone(),
-            tokens: self.tokens.clone(),
-            profile: self.profile.clone(),
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn profile() -> ProfileConfig {
-        ProfileConfig {
-            profile: "sandbox".into(),
-            gov_profile: "demo".into(),
-            cooling_blocks: 0,
-            challenge_window_secs: 600,
-            rules_enabled: vec![Rule::R1],
-            asset_classes_enabled: vec![AssetClass::Knowledge, AssetClass::Dataset],
-        }
-    }
-
-    #[test]
-    fn config_reflects_profile() {
-        let gov: AccountId = "gov.test".parse().unwrap();
-        let c = Clearing::new(gov.clone(), vec!["t.test".parse().unwrap()], profile());
-        let cfg = c.config();
-        assert_eq!(cfg.gov, gov);
-        assert_eq!(cfg.profile.challenge_window_secs, 600);
-        assert_eq!(cfg.profile.rules_enabled, vec![Rule::R1]);
-    }
-
-    /// Regression: a single-variant enum is zero-sized and borsh rejects `Vec` of it,
-    /// which made `new` panic with "Cannot serialize the contract state".
-    #[test]
-    fn state_serialises_with_borsh() {
-        let c = Clearing::new(
-            "gov.test".parse().unwrap(),
-            vec!["t.test".parse().unwrap()],
-            profile(),
-        );
-        assert!(near_sdk::borsh::to_vec(&c).is_ok());
-    }
-
-    #[test]
-    #[should_panic(expected = "no rule enabled")]
-    fn rejects_empty_rules() {
-        let mut p = profile();
-        p.rules_enabled.clear();
-        Clearing::new(
-            "gov.test".parse().unwrap(),
-            vec!["t.test".parse().unwrap()],
-            p,
-        );
-    }
-
-    #[test]
-    #[should_panic(expected = "no asset class enabled")]
-    fn rejects_no_asset_class() {
-        let mut p = profile();
-        p.asset_classes_enabled.clear();
-        Clearing::new(
-            "gov.test".parse().unwrap(),
-            vec!["t.test".parse().unwrap()],
-            p,
-        );
-    }
-
-    /// The JSON the deploy script sends to `new` and reads back from `config`: enum names are
-    /// plain strings, shared with `deploy/profiles/*.toml`.
-    #[test]
-    fn profile_json_matches_the_deploy_script() {
-        use near_sdk::serde_json::{from_value, json, to_value};
-        let wire = json!({
-            "profile": "sandbox",
-            "gov_profile": "demo",
-            "cooling_blocks": 0,
-            "challenge_window_secs": 600,
-            "rules_enabled": ["R1"],
-            "asset_classes_enabled": ["Knowledge", "Dataset"],
-        });
-        let parsed: ProfileConfig = from_value(wire.clone()).unwrap();
-        assert_eq!(parsed.rules_enabled, vec![Rule::R1]);
-        assert_eq!(to_value(&parsed).unwrap(), wire);
-    }
-
-    #[test]
-    #[should_panic(expected = "no settlement token")]
-    fn rejects_no_token() {
-        Clearing::new("gov.test".parse().unwrap(), vec![], profile());
-    }
-
-    #[test]
-    #[should_panic(expected = "challenge window must be positive")]
-    fn rejects_zero_challenge_window() {
-        let mut p = profile();
-        p.challenge_window_secs = 0;
-        Clearing::new(
-            "gov.test".parse().unwrap(),
-            vec!["t.test".parse().unwrap()],
-            p,
-        );
     }
 }

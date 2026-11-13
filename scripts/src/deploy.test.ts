@@ -21,12 +21,13 @@ test("the code hash on chain must be the base58 of the wasm's SHA-256", () => {
 });
 
 test("a deployment is verified from what the chain reports", () => {
-  const ids = { gov: "gov.x", clearing: "clearing.x" };
-  const clearing = { gov: "gov.x", profile: loadProfile(profilePath(repoRoot, "sandbox")).hdp as never };
+  const ids = { gov: "gov.x", clearing: "clearing.x", keypolicy: "keypolicy.x" };
+  const clearing = { gov: "gov.x", keypolicy: "keypolicy.x", chain_id: "sandbox", profile: loadProfile(profilePath(repoRoot, "sandbox")).hdp as never };
   const keypolicy = { registry: "clearing.x", clearing: "clearing.x", ckd_domain_id: 2 };
   verifyDeployment(ids, clearing, keypolicy, 0);
   assert.throws(() => verifyDeployment(ids, clearing, keypolicy, 1), /keypolicy has 1 access key\(s\); it must have none/);
   assert.throws(() => verifyDeployment(ids, { ...clearing, gov: "other.x" }, keypolicy, 0), /clearing\.gov mismatch/);
+  assert.throws(() => verifyDeployment(ids, { ...clearing, keypolicy: "other.x" }, keypolicy, 0), /clearing\.keypolicy mismatch/);
   assert.throws(() => verifyDeployment(ids, clearing, { ...keypolicy, registry: "other.x" }, 0), /registry must equal clearing/);
   assert.throws(() => verifyDeployment(ids, clearing, { ...keypolicy, registry: "other.x", clearing: "other.x" }, 0), /registry must equal clearing/);
 });
