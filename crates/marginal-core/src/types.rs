@@ -442,7 +442,9 @@ pub enum RefundRoute {
 }
 
 /// Job lifecycle states (§3.5). Every legal move is in `clearing::job::transition`.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum JobState {
     PendingApproval,
     Requested,

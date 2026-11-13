@@ -92,6 +92,22 @@ impl Clearing {
             "state": format!("{:?}", job.state),
             "token": job.token,
             "job_commitment": to_hex(&job.job_commitment),
+            // M1 buyers are accounts; a nullifier-only buyer is the v2 private mode (§3.25).
+            "buyer": match &job.buyer {
+                Some(marginal_core::BuyerRef::Account(id)) => json!(id),
+                _ => Value::Null,
+            },
+            "privacy": format!("{:?}", job.privacy),
+            "max_debit_mbits": job.max_debit_mbits,
+            "buckets": {
+                "budget": job.buckets.budget.to_string(),
+                "compute": job.buckets.compute.to_string(),
+                "comp_reserved": job.buckets.comp_reserved.to_string(),
+                "fee_reserved": job.buckets.fee_reserved.to_string(),
+                "storage": job.buckets.storage.to_string(),
+                "held": job.buckets.held.to_string(),
+                "refund": job.buckets.refund.to_string(),
+            },
             "assigned": job.assigned.iter().map(|k| to_hex(k)).collect::<Vec<_>>(),
             "requested_height": job.requested_height,
             "deadline_height": job.deadline_height,

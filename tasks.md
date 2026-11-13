@@ -150,6 +150,9 @@ To fix in SDD v0.3.
 | 24 | §3.4 gives `submit_provisioning` and `submit_screening` a `sig` but never says what it signs. A relayer account sends both calls, so the room's signature is the only authority: it has to cover the key that gets stored and the result that gets applied, not just the certificate | `marginal_core::reports`: `ProvisioningV1` and `ScreeningV1`, each with its own signing domain, binding chain, contract, job, listing version, room key and payload. Implemented and vectored in E4 | SDD v0.3 |
 | 25 | §3.4's `create_listing` row lists the checks but not where they live, and §3.3 gives no input type for them | `ListingSpec` and `validate_spec` in `marginal_core::listing`, so the contract, the SDK and the seller's tooling make the same checks; the contract keeps the ones that need its state (appraiser, token, profile). `PublishSpec` is the same for `publish_listing` | SDD v0.3 |
 | 26 | §3.11 has `admit_room` apply "class requirements" and a TCB policy table. In M1 KeyPolicy already admits only `UpToDate`, and no demo surface has a GPU room | The registry checks the platform and the measurement set; class is handled by `eligible`, which only ever offers a room to work for its own class. The TCB table and GPU corroboration stay v2 | E16 |
+| 27 | §3.4 gives `request_appraisal` its checks but no input type, and §3.20 defines credentials without signing bytes or a chain binding | `AppraisalRequest` and `validate_request` in `marginal_core::request`; `NullifierCredential` in `marginal_core::credential` with its own domain, binding chain, contract, subject, listing and epoch. Both implemented and vectored in E5 | SDD v0.3 |
+| 28 | §3.5 draws the job lifecycle but gives no transition function, so each caller would re-read the diagram | `marginal_core::lifecycle::transition`, one table, with an exhaustive test over every pair of M1 states (E5.1) | SDD v0.3 |
+| 29 | §3.4 says `authorize_release` is "`keypolicy-v1` only" and the deposit convention is left open. KeyPolicy (immutable, already built) sends `job_id` as a JSON **number** and attaches **no deposit** | Clearing takes `job_id: u64` and is not payable; the predecessor check is the authorisation, since a receipt from the KeyPolicy contract cannot be forged by an access key. Found by running the real KeyPolicy against the real clearing (E5.6) | SDD v0.3 |
 
 ---
 
@@ -390,21 +393,32 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E5. Clearing: jobs, funding, leakage, agents
 
-- [ ] **E5.1 Job state machine** · P0 · §3.5
+**Status 2026-11-14: built and closed.** All seven tasks are done, verified natively and as built wasm on a local chain, including the first run of the **whole buyer path against the real KeyPolicy**: deposit, request, key release. 100% coverage holds; 38 injected bugs were all caught, and the two integration bugs the sandbox found are below.
+
+- [x] **E5.1 Job state machine** · P0 · §3.5
   - `transition(from, to)` covers only the M1 states: `PendingApproval`, `Requested`, `Assigned`, `Computing`, `Verdicted`, `Deal`, `NoDeal`, `Restricted`, `InputRejected`, `Final`, `DeliveryFailure`, `Timeout`.
   - **Done:** an exhaustive test over all pairs, and a test that double settlement is impossible.
-- [ ] **E5.2 Balances** · P0 · §3.9.3
+  - **Completed 2026-11-14.** `marginal_core::lifecycle`, so the contract, the room and anything replaying a job's history read one table. **The Done line is two tests:** one walks all 12 × 12 pairs and asserts each is allowed or refused against a list written out by hand (13 moves are legal); the other asserts that no terminal state has any way out, which is what makes double settlement impossible — the second attempt cannot leave the state the first arrived at. A third test pins that `Revoked` and `Fault` (v2) are unreachable in both directions.
+- [x] **E5.2 Balances** · P0 · §3.9.3
   - `ft_on_transfer` with `Deposit{for}`. `withdraw_balance` rejects agent keys. Refunds credit the balance.
-- [ ] **E5.3 Buckets and leakage ledger** · P0 · D4 · §3.8, §3.9.1
+  - **Completed 2026-11-14.** `escrow.rs`. Escrow lives in clearing's own NEP-141 balances, so a refund never depends on another contract being live (SPEC §4.9.1). `Deposit{for}` credits the account the message names, not whoever sent the tokens, so a relayer or an exchange can fund a buyer. Anything clearing cannot use — an unknown token, a message it cannot parse, a message naming another path — is returned whole rather than panicking, which is what NEP-141 gives back to the sender.
+    - `withdraw_balance` takes the balance down first, then calls the token; its callback puts the amount back if the token call failed, so a withdrawal never destroys value. It demands one yocto and refuses agent keys.
+    - **Not built:** the Intents path (`on_auth`, `FundAuth`, §3.9.3 path 3) and `Appraise` inside a transfer message. Both are cut from M1 with the fast-path yield ("What M1 cuts"); a prefunded balance serves buyers and agents alike.
+- [x] **E5.3 Buckets and leakage ledger** · P0 · D4 · §3.8, §3.9.1
   - Buckets `budget`, `compute`, `comp_reserved` and `fee_reserved` (storage is 0 in M1).
   - Reserve `max_debit` at request. The debit equals the reservation, except:
     - `Restricted` debits 1,000 mbits;
     - `InputRejected` and `Timeout` release the reservation.
   - Compensation goes to the seller's claimable balance. The listing becomes `Exhausted` when the budget runs out.
   - **Done:** conservation holds after every transition.
-- [ ] **E5.4 Nullifiers** · P0 · D4 · §3.20, AC-14
+  - **Completed 2026-11-14 for the reserve side; the debit rules are written where they are used, in E6.3.** `marginal_core::funding` computes what a job costs (`fund`, `compensation`, `fee_bps`, `total`) and `leakage.rs` reserves it. A job's buckets are funded in the call that creates it, from the buyer's balance, so a job is never half-funded: the **Done line is a test** that the amount taken from the balance equals `total(buckets)` and satisfies AC-4's conservation check exactly.
+    - `max_debit` is core's, so the reservation is the same number the room and the verifier compute. A reservation that would pass the listing's budget is `E_BUDGET_EXHAUSTED`, and one that would overflow the counters is refused rather than wrapped.
+    - **Why the debit is not here.** E5 has no caller for it: spending or releasing a reservation happens at settlement, which is E6.3, and a contract with unreachable code is worse than one with a short task note. The rules this task states (the debit equals the reservation; `Restricted` debits only the outcome bit; `InputRejected` and `Timeout` release it; the listing becomes `Exhausted` when what is left cannot pay for the cheapest job) are recorded at the top of `leakage.rs` for E6.3 to implement with its own tests.
+- [x] **E5.4 Nullifiers** · P0 · D4 · §3.20, AC-14
   - Verify `NullifierCredential` against the gov-set issuer key, and track `used_nullifiers[(listing, epoch)]`.
-- [ ] **E5.5 `request_appraisal`** · P0 · §3.4
+  - **Completed 2026-11-14.** `marginal_core::credential` defines what compliance signs; `identity.rs` checks and spends it. The credential must be signed by the issuer governance registered, be unexpired, and name this chain, this contract, this listing and the account presenting it — each refusal has its own test, and the expired case is **signed correctly**, so only the expiry can be the reason it fails (a mutation found that the first version of that test passed for the wrong reason).
+    - One identity therefore gets one appraisal per listing per epoch across every account it controls. The identity never reaches the chain: the event carries a domain-separated tag of the nullifier, not the nullifier. `is_nullifier_used` lets the SDK check before a buyer spends gas.
+- [x] **E5.5 `request_appraisal`** · P0 · §3.4
   - Checks, in order:
     1. listing `Active` with copies left;
     2. nullifier, if the listing is gated;
@@ -415,13 +429,30 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - Assignment uses `random_seed`. Computes `job_commitment`.
   - Carries `DEK_c` sealed to the room's `box_pk` (HDP, §3.12.4).
   - **Done:** a test per check, each leaving state unchanged.
-- [ ] **E5.6 `authorize_release`** · P0 · §3.4
+  - **Completed 2026-11-14.** `job.rs`, in exactly that order, with `marginal_core::request::AppraisalRequest` as the input form so the SDK makes the same checks. The **Done line is a test** that runs every refusal and asserts, after each one, that the balance, the leakage counters and the next job id are untouched.
+    - The job is stored as a core `Job` with its buckets and its `job_commitment` (§3.12.3), one room assigned at random from the eligible pool, and `DEK_c` kept beside it for the room to collect (`get_context_key`).
+    - A budget below the listing's ask is refused: no deal could ever be struck, so the job would only burn gas. `min_price` lives in core next to the rule it comes from.
+- [x] **E5.6 `authorize_release`** · P0 · §3.4
   - KeyPolicy-only. Checks the room assignment, the commitment and the path. Moves the job to `Computing`.
-- [ ] **E5.7 Agent firewall** · P1 · D5 · §3.21
+  - **Completed 2026-11-14, and this is the task that closed E3's open end.** KeyPolicy's wasm is already built, so its call is fixed; the sandbox test runs the real KeyPolicy against the real clearing and **found two bugs a mock had hidden**:
+    1. KeyPolicy sends `job_id` as a **JSON number**, not a string. Clearing took `U64` (a string) and every release failed to deserialise. Clearing now takes `u64`, with a comment saying why.
+    2. KeyPolicy attaches **no deposit**: the `1` in its `Call::json(..., 1)` is a gas *weight*, not a yocto. Clearing demanded one yocto and refused every call. The predecessor check is the real authorisation — a receipt from the KeyPolicy contract cannot be forged by an access key — so the method is not payable and demands nothing.
+    - What it checks: the job exists and is `Assigned` to the room that asked, the commitment equals the job's, the path hash is the listing's own, and the value class is **the listing's**, not whatever the request claimed. Then the job moves to `Computing` and the release is recorded with the platform hash the value at risk will be counted against (E16).
+    - **Not built:** the platform and per-listing release caps (AC-19). M1 cuts value-at-risk caps (E16); `cap_per_epoch` is recorded on the platform record and nothing counts against it yet.
+- [x] **E5.7 Agent firewall** · P1 · D5 · §3.21
   - Agent keys are registered and revoked from a full-access key only.
   - Caps: per-job maximum, per-window maximum, and `human_above`. Over a cap → `Block`; above `human_above` → `PendingApproval`.
   - `approve_parked` must be signed by a non-agent key. Admin methods reject agent keys.
   - **Done:** DRC-5 passes in sandbox.
+  - **Completed 2026-11-14 natively; the DRC-5 sandbox run is E15.2.** `agent.rs`. A buyer registers a function-call key with caps; `request_appraisal` applies them to the signing key. Over a cap the answer is `Blocked` with the cap's name — a **successful transaction that creates no job**, so the attempt is on the audit chain where the buyer can see what their agent tried; above `human_above` the job is parked and waits for `approve_parked` from a key that is not an agent key. A test asserts a blocked request leaves the balance, the leakage counters, the job counter and the agent's own window exactly as they were.
+    - The window caps both the total spent and the number of jobs, and starts again when it runs out. The hard caps are applied before the human threshold, so a job that is both over the window and above the threshold is blocked rather than parked.
+    - `register_agent_key`, `revoke_agent_key`, `approve_parked` and `withdraw_balance` all refuse a call signed by a registered agent key, before they do anything else.
+    - **Not built:** `allowed_categories`. D5 shows the budget caps and the human approval; a category list adds a second policy surface no demo surface exercises.
+  - **Review of E5 as a whole, 2026-11-14** (no second reviewer):
+    - **Injected bugs: 38, every one caught by a failing test.** Caps ignored, a blocked request keeping the money, spend not recorded, listing status and copies unchecked, a budget under the ask, a nullifier not required or reusable, its signature, expiry or subject unchecked, a snapshot's owner or cooling ignored, the buyer never paying, leakage never reserved, the release's room, commitment, path, class or caller unchecked, a parked job needing no human, deposits credited to the sender instead of the named account, an unknown token accepted, a withdrawal ignoring the balance or keeping a failed transfer, an agent withdrawing, a reservation passing the budget, every agent cap in turn, terminal states moving, a verdict skipping to final, compensation rounding up, a fee ignoring its rate, judges unbounded, half a credential accepted.
+    - **Three of those survived the first run and found real test weaknesses**, now fixed: the expiry test passed for the wrong reason (the signature refused it first), nothing tested a deposit made *for* another account, and core's own `validate_request` had no unit test of its own.
+    - **A tooling bug worth recording:** the mutation script restored files with their original timestamps, so cargo reused the *mutated* build. It now touches each restored file. Any mutation run before this fix could have reported a later test as passing when it was built against mutated code; the suite was rerun clean afterwards.
+    - **Not verified:** anything on testnet; settlement, verdicts and claims (E6); DRC-5 end to end (E15.2).
 
 ## E6. Clearing: verdicts, settlement, claims
 

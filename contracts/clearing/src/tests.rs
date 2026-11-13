@@ -6,23 +6,26 @@
 #[path = "../../../crates/marginal-core/tests/common/mod.rs"]
 mod common;
 
-use common::{measurement, provisioning, schema, screening, spec};
+use common::{measurement, nullifier, provisioning, schema, screening, spec};
 use ed25519_dalek::{Signer, SigningKey};
 use marginal_core::attest::{ppid_hash, AdmitRoom, MAX_ATTESTATION_SECS};
 use marginal_core::certificate::Measurement;
 use marginal_core::codec::to_bytes;
+use marginal_core::credential::{nullifier_signing_bytes, NullifierCredential};
 use marginal_core::json::to_hex;
 use marginal_core::listing::{ListingSpec, PublishSpec};
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningResult,
     ScreeningV1, FLAG_MNPI,
 };
+use marginal_core::request::AppraisalRequest;
 use marginal_core::*;
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde_json::{json, Value};
 use near_sdk::test_utils::{get_logs, VMContextBuilder};
 use near_sdk::{testing_env, AccountId, Gas, NearToken};
 
+use crate::agent::AgentCaps;
 use crate::registry::MeasurementSet;
 use crate::{
     Clearing, FeeTable, ProfileConfig, LISTING_FEE, PLATFORM_FEE, PUBLISH_FEE, SET_FEE,
@@ -209,6 +212,28 @@ fn sign(message: &[u8]) -> Base64VecU8 {
     Base64VecU8(room_signing_key().sign(message).to_bytes().to_vec())
 }
 
+/// Takes a listing that is already in `Draft` through provisioning, publishing and a `Pass`.
+fn publish_through_screening(c: &mut Clearing, listing_id: u64) {
+    call_as(SELLER, no_deposit());
+    let job_id = c.begin_provisioning(U64(listing_id)).0;
+    let report = ProvisioningV1 {
+        chain_id: "sandbox".into(),
+        clearing: CLEARING.into(),
+        job_id,
+        listing_id,
+        listing_version: 1,
+        room_key: room_key(),
+        ..provisioning()
+    };
+    call_as(OPERATOR, no_deposit());
+    c.submit_provisioning(b64(&report), sign(&provisioning_signing_bytes(&report)));
+    call_as(SELLER, PUBLISH_FEE);
+    let job_id = c.publish_listing(U64(listing_id), b64(&publish_spec())).0;
+    let screening = screening_report(listing_id, job_id, ScreeningResult::Pass);
+    call_as(OPERATOR, no_deposit());
+    c.submit_screening(b64(&screening), sign(&screening_signing_bytes(&screening)));
+}
+
 /// An `Active` listing: created, provisioned, published and screened `Pass`.
 fn active(c: &mut Clearing) -> u64 {
     let (listing_id, job_id) = screening_job(c);
@@ -244,8 +269,101 @@ fn events() -> Vec<Value> {
         .collect()
 }
 
+/// The compliance issuer whose key governance registers.
+fn issuer_key() -> SigningKey {
+    SigningKey::from_bytes(&[3; 32])
+}
+
+/// A nullifier credential for this chain, contract, listing and buyer, with the issuer's signature.
+fn credential(listing_id: u64, epoch: u32) -> (NullifierCredential, [u8; 64]) {
+    let credential = NullifierCredential {
+        chain_id: "sandbox".into(),
+        clearing: CLEARING.into(),
+        subject: BUYER.into(),
+        listing_id,
+        epoch,
+        expiry_height: HEIGHT + 1_000,
+        ..nullifier()
+    };
+    let sig = issuer_key()
+        .sign(&nullifier_signing_bytes(&credential))
+        .to_bytes();
+    (credential, sig)
+}
+
+/// What a buyer sends: no context, no nullifier, two judges.
+fn request(listing_id: u64) -> AppraisalRequest {
+    AppraisalRequest {
+        listing_id,
+        listing_version: 1,
+        snapshot_id: None,
+        budget: 500_000_000,
+        mode: DisplayMode::Blind,
+        privacy: VerdictPrivacy::Open,
+        n_judges: 2,
+        delivery_pk: [0x11; 32],
+        compliance_pk: None,
+        context_auth_pk: [0x22; 32],
+        sealed_context_key: vec![],
+        refund_to: RefundRoute::Balance,
+        nullifier: None,
+        nullifier_sig: None,
+    }
+}
+
+/// Credits a balance the way a NEP-141 deposit would.
+fn fund_buyer(c: &mut Clearing, amount: u128) {
+    testing_env!(context(TOKEN, no_deposit(), HEIGHT, NOW).build());
+    c.ft_on_transfer(
+        account(BUYER),
+        U128(amount),
+        json!({"Deposit": {"account": BUYER}}).to_string(),
+    );
+}
+
+/// An active listing with a funded buyer behind it.
+fn ready(c: &mut Clearing) -> u64 {
+    with_room(c);
+    let listing_id = active(c);
+    fund_buyer(c, 10_000_000_000);
+    listing_id
+}
+
+/// The job id out of a `Created` answer.
+fn created(answer: &Value) -> u64 {
+    assert_eq!(answer["status"], "Created", "{answer}");
+    answer["job_id"].as_str().unwrap().parse().unwrap()
+}
+
+/// The next call is signed by `key` (an agent key is a key the account registered).
+fn call_with_key(who: &str, key: [u8; 32]) {
+    let mut pk = vec![0u8];
+    pk.extend_from_slice(&key);
+    testing_env!(context(who, no_deposit(), HEIGHT, NOW)
+        .signer_account_pk(pk.try_into().unwrap())
+        .build());
+}
+
+fn agent_key() -> [u8; 32] {
+    [0x5e; 32]
+}
+
+fn caps() -> AgentCaps {
+    AgentCaps {
+        per_job_budget_max: U128(600_000_000),
+        window_max: U128(2_000_000_000),
+        window_secs: 3_600,
+        max_jobs_per_window: 2,
+        human_above: U128(550_000_000),
+    }
+}
+
+mod agents;
 mod audit;
+mod escrow;
 mod gov;
+mod identity;
+mod jobs;
 mod listings;
 mod registry;
 mod views;

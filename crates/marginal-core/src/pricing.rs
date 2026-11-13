@@ -86,6 +86,15 @@ pub enum RuleOutcome {
     NoDeal,
 }
 
+/// The smallest budget that could ever buy under this rule (SDD §3.4, `request_appraisal` check 5).
+/// R1 sells at its ask, so a smaller budget can never close a deal. Every other rule is disabled.
+pub fn min_price(rule: &PricingRule) -> Result<u128, CoreError> {
+    match *rule {
+        PricingRule::Posted { ask } => Ok(ask),
+        _ => Err(CoreError::RuleDisabled),
+    }
+}
+
 /// Applies the listing's pricing rule to the budget `B` and the index `m`.
 ///
 /// R1 (`Posted`): a deal at exactly the ask if `V >= ask`, otherwise no deal. The ask must be

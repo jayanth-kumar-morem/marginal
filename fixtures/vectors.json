@@ -1893,6 +1893,98 @@
       },
       "name": "screening: a listing flagged for MNPI",
       "op": "screening_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f6e756c6c69666965722f76316d617267696e616c2f6e756c6c69660007000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740d00000062757965722e746573746e65740300000000000000070000000404040404040404040404040404040404040404040404040404040404040404d007000000000000"
+      },
+      "input": {
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "domain": "6d617267696e616c2f6e756c6c696600",
+        "epoch": 7,
+        "expiry_height": 2000,
+        "listing_id": 3,
+        "nullifier": "0404040404040404040404040404040404040404040404040404040404040404",
+        "subject": "buyer.testnet"
+      },
+      "name": "nullifier: what the compliance service signs",
+      "op": "nullifier_signing_bytes"
+    },
+    {
+      "expect": {
+        "ok": {
+          "buckets": {
+            "budget": "1000000000",
+            "comp_reserved": "120000",
+            "compute": "10000000",
+            "fee_reserved": "2500000",
+            "held": "0",
+            "refund": "0",
+            "storage": "0"
+          },
+          "total": "1012620000"
+        }
+      },
+      "input": {
+        "budget": "1000000000",
+        "clearing_fee_buyer_bps": 25,
+        "compute_fee": "10000000",
+        "max_debit_mbits": 2400,
+        "price_per_bit": "50000"
+      },
+      "name": "funding: 1,000 USDC at 25 bps, 2.4 bits at 0.05 USDC a bit",
+      "op": "fund"
+    },
+    {
+      "expect": {
+        "err": "E_ARITHMETIC"
+      },
+      "input": {
+        "budget": "1000",
+        "clearing_fee_buyer_bps": 0,
+        "compute_fee": "0",
+        "max_debit_mbits": 2000,
+        "price_per_bit": "340282366920938463463374607431768211455"
+      },
+      "name": "funding: a leakage price that cannot be paid in whole units is refused",
+      "op": "fund"
+    },
+    {
+      "expect": {
+        "err": "E_ARITHMETIC"
+      },
+      "input": {
+        "budget": "340282366920938463463374607431768211455",
+        "clearing_fee_buyer_bps": 0,
+        "compute_fee": "1",
+        "max_debit_mbits": 0,
+        "price_per_bit": "0"
+      },
+      "name": "funding: buckets that would not fit in one amount are refused",
+      "op": "fund"
+    },
+    {
+      "expect": {
+        "ok": "Deal"
+      },
+      "input": {
+        "from": "Verdicted",
+        "to": "Deal"
+      },
+      "name": "job state: a verdict can become a deal",
+      "op": "job_transition"
+    },
+    {
+      "expect": {
+        "err": "E_JOB_STATE"
+      },
+      "input": {
+        "from": "Final",
+        "to": "Deal"
+      },
+      "name": "job state: a settled job cannot settle again",
+      "op": "job_transition"
     }
   ],
   "format": 1

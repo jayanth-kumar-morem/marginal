@@ -48,6 +48,12 @@ errors! {
     BalanceLow = "E_BALANCE_LOW",
     AgentCap = "E_AGENT_CAP",
     NoEligibleRoom = "E_NO_ELIGIBLE_ROOM",
+    /// A job cannot move from the state it is in to the one asked for (SDD §3.5).
+    JobStateInvalid = "E_JOB_STATE",
+    /// The snapshot a request names belongs to someone else.
+    SnapshotOwner = "E_SNAPSHOT_OWNER",
+    /// The credential is not signed by a registered issuer, or it has expired.
+    CredentialInvalid = "E_CREDENTIAL",
     // Keys and caps
     PlatformCap = "E_PLATFORM_CAP",
     ListingReleaseCap = "E_LISTING_RELEASE_CAP",

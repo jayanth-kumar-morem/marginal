@@ -11,9 +11,14 @@ use marginal_core::audit::AUDIT_GENESIS;
 use marginal_core::CoreError;
 use near_sdk::{env, near, require, AccountId, PanicOnDefault};
 
+mod agent;
+mod escrow;
 mod events;
 mod fees;
 mod gov;
+mod identity;
+mod job;
+mod leakage;
 mod listing;
 pub mod registry;
 mod snapshot;

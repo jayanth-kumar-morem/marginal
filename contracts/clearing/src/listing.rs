@@ -415,7 +415,7 @@ impl Clearing {
     }
 
     /// One room, uniformly at random from the rooms that can take another job.
-    fn pick_room(&self) -> [u8; 32] {
+    pub(crate) fn pick_room(&self) -> [u8; 32] {
         let free: Vec<[u8; 32]> = KNOWLEDGE_ROOMS
             .iter()
             .flat_map(|class| self.pool(*class))

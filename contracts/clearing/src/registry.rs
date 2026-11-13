@@ -133,14 +133,14 @@ impl Clearing {
     }
 
     /// KeyPolicy admits a room it has verified (SDD §3.11). Only KeyPolicy may call this: it is the
-    /// only contract that checks a quote, and it attaches 1 yocto.
+    /// only contract that checks a quote, and a receipt from it cannot be forged by an access key.
     ///
     /// The registry applies its own policy on top: the platform must be admitted and the room's
     /// measurement must belong to an approved set. The record expires at the earlier of KeyPolicy's
     /// own expiry and 24 h from now. Re-registration (a renewal) replaces the record in place.
     ///
-    /// No storage fee: KeyPolicy attaches 1 yocto, the pool is capped, and only KeyPolicy can write
-    /// here, so clearing's own balance covers a bounded number of rooms.
+    /// No storage fee: KeyPolicy attaches no deposit, the pool is capped, and only KeyPolicy can
+    /// write here, so clearing's own balance covers a bounded number of rooms.
     #[payable]
     pub fn admit_room(&mut self, room: Value) {
         require!(

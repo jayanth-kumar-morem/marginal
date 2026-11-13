@@ -30,6 +30,18 @@ pub(crate) enum Table {
     Pool = b'c' as isize,
     /// room key -> `Vec<u64>`: that room's open jobs (SDD issue 5, `get_jobs_for_room`)
     RoomJobs = b'o' as isize,
+    /// account and token -> balance: what a buyer has deposited and not yet spent (§3.9.3)
+    Balance = b'b' as isize,
+    /// account and token -> claimable: what settlement owes and `claim` pays out (§3.9.4)
+    Claimable = b'q' as isize,
+    /// listing, epoch and nullifier -> () : one appraisal per identity per epoch (AC-14)
+    Nullifier = b'n' as isize,
+    /// account and agent key -> [`AgentCaps`](crate::agent::AgentCaps) (§3.21)
+    Agent = b'g' as isize,
+    /// account and agent key -> [`WindowSpend`](crate::agent::WindowSpend)
+    AgentSpend = b'w' as isize,
+    /// job id (LE) -> the context key sealed to the room's box key (§3.12.4)
+    ContextKey = b'x' as isize,
 }
 
 fn key(table: Table, id: &[u8]) -> Vec<u8> {
@@ -51,6 +63,26 @@ pub(crate) fn put<T: BorshSerialize>(table: Table, id: &[u8], value: &T) {
 /// The storage id of a numbered record.
 pub(crate) fn num(id: u64) -> [u8; 8] {
     id.to_le_bytes()
+}
+
+/// The storage id of a balance or a claimable amount: one account's holding of one token.
+pub(crate) fn holding(account: &near_sdk::AccountId, token: &near_sdk::AccountId) -> Vec<u8> {
+    [account.as_bytes(), b"/", token.as_bytes()].concat()
+}
+
+/// The storage id of an agent key: one key on one account.
+pub(crate) fn agent_id(account: &near_sdk::AccountId, key: &[u8]) -> Vec<u8> {
+    [account.as_bytes(), b"/", key].concat()
+}
+
+/// The storage id of a spent nullifier: one identity, one listing, one epoch (AC-14).
+pub(crate) fn nullifier_id(listing_id: u64, epoch: u32, nullifier: &[u8; 32]) -> Vec<u8> {
+    [
+        listing_id.to_le_bytes().as_slice(),
+        &epoch.to_le_bytes(),
+        nullifier,
+    ]
+    .concat()
 }
 
 /// The storage id of an appraiser: `id@version`, so one id can have several versions.

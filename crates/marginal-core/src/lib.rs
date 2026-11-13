@@ -11,6 +11,9 @@
 //! - [`leakage`]: the millibit table and `max_debit` (SDD §3.8).
 //! - [`commit`]: the job commitment and the salted good commitment (SDD §3.12.3).
 //! - [`listing`]: what a listing must satisfy; [`reports`]: what a room signs about one (SDD §3.4).
+//! - [`lifecycle`]: the job state machine (SDD §3.5). [`funding`]: what a job costs (SDD §3.9.1).
+//! - [`credential`]: the nullifier credential compliance signs (SDD §3.20).
+//! - [`request`]: what a buyer sends to `request_appraisal` (SDD §3.4).
 //! - [`verdict`], [`certificate`], [`delivery`]: the signed and hashed messages (SDD §3.17-§3.19),
 //!   with their signing bytes and hashes.
 //! - [`audit`]: the audit hash chain step (SDD §3.10).
@@ -27,16 +30,20 @@ pub mod certificate;
 pub mod codec;
 pub mod commit;
 pub mod conservation;
+pub mod credential;
 pub mod delivery;
 pub mod error;
+pub mod funding;
 pub mod json;
 pub mod keyrelease;
 pub mod leakage;
 mod leakage_lut;
+pub mod lifecycle;
 pub mod listing;
 pub mod math;
 pub mod pricing;
 pub mod reports;
+pub mod request;
 pub mod types;
 pub mod verdict;
 pub mod verifier;

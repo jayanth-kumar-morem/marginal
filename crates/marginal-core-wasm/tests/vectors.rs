@@ -21,7 +21,7 @@ use std::path::PathBuf;
 #[path = "../../marginal-core/tests/common/mod.rs"]
 mod common;
 use common::{
-    audit_entry, binding, certificate, delivery, h, job_core, key_request, provisioning,
+    audit_entry, binding, certificate, delivery, h, job_core, key_request, nullifier, provisioning,
     real_events, real_reply_bytes, screening, seller, valid_log, verdict, verified_for, NOW,
 };
 use marginal_core::reports::{ScreeningResult, FLAG_MNPI};
@@ -288,6 +288,74 @@ fn attestation_cases() -> Vec<Case> {
             "screening: a listing flagged for MNPI",
             "screening_signing_bytes",
             to_value(screening(ScreeningResult::Flag { reason: FLAG_MNPI })).unwrap(),
+        ),
+        // What a buyer's job costs and where it may go next (SDD §3.9.1, §3.5; E5).
+        known(
+            "nullifier: what the compliance service signs",
+            "nullifier_signing_bytes",
+            to_value(nullifier()).unwrap(),
+            ok(json!(to_hex(
+                &[b"marginal/nullifier/v1".as_slice(), &to_bytes(&nullifier())].concat()
+            ))),
+        ),
+        known(
+            "funding: 1,000 USDC at 25 bps, 2.4 bits at 0.05 USDC a bit",
+            "fund",
+            json!({
+                "budget": (1_000 * USDC).to_string(),
+                "compute_fee": (10 * USDC).to_string(),
+                "price_per_bit": (USDC / 20).to_string(),
+                "max_debit_mbits": 2_400,
+                "clearing_fee_buyer_bps": 25,
+            }),
+            ok(json!({
+                "buckets": {
+                    "budget": (1_000 * USDC).to_string(),
+                    "compute": (10 * USDC).to_string(),
+                    "comp_reserved": "120000",
+                    "fee_reserved": "2500000",
+                    "storage": "0",
+                    "held": "0",
+                    "refund": "0",
+                },
+                "total": (1_000 * USDC + 10 * USDC + 120_000 + 2_500_000).to_string(),
+            })),
+        ),
+        known(
+            "funding: a leakage price that cannot be paid in whole units is refused",
+            "fund",
+            json!({
+                "budget": "1000",
+                "compute_fee": "0",
+                "price_per_bit": u128::MAX.to_string(),
+                "max_debit_mbits": 2_000,
+                "clearing_fee_buyer_bps": 0,
+            }),
+            json!({"err": "E_ARITHMETIC"}),
+        ),
+        known(
+            "funding: buckets that would not fit in one amount are refused",
+            "fund",
+            json!({
+                "budget": u128::MAX.to_string(),
+                "compute_fee": "1",
+                "price_per_bit": "0",
+                "max_debit_mbits": 0,
+                "clearing_fee_buyer_bps": 0,
+            }),
+            json!({"err": "E_ARITHMETIC"}),
+        ),
+        known(
+            "job state: a verdict can become a deal",
+            "job_transition",
+            json!({"from": "Verdicted", "to": "Deal"}),
+            ok(json!("Deal")),
+        ),
+        known(
+            "job state: a settled job cannot settle again",
+            "job_transition",
+            json!({"from": "Final", "to": "Deal"}),
+            json!({"err": "E_JOB_STATE"}),
         ),
     ]
 }
@@ -652,6 +720,9 @@ fn the_cases_cover_every_operation_and_error() {
         "ppid_hash",
         "provisioning_signing_bytes",
         "screening_signing_bytes",
+        "nullifier_signing_bytes",
+        "fund",
+        "job_transition",
     ] {
         assert!(ops.contains(op), "no vector for {op}");
     }

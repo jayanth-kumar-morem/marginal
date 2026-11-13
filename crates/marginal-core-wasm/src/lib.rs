@@ -21,10 +21,13 @@ use marginal_core::certificate::{
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::commit::{good_commitment, job_commitment, JobCore};
 use marginal_core::conservation::check_conservation;
+use marginal_core::credential::{nullifier_signing_bytes, NullifierCredential};
 use marginal_core::delivery::{delivery_hash, DeliveryV1};
+use marginal_core::funding::{fund, total};
 use marginal_core::json::{dec, hex};
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
+use marginal_core::lifecycle::transition;
 use marginal_core::pricing::{apply_rule, ceiling, judgement_factor, measured_index, valuation};
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningV1,
@@ -32,7 +35,7 @@ use marginal_core::reports::{
 use marginal_core::verdict::{verdict_signing_bytes, VerdictV1};
 use marginal_core::verifier::VerificationResult;
 use marginal_core::{
-    AccountId, Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, OutputSchema,
+    AccountId, Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, JobState, OutputSchema,
     PricingRule, VerdictPrivacy,
 };
 use serde::de::DeserializeOwned;
@@ -128,6 +131,33 @@ struct ListingPathIn {
 struct PathIn {
     path: String,
 }
+
+/// A move in the job state machine (SDD §3.5).
+#[derive(Deserialize)]
+struct TransitionIn {
+    from: JobState,
+    to: JobState,
+}
+
+/// What a job would cost to open (SDD §3.9.1).
+#[derive(Deserialize)]
+struct FundIn {
+    budget: Dec,
+    compute_fee: Dec,
+    price_per_bit: Dec,
+    max_debit_mbits: u64,
+    clearing_fee_buyer_bps: u32,
+}
+
+#[derive(Serialize)]
+struct FundOut {
+    buckets: Buckets,
+    total: Dec,
+}
+
+/// A `u128` as the decimal string the JSON model uses (`marginal_core::json::dec`).
+#[derive(Deserialize, Serialize, Clone, Copy)]
+struct Dec(#[serde(with = "marginal_core::json::dec")] u128);
 
 #[derive(Deserialize)]
 struct PpidIn {
@@ -246,6 +276,23 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
         "screening_signing_bytes" => {
             run(input, |r: ScreeningV1| Ok(Hex(screening_signing_bytes(&r))))
         }
+        "nullifier_signing_bytes" => run(input, |c: NullifierCredential| {
+            Ok(Hex(nullifier_signing_bytes(&c)))
+        }),
+        "job_transition" => run(input, |i: TransitionIn| transition(i.from, i.to)),
+        "fund" => run(input, |i: FundIn| {
+            let buckets = fund(
+                i.budget.0,
+                i.compute_fee.0,
+                i.price_per_bit.0,
+                i.max_debit_mbits,
+                i.clearing_fee_buyer_bps,
+            )?;
+            Ok(FundOut {
+                total: Dec(total(&buckets)?),
+                buckets,
+            })
+        }),
         "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
         "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),
         "audit_step" => run(input, |i: AuditIn| {

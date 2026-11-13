@@ -15,12 +15,16 @@ use marginal_core::attest::{ppid_hash, SimRoom};
 use marginal_core::certificate::measurement_hash;
 use marginal_core::codec::to_bytes;
 use marginal_core::json::to_hex;
+use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, AppKey, KeyRequest};
 use marginal_core::listing::PublishSpec;
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningResult,
     ScreeningV1, FLAG_MNPI,
 };
-use marginal_core::{BlobRef, PayoutRoute, RoomClass};
+use marginal_core::request::AppraisalRequest;
+use marginal_core::{
+    BlobRef, DisplayMode, PayoutRoute, RefundRoute, RoomClass, ValueClass, VerdictPrivacy,
+};
 use near_workspaces::network::Sandbox;
 use near_workspaces::result::ExecutionFinalResult;
 use near_workspaces::types::{Gas, NearToken};
@@ -61,10 +65,12 @@ fn b64(bytes: &[u8]) -> String {
 
 struct World {
     worker: Worker<Sandbox>,
+    root: Account,
     clearing: Contract,
     keypolicy: Contract,
     gov: Account,
     seller: Account,
+    buyer: Account,
     operator: Account,
 }
 
@@ -127,8 +133,10 @@ async fn world() -> Result<World> {
         .into_result()?;
     Ok(World {
         seller: subaccount(&root, "seller").await?,
+        buyer: subaccount(&root, "buyer").await?,
         operator: subaccount(&root, "operator").await?,
         worker,
+        root,
         clearing,
         keypolicy,
         gov,
@@ -247,6 +255,95 @@ async fn register_room(w: &World) -> Result<ExecutionFinalResult> {
 
 async fn view(contract: &Contract, method: &str, args: Value) -> Result<Value> {
     Ok(contract.view(method).args_json(args).await?.json()?)
+}
+
+/// A listing the seller has taken all the way to `Active`: created, provisioned, published and
+/// screened `Pass` by the room.
+async fn active_listing(w: &World, token: &str) -> Result<u64> {
+    let listing = marginal_core::listing::ListingSpec {
+        token: token.to_string(),
+        ..spec()
+    };
+    let listing_id: u64 = call(
+        &w.seller,
+        &w.clearing,
+        "create_listing",
+        json!({ "spec": b64(&to_bytes(&listing)) }),
+        fee(LISTING_FEE),
+    )
+    .await?
+    .json::<String>()?
+    .parse()?;
+    let job_id: u64 = call(
+        &w.seller,
+        &w.clearing,
+        "begin_provisioning",
+        json!({ "listing_id": listing_id.to_string() }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json::<String>()?
+    .parse()?;
+    let report = ProvisioningV1 {
+        domain: ProvisioningV1::DOMAIN,
+        chain_id: CHAIN_ID.into(),
+        clearing: w.clearing.id().to_string(),
+        job_id,
+        listing_id,
+        listing_version: 1,
+        room_key: room_key(),
+        pk_l: [0x5a; 32],
+        cert_hash: [0x6b; 32],
+    };
+    call(
+        &w.operator,
+        &w.clearing,
+        "submit_provisioning",
+        json!({"report": b64(&to_bytes(&report)), "sig": sign(&provisioning_signing_bytes(&report))}),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    let publish = PublishSpec {
+        good_commitment: [0xab; 32],
+        ciphertext: BlobRef {
+            uri_hash: [1; 32],
+            sha256: [2; 32],
+            size_class: 3,
+        },
+        payout: PayoutRoute::NearAccount(w.seller.id().to_string()),
+    };
+    let screening_job: u64 = call(
+        &w.seller,
+        &w.clearing,
+        "publish_listing",
+        json!({ "listing_id": listing_id.to_string(), "publish": b64(&to_bytes(&publish)) }),
+        fee(PUBLISH_FEE),
+    )
+    .await?
+    .json::<String>()?
+    .parse()?;
+    let screening = ScreeningV1 {
+        domain: ScreeningV1::DOMAIN,
+        chain_id: CHAIN_ID.into(),
+        clearing: w.clearing.id().to_string(),
+        job_id: screening_job,
+        listing_id,
+        listing_version: 1,
+        room_key: room_key(),
+        result: ScreeningResult::Pass,
+        cert_hash: [0x7c; 32],
+    };
+    call(
+        &w.operator,
+        &w.clearing,
+        "submit_screening",
+        json!({"report": b64(&to_bytes(&screening)), "sig": sign(&screening_signing_bytes(&screening))}),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    Ok(listing_id)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -627,5 +724,189 @@ async fn a_flagged_listing_is_held_and_a_report_cannot_be_forged() -> Result<()>
     );
     assert_eq!(measurement_hash(&measurement(false)).len(), 32);
     assert!(w.worker.view_block().await?.height() > 0);
+    Ok(())
+}
+
+/// The whole buyer path on built wasm, ending in a key release the **real** KeyPolicy asks for
+/// (E5.5, E5.6). KeyPolicy's wasm is fixed, so this is the test that clearing's `check_room` and
+/// `authorize_release` are the two calls it actually makes, with its gas and its 1 yocto.
+#[tokio::test]
+async fn a_buyer_funds_a_job_and_keypolicy_releases_its_key() -> Result<()> {
+    let w = world().await?;
+    seed_policy(&w).await?;
+    register_room(&w).await?.into_result()?;
+    // The buyer gets test dollars and deposits them into clearing (NEP-141, §3.9.3 path 1).
+    let token = w
+        .root
+        .create_subaccount("musdc")
+        .initial_balance(NearToken::from_near(20))
+        .transact()
+        .await?
+        .into_result()?
+        .deploy(&wasm("musdc", "musdc"))
+        .await?
+        .into_result()?;
+    token
+        .call("new")
+        .args_json(json!({ "faucet": w.gov.id() }))
+        .transact()
+        .await?
+        .into_result()?;
+    call(
+        &w.gov,
+        &w.clearing,
+        "set_tokens",
+        json!({ "tokens": [token.id()] }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    let listing_id = active_listing(&w, token.id().as_str()).await?;
+    call(
+        &w.gov,
+        &token,
+        "mint",
+        json!({ "account_id": w.buyer.id(), "amount": "10000000000" }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.buyer,
+        &token,
+        "storage_deposit",
+        json!({ "account_id": w.clearing.id() }),
+        NearToken::from_millinear(10),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.buyer,
+        &token,
+        "ft_transfer_call",
+        json!({
+            "receiver_id": w.clearing.id(),
+            "amount": "10000000000",
+            "msg": json!({"Deposit": {"account": w.buyer.id()}}).to_string(),
+        }),
+        NearToken::from_yoctonear(1),
+    )
+    .await?
+    .into_result()?;
+    let balance: String = w
+        .clearing
+        .view("get_balance")
+        .args_json(json!({ "account": w.buyer.id(), "token": token.id() }))
+        .await?
+        .json()?;
+    assert_eq!(balance, "10000000000", "the deposit landed");
+
+    // The buyer asks for an appraisal, funded from that balance.
+    let request = AppraisalRequest {
+        listing_id,
+        listing_version: 1,
+        snapshot_id: None,
+        budget: 500_000_000,
+        mode: DisplayMode::Blind,
+        privacy: VerdictPrivacy::Open,
+        n_judges: 2,
+        delivery_pk: [0x11; 32],
+        compliance_pk: None,
+        context_auth_pk: [0x22; 32],
+        sealed_context_key: vec![7, 7, 7],
+        refund_to: RefundRoute::Balance,
+        nullifier: None,
+        nullifier_sig: None,
+    };
+    let answer: Value = call(
+        &w.buyer,
+        &w.clearing,
+        "request_appraisal",
+        json!({ "request": b64(&to_bytes(&request)) }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json()?;
+    assert_eq!(answer["status"], "Created", "{answer}");
+    let job_id: u64 = answer["job_id"].as_str().unwrap().parse()?;
+    let job = view(
+        &w.clearing,
+        "get_job",
+        json!({ "job_id": job_id.to_string() }),
+    )
+    .await?;
+    assert_eq!(job["state"], "Assigned");
+    assert_eq!(job["buyer"], w.buyer.id().to_string());
+
+    // The room asks KeyPolicy for the listing key. KeyPolicy checks its own records, then asks
+    // clearing: `check_room` and `authorize_release`, both of them the real thing.
+    let seller_id = w.seller.id().to_string();
+    let key_request = KeyRequest {
+        chain_id: CHAIN_ID.into(),
+        keypolicy: w.keypolicy.id().to_string(),
+        room_key: room_key(),
+        job_id,
+        path: listing_path(&seller_id, listing_id, 1),
+        app_key: AppKey {
+            pk1: [5; 48],
+            pk2: [6; 96],
+        },
+        job_commitment: marginal_core::json::parse_hex(job["job_commitment"].as_str().unwrap())
+            .unwrap(),
+        value_class: ValueClass::M,
+    };
+    // The seller pins the room's software first, or KeyPolicy refuses the release.
+    call(
+        &w.seller,
+        &w.keypolicy,
+        "set_pins",
+        json!({
+            "listing_id": listing_id.to_string(),
+            "version": 1,
+            "pins": [to_hex(&measurement_hash(&measurement(false)))],
+        }),
+        fee(keypolicy::PINS_FEE),
+    )
+    .await?
+    .into_result()?;
+
+    let authorized = call(
+        &w.operator,
+        &w.keypolicy,
+        "authorize",
+        json!({
+            "request": b64(&to_bytes(&key_request)),
+            "room_sig": b64(&room_signing_key().sign(&key_request_signing_bytes(&key_request)).to_bytes()),
+        }),
+        fee(keypolicy::TICKET_FEE),
+    )
+    .await?;
+    assert!(authorized.is_success(), "{}", failures(&authorized));
+
+    // Clearing moved the job to `Computing` and recorded the release on its own chain.
+    let job = view(
+        &w.clearing,
+        "get_job",
+        json!({ "job_id": job_id.to_string() }),
+    )
+    .await?;
+    assert_eq!(job["state"], "Computing");
+    let entries = view(&w.clearing, "get_audit", json!({"from": "1", "limit": 100})).await?;
+    let kinds: Vec<&str> = entries
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds.last(), Some(&"KeyReleaseAuthorized"));
+
+    // And the context key the buyer sealed is there for the room to collect (§3.12.4).
+    let sealed: Option<String> = w
+        .clearing
+        .view("get_context_key")
+        .args_json(json!({ "job_id": job_id.to_string() }))
+        .await?
+        .json()?;
+    assert!(sealed.is_some(), "the room can fetch its context key");
     Ok(())
 }
