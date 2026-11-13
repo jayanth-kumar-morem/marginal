@@ -591,6 +591,105 @@ fn a_real_mpc_room_passes_the_hardware_checks_and_fails_our_event_policy() {
     );
 }
 
+/// A second REAL dstack CVM, and this one runs the key provider a Marginal room must run
+/// (`key_provider: "none"`). It is upstream's own fixture, captured on their machine, so it is
+/// evidence we did not make: its event log replays to the RTMR3 inside its quote, and its
+/// `key-provider` payload is `KEY_PROVIDER_NONE` byte for byte.
+///
+/// It is still not a Marginal room, and the test pins the two reasons our policy refuses it: the
+/// CVM kept an instance id (`no_instance_id` was not set in its `app-compose.json`) and its guest
+/// predates the `storage-encrypted` event, which dstack only writes from 0.6.0 (E7.2 settles both).
+#[test]
+fn a_real_cvm_with_our_key_provider_replays_to_its_quoted_rtmr3() {
+    let file: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(fixture("dstack-none-quote.json")).unwrap()).unwrap();
+    let quote: Vec<u8> = marginal_core::json::parse_hex(file["quote"].as_str().unwrap()).unwrap();
+    // A TDX v4 quote is a 48-byte header then the TD report; RTMR3 is at offset 472 of the report.
+    let quoted: [u8; 48] = quote[48 + 472..48 + 520].try_into().unwrap();
+
+    let log: serde_json::Value = serde_json::from_str(file["event_log"].as_str().unwrap()).unwrap();
+    let events: Vec<Rtmr3Event> = log
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["imr"] == 3)
+        .map(|e| Rtmr3Event {
+            event_type: u32::try_from(e["event_type"].as_u64().unwrap()).unwrap(),
+            name: e["event"].as_str().unwrap().into(),
+            payload: marginal_core::json::parse_hex(e["event_payload"].as_str().unwrap()).unwrap(),
+        })
+        .collect();
+    assert_eq!(events.len(), 9);
+    assert_eq!(
+        replay_rtmr3(&events),
+        Ok(quoted),
+        "replays to its own quote"
+    );
+
+    let payload = |name: &str| {
+        events
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.payload.clone())
+    };
+    assert_eq!(payload("key-provider").as_deref(), Some(KEY_PROVIDER_NONE));
+    assert_eq!(
+        payload("app-id").unwrap().as_slice(),
+        &payload("compose-hash").unwrap()[..20],
+        "app-id is the compose prefix on a real no-KMS machine too"
+    );
+
+    assert_eq!(room_events(&events), Err(CoreError::Rtmr3Events));
+    assert_eq!(
+        payload("storage-encrypted"),
+        None,
+        "a guest older than 0.6.0"
+    );
+    assert!(
+        !payload("instance-id").unwrap().is_empty(),
+        "an instance id"
+    );
+}
+
+/// Three of our policy's rules are assumptions about what dstack writes, not about our room's
+/// configuration. A real production CVM is the evidence for them: dstack sets `app-id` to the
+/// first 20 bytes of the compose hash, leaves `instance-id` empty, and writes the key provider as
+/// compact JSON, `name` before `id` — the shape [`KEY_PROVIDER_NONE`] has to be written in exactly.
+#[test]
+fn the_real_log_is_written_the_way_the_policy_expects() {
+    let events = real_events();
+    let payload = |name: &str| {
+        events
+            .iter()
+            .find(|e| e.name == name)
+            .unwrap_or_else(|| panic!("the real log has no {name} event"))
+            .payload
+            .clone()
+    };
+    let compose = payload("compose-hash");
+    assert_eq!(compose.len(), 32);
+    assert_eq!(payload("app-id").as_slice(), &compose[..20]);
+    assert!(payload("instance-id").is_empty());
+
+    let key_provider = payload("key-provider");
+    let json: serde_json::Value = serde_json::from_slice(&key_provider).unwrap();
+    assert_eq!(
+        json["name"], "local-sgx",
+        "near/mpc's node runs a KMS, not none"
+    );
+    assert_eq!(
+        key_provider,
+        format!(
+            r#"{{"name":"{}","id":"{}"}}"#,
+            json["name"].as_str().unwrap(),
+            json["id"].as_str().unwrap()
+        )
+        .into_bytes(),
+        "compact JSON, name before id, no spaces"
+    );
+    assert_eq!(KEY_PROVIDER_NONE, br#"{"name":"none","id":""}"#);
+}
+
 #[test]
 fn the_registration_request_and_admission_have_stable_shapes() {
     let request = RegisterRoomRequest {
