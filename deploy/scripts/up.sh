@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # One command deploys a profile: ./deploy/scripts/up.sh <sandbox|testnet-demo> [--once]
-# Order: token -> clearing -> KeyPolicy -> seed room policy -> delete KeyPolicy keys -> write manifest.
+# Order: token -> clearing -> KeyPolicy (created keyless) -> seed room policy -> write manifest.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
