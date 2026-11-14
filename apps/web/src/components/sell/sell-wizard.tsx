@@ -426,12 +426,18 @@ export function SellWizard({
       .finally(() => setPublishBusy(false));
   };
 
+  /**
+   * A step is open only once the one before it has produced what it produces: the canonical bytes,
+   * the validated spec, the listing, the ciphertext, the pins. Offering a step whose input does not
+   * exist yet is how a seller ends up with a listing that cannot be opened or released.
+   */
   const reached = (target: number): boolean => {
-    if (target <= 2) return target === 1 || doc !== null;
-    if (target === 3) return doc !== null;
+    if (target === 1) return true;
+    if (target <= 3) return doc !== null;
     if (target === 4) return specBase64 !== null;
-    if (target <= 6) return listing !== null;
-    return sealed !== null;
+    if (target === 5) return listing !== null;
+    if (target === 6) return sealed !== null;
+    return sealed !== null && pinsDone;
   };
 
   return (

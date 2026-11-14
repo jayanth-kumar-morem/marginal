@@ -55,7 +55,7 @@ const listing = (id: number, over: Partial<Listing> = {}): Listing => ({
   version: 1,
   status: "Active",
   asset_class: "Knowledge",
-  category: "Research",
+  category: 1,
   licence_class: 1,
   good_commitment: "aa".repeat(32),
   ciphertext: { uri_hash: "bb".repeat(32), sha256: "cc".repeat(32), size_class: 4 },

@@ -21,7 +21,7 @@ const listing = (id: number, over: Partial<Listing> = {}): Listing => ({
   version: 1,
   status: "Active",
   asset_class: "Knowledge",
-  category: "credit-research",
+  category: 1,
   licence_class: 1,
   good_commitment: "ab".repeat(32),
   ciphertext: { uri_hash: "cd".repeat(32), sha256: "ef".repeat(32), size_class: 12 },
@@ -125,9 +125,15 @@ test("every status says whether a buyer can appraise, and why not", () => {
 });
 
 test("the teaser is public metadata only, and the price line names the rule", () => {
-  assert.equal(teaser(listing(1)), "Knowledge · credit-research · large · class M");
-  assert.equal(teaser(listing(1, { ciphertext: { uri_hash: "", sha256: "", size_class: 0 } })), "Knowledge · credit-research · tiny · class M");
-  assert.equal(teaser(listing(1, { ciphertext: { uri_hash: "", sha256: "", size_class: 99 } })), "Knowledge · credit-research · very large · class M");
+  assert.equal(teaser(listing(1)), "Knowledge · category 1 · large · class M");
+  assert.equal(
+    teaser(listing(1, { ciphertext: { uri_hash: "", sha256: "", size_class: 0 } })),
+    "Knowledge · category 1 · tiny · class M",
+  );
+  assert.equal(
+    teaser(listing(1, { ciphertext: { uri_hash: "", sha256: "", size_class: 99 } })),
+    "Knowledge · category 1 · very large · class M",
+  );
 
   assert.deepEqual(priceLine(listing(1)), { rule: "Posted", ask: "400000000" });
   const indexed = listing(1, { rule: { ValueIndexed: { p_min: "1", p_full: "2" } } });

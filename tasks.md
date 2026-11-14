@@ -112,7 +112,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | **3** | D10 |
 | [E11](#e11-services) | Gateway, operator agent, compliance | 4 | **4** | all |
 | [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — (both built in part: the SDK's crypto and the verifier) | all, D2 |
-| [E13](#e13-web-app) | Web app | 7 | **4** (shell, listings, jobs, verify and rooms) | all |
+| [E13](#e13-web-app) | Web app | 7 | **7** | all |
 | [E14](#e14-tests-fixtures-and-demo-scripts) | Tests, fixtures, demo scripts | 3 | — | D4, D5, D6, D11 |
 | [E15](#e15-demo-and-submission) | Demo and submission | 5 | — | all |
 | [E16–E19](#m2-v1-mainnet-canary) | Mainnet canary | — | — | — |
@@ -1199,9 +1199,31 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     top of the four headers that came with the copy), and no wallet has signed anything, because
     MyNearWallet cannot sign for a local sandbox — that needs the testnet deploy
     ([P-3](#paid-and-account-gated-steps-jay)).
-- [ ] **E13.2 `/sell`** · P0 (payout: P1, D7)
+- [x] **E13.2 `/sell`** · P0 (payout: P1, D7)
   - Wizard: file → canonicalise → parameters → provision → seal and upload → pins → publish.
   - The payout step shows the derived Solana address and a live dry quote, which is not stored.
+  - **Done:** a seller can take a document from their disk to a published listing without the
+    plaintext leaving the browser, and see every argument before it is signed.
+  - **Completed 2026-11-14.** Seven steps that unlock strictly in order, because each one needs what
+    the last produced: the document is canonicalised and committed to in the browser, the spec is
+    checked with core's own `validate_spec` **before** any gas is paid, the listing is created and
+    provisioning begun, the good is sealed and uploaded, the pins are set, and only then is it
+    published. What reaches the chain is a commitment and a ciphertext hash; what reaches the
+    gateway is ciphertext; what reaches our server is neither.
+  - **The seller-to-room handshake is verified against the room's own code**, which is the part that
+    could silently not work: an object sealed by `@marginal/sdk` and uploaded through the gateway
+    was fetched back and opened by **the room's** `unseal` and `aeadOpen`, and
+    `SHA-256(salt ‖ good)` equalled the published commitment. `/api/encode` was exercised against
+    the real wasm (an allow-listed op encodes, a disallowed one is 403, bad input is
+    `E_DECODE`), and `/api/blob` against the real gateway (stored and served back byte-identical;
+    a gateway that is not running is a 502 that says so). Four mutations — unpadded base units,
+    salt and good swapped, CRLF normalisation removed, the nonce not prepended — were each caught
+    by the tests and reverted.
+  - **Not verified:** the four signed steps (`create_listing`, `begin_provisioning`, `set_pins`,
+    `publish_listing`). No browser wallet signs for a sandbox, and no eligible room exists on one,
+    so step 5 is blocked on `pk_L` — which the page says plainly rather than hiding. Their argument
+    shapes were checked by reading the contracts. The payout step's live dry quote (D7) goes through
+    the gateway's 1Click proxy and is displayed, never stored, per its terms.
 - [x] **E13.3 `/listings` and `/listing/[id]`** · P0 · D1, D4
   - Rule, leakage meter (spent / reserved / budget), pins, screening status.
   - **Done:** the market lists every published listing from contract views alone, and a listing's

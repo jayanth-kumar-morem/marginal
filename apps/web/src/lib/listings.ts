@@ -119,7 +119,8 @@ export function teaser(listing: Listing): string {
   const size = ["tiny", "small", "medium", "large", "very large"][
     Math.min(4, Math.floor(listing.ciphertext.size_class / 4))
   ];
-  return `${listing.asset_class} · ${listing.category} · ${size} · class ${listing.value_class}`;
+  // The category is an id: governance holds the table that names it, and M1 has no view for it.
+  return `${listing.asset_class} · category ${listing.category} · ${size} · class ${listing.value_class}`;
 }
 
 /** The price a buyer would pay, and under which rule. */

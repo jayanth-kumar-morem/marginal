@@ -32,7 +32,8 @@ export interface Listing {
   readonly version: number;
   readonly status: string;
   readonly asset_class: string;
-  readonly category: string;
+  /** `CategoryId` is a newtype over `u16`, so the view sends a number, not a name. */
+  readonly category: number;
   readonly licence_class: number;
   readonly good_commitment: string;
   readonly ciphertext: { readonly uri_hash: string; readonly sha256: string; readonly size_class: number };

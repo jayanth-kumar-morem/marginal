@@ -69,8 +69,8 @@ export function StepSeal({
             </Row>
           </Rows>
           <Done>
-            Uploaded. Only a room holding the listing key can open either object; this tab kept no
-            copy of the DEK, and the gateway never saw the plaintext.
+            Uploaded. Only a room holding the listing key can open either object: the DEK was never
+            written down anywhere, and the gateway only ever saw ciphertext.
           </Done>
         </>
       )}

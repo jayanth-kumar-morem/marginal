@@ -9,10 +9,32 @@
  * `@marginal/core-wasm` loads `core.wasm` with `node:fs` at module scope, so it is a **server-only**
  * dependency: it is listed in `serverExternalPackages` and imported only from route handlers.
  */
+import { readFileSync } from "node:fs";
+
 import type { NextConfig } from "next";
 
-/** Where the browser may talk: its own origin, and the chain RPC the manifest names. */
-const rpc = process.env.MARGINAL_RPC_URL ?? "https://test.rpc.fastnear.com";
+/**
+ * Where the browser may talk: its own origin, and the chain RPC this deployment uses. Pages read
+ * the chain from the client as well as the server, so the CSP has to name the same endpoint
+ * `src/lib/config.ts` resolves — which means reading the deploy manifest here too, since that is
+ * where a sandbox's ephemeral port lives.
+ */
+function rpcUrl(): string {
+  if (process.env.MARGINAL_RPC_URL !== undefined) return process.env.MARGINAL_RPC_URL;
+  const manifest = process.env.MARGINAL_MANIFEST;
+  if (manifest !== undefined) {
+    try {
+      const parsed = JSON.parse(readFileSync(manifest, "utf8")) as { rpc?: string[] };
+      if (typeof parsed.rpc?.[0] === "string") return parsed.rpc[0];
+    } catch {
+      // A manifest that cannot be read is not a reason to refuse to start: the default below is a
+      // testnet endpoint, and a deployment that wants another sets MARGINAL_RPC_URL.
+    }
+  }
+  return "https://test.rpc.fastnear.com";
+}
+
+const rpc = rpcUrl();
 const wallets = "https://testnet.mynearwallet.com https://wallet.meteorwallet.app";
 
 const csp = [
