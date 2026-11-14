@@ -10,6 +10,8 @@
  */
 import type { Embedder } from "./embed.js";
 import { novelty } from "./novelty.js";
+import { scoreAll } from "../../judges/index.js";
+import type { JudgePort } from "../../judges/types.js";
 import { quantise, type Appraisal, type AppraisalInput, type Appraiser } from "../types.js";
 
 /** 5% steps, as §3.15.1's component table says. */
@@ -22,8 +24,11 @@ export const N_PUB_WITHOUT_CORPUS = 10_000;
  */
 export const MIN_CONTEXT_CLAIMS = 30;
 
-/** Builds the appraiser. The embedder is loaded once per worker and reused for every claim. */
-export function knowledgeAppraiser(embedder: Embedder): Appraiser {
+/**
+ * Builds the appraiser. The embedder is loaded once per worker and reused for every claim, and the
+ * judges — if the listing allows any — can only take value off what the measurement found (§3.7).
+ */
+export function knowledgeAppraiser(embedder: Embedder, judges: readonly JudgePort[] = []): Appraiser {
   return {
     id: "knowledge",
     version: 1,
@@ -31,12 +36,17 @@ export function knowledgeAppraiser(embedder: Embedder): Appraiser {
     componentAlphabets: [COMPONENT_LEVELS, COMPONENT_LEVELS],
     async appraise(input: AppraisalInput): Promise<Appraisal> {
       const measured = await novelty(embedder, input.good, input.context, input.need);
+      const factors = await scoreAll(judges, {
+        need: input.need,
+        good: input.good,
+        requestId: input.requestId,
+      });
       return {
         components: [
           quantise(measured.bps, COMPONENT_LEVELS),
           quantise(N_PUB_WITHOUT_CORPUS, COMPONENT_LEVELS),
         ],
-        factors: [],
+        factors,
         shown: [],
         // Counts, never values: how much there was to measure, not what any of it was.
         datasheet: {

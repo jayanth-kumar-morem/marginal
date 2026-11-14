@@ -138,6 +138,24 @@ export {
   type SignedCertificate,
   type Scope,
 } from "./cert/forget.js";
+export {
+  judgesFor,
+  scoreAll,
+  type JudgeChoice,
+} from "./judges/index.js";
+export {
+  nearAiJudge,
+  requestBody,
+  completionContent,
+  NEAR_AI_BASE,
+  JUDGE_MODELS,
+  ACCEPTED_SIGNATURE_KIND,
+  MAX_TOKENS as JUDGE_MAX_TOKENS,
+  type NearAiOptions,
+} from "./judges/near-ai-cloud.js";
+export { simJudge, simFactor, SIM_SIGNER, JUDGE_SCALE, SIM_LOW, SIM_HIGH } from "./judges/sim.js";
+export { SYSTEM_PROMPT, userPrompt } from "./judges/prompt.js";
+export type { JudgePort, JudgeTask, ModelProof } from "./judges/types.js";
 export { screen, FLAG_MNPI, type Screening, type ScreeningResult } from "./appraisers/screening/index.js";
 export { quantise, type Appraiser, type Appraisal, type AppraisalInput, type JudgeFactor } from "./appraisers/types.js";
 export {

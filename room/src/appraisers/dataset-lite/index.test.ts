@@ -121,22 +121,20 @@ test("a dataset that teaches the buyer's eval set shows lift, and the appraiser 
   const appraiser = datasetLiteAppraiser(coordinates, JOB);
   assert.equal(appraiser.id, "dataset-lite");
   assert.equal(appraiser.formulaId, "DatasetLiteV0");
-  const appraised = await appraiser.appraise({
+  const input = {
     good: seller.map((r) => JSON.stringify(r)).join("\n"),
     context: JSON.stringify(buyer),
     need: "ignored",
-  });
+    requestId: "job-1",
+  };
+  const appraised = await appraiser.appraise(input);
   assert.equal(appraised.components.length, 2);
   for (const component of appraised.components) assert.equal(component % 500, 0);
   assert.deepEqual(appraised.shown, []);
   assert.equal(appraised.datasheet.rows, 2);
   // The same job measured twice gives the same answer, bootstrap and all (AC-38).
   assert.deepEqual(
-    await datasetLiteAppraiser(coordinates, JOB).appraise({
-      good: seller.map((r) => JSON.stringify(r)).join("\n"),
-      context: JSON.stringify(buyer),
-      need: "ignored",
-    }),
+    await datasetLiteAppraiser(coordinates, JOB).appraise(input),
     appraised,
   );
 });
@@ -145,7 +143,7 @@ test("a context that is not a train and eval split is refused", async () => {
   const appraiser = datasetLiteAppraiser(coordinates, JOB);
   const good = JSON.stringify(row("1,0,0", "x"));
   await assert.rejects(
-    () => appraiser.appraise({ good, context: JSON.stringify({ train: [] }), need: "" }),
+    () => appraiser.appraise({ good, context: JSON.stringify({ train: [] }), need: "", requestId: "j" }),
     /not a train and eval split/,
   );
   await assert.rejects(
@@ -157,6 +155,7 @@ test("a context that is not a train and eval split is refused", async () => {
           eval: Array.from({ length: MAX_EVAL_ROWS + 1 }, () => row("1,0,0", "x")),
         }),
         need: "",
+        requestId: "j",
       }),
     /more than 5000 evaluation rows/,
   );

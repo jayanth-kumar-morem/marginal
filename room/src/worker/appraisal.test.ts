@@ -95,6 +95,7 @@ function world(
     value_class: "M",
     rule,
     disclosure_policy: "DisputeOnly",
+    external_judges_allowed: false,
   };
   const job = jobRecordFixture({
     kind: "Appraisal",
@@ -169,7 +170,7 @@ function world(
 test("an appraisal runs end to end: components published, delivery sealed, receipt submitted", async () => {
   const w = world();
   const appraiser = stubAppraiser();
-  const appraised = await runAppraisal(w.ctx, 11, appraiser);
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(appraiser));
 
   assert.equal(appraised.status, "Ok");
   assert.deepEqual(appraised.components, [8_000, 10_000]);
@@ -211,14 +212,14 @@ test("an appraisal runs end to end: components published, delivery sealed, recei
 
 test("a compliance copy is a second delivery entry, and only when the job asked for one", async () => {
   const withCopy = world({ compliance: true });
-  await runAppraisal(withCopy.ctx, 11, stubAppraiser());
+  await runAppraisal(withCopy.ctx, 11, () => Promise.resolve(stubAppraiser()));
   const delivery = call("delivery_decode", {
     bytes: withCopy.operator.blobs.get("deliveries/11") ?? "",
   }) as { entries: unknown[] };
   assert.equal(delivery.entries.length, 2);
 
   const without = world();
-  await runAppraisal(without.ctx, 11, stubAppraiser());
+  await runAppraisal(without.ctx, 11, () => Promise.resolve(stubAppraiser()));
   const one = call("delivery_decode", {
     bytes: without.operator.blobs.get("deliveries/11") ?? "",
   }) as { entries: unknown[] };
@@ -228,7 +229,7 @@ test("a compliance copy is a second delivery entry, and only when the job asked 
 test("too little context rejects the input, and the good is never decrypted", async () => {
   const w = world({ context: "One short sentence of context, which is not enough." });
   const appraiser = stubAppraiser();
-  const appraised = await runAppraisal(w.ctx, 11, appraiser);
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(appraiser));
   assert.equal(appraised.status, "InputRejected");
   assert.equal(appraised.deliveryHash, null);
   assert.deepEqual(appraiser.seen, [], "the appraiser never ran");
@@ -243,14 +244,14 @@ test("too little context rejects the input, and the good is never decrypted", as
   // is nothing to measure against and nothing to decrypt.
   const noKey = world();
   const chain = fakeChain({ ...viewsOf(noKey), get_context_key: null });
-  const missing = await runAppraisal({ ...noKey.ctx, chain }, 11, stubAppraiser());
+  const missing = await runAppraisal({ ...noKey.ctx, chain }, 11, () => Promise.resolve(stubAppraiser()));
   assert.equal(missing.status, "InputRejected");
 });
 
 test("a restricted-list match stops the appraisal (D8, AC-62)", async () => {
   const w = world({ good: "A memo about Helios Protocol and its treasury.", restricted: ["helios protocol"] });
   const appraiser = stubAppraiser();
-  const appraised = await runAppraisal(w.ctx, 11, appraiser);
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(appraiser));
   assert.equal(appraised.status, "Restricted");
   assert.deepEqual(appraiser.seen, [], "nothing else was computed");
   assert.equal(appraised.deliveryHash, null);
@@ -264,7 +265,7 @@ test("a restricted-list match stops the appraisal (D8, AC-62)", async () => {
 test("an appraisal room refuses a job of another kind", async () => {
   const w = world();
   const ctx = { ...w.ctx, chain: fakeChain({ ...viewsOf(w), get_job: { ...w.committed, kind: "Screening" } }) };
-  await assert.rejects(() => runAppraisal(ctx, 11, stubAppraiser()), /job 11 is a Screening job/);
+  await assert.rejects(() => runAppraisal(ctx, 11, () => Promise.resolve(stubAppraiser())), /job 11 is a Screening job/);
   assert.deepEqual(w.operator.submitted, [], "and asks for no key");
 });
 
@@ -273,7 +274,7 @@ test("a job whose parameters do not hash to its commitment is refused before any
   const tampered = { ...w.committed, max_debit_mbits: w.committed.max_debit_mbits + 1 };
   const ctx = { ...w.ctx, chain: fakeChain({ ...viewsOf(w), get_job: tampered }) };
   await assert.rejects(
-    () => runAppraisal(ctx, 11, stubAppraiser()),
+    () => runAppraisal(ctx, 11, () => Promise.resolve(stubAppraiser())),
     /do not hash to its commitment/,
   );
   assert.deepEqual(w.operator.submitted, [], "no key was asked for");
@@ -327,7 +328,10 @@ test("the job loop runs an appraisal, and only for an appraiser this room has", 
   assert.equal(w.operator.submitted.at(-1)?.method, "submit_delivery_receipt");
 
   const { appraiserFor } = await import("./main.js");
-  await assert.rejects(() => appraiserFor("dataset-lite@0"), /does not run dataset-lite@0/);
+  await assert.rejects(
+    () => appraiserFor({ ...w.listing, appraiser: "dataset-lite@0" }),
+    /does not run dataset-lite@0/,
+  );
 });
 
 /** The canned views of a world, so a test can change one of them. */
@@ -353,7 +357,7 @@ test("a verdict clearing answers without a price is not reported as priced", asy
   const base = w.operator.submit.bind(w.operator);
   w.operator.submit = (method, args, contract) =>
     method === "submit_verdict" ? Promise.resolve({ status: "Settled" }) : base(method, args, contract);
-  const appraised = await runAppraisal(w.ctx, 11, stubAppraiser());
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
   assert.equal(appraised.price, null, "no price came back, so none is claimed");
   assert.equal(appraised.status, "Ok");
 
@@ -362,7 +366,7 @@ test("a verdict clearing answers without a price is not reported as priced", asy
   const under = silent.operator.submit.bind(silent.operator);
   silent.operator.submit = (method, args, contract) =>
     method === "submit_verdict" ? Promise.resolve(null) : under(method, args, contract);
-  assert.equal((await runAppraisal(silent.ctx, 11, stubAppraiser())).price, null);
+  assert.equal((await runAppraisal(silent.ctx, 11, () => Promise.resolve(stubAppraiser()))).price, null);
 });
 
 /**

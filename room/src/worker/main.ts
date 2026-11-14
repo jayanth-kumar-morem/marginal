@@ -6,10 +6,11 @@
  * there is no path here that finishes a job and keeps running.
  */
 import { loadConfig } from "../config.js";
-import { chainClient } from "../chain.js";
+import { chainClient, type ListingRecord } from "../chain.js";
 import { embedder } from "../appraisers/knowledge/embed.js";
 import { knowledgeAppraiser } from "../appraisers/knowledge/index.js";
 import type { Appraiser } from "../appraisers/types.js";
+import { judgesFor } from "../judges/index.js";
 import { runAppraisal } from "./appraisal.js";
 import { runProvisioning } from "./provisioning.js";
 import { runScreening } from "./screening.js";
@@ -20,11 +21,22 @@ import type { WorkerContext } from "./context.js";
  * The appraiser for a listing. M1 has one, and loading it means reading 90 MB of weights, so it is
  * built only for the job kind that needs it.
  */
-export async function appraiserFor(listingAppraiser: string): Promise<Appraiser> {
-  if (listingAppraiser !== "knowledge@1") {
-    throw new Error(`this room does not run ${listingAppraiser}`);
+export async function appraiserFor(
+  listing: ListingRecord,
+  fetchImpl?: typeof globalThis.fetch,
+): Promise<Appraiser> {
+  if (listing.appraiser !== "knowledge@1") {
+    throw new Error(`this room does not run ${listing.appraiser}`);
   }
-  return knowledgeAppraiser(await embedder());
+  const model = await embedder();
+  // External judges are opt-in per listing, and need a route out of the room (§3.16). Without one
+  // the simulated judge stands in, flagged on chain.
+  const judges = judgesFor({
+    externalAllowed: listing.external_judges_allowed,
+    embedder: model,
+    fetchImpl,
+  });
+  return knowledgeAppraiser(model, judges);
 }
 
 /** Runs one job and returns, leaving nothing behind. */
@@ -32,7 +44,7 @@ export async function runJob(
   ctx: WorkerContext,
   kind: string,
   jobId: number,
-  appraiser: (id: string) => Promise<Appraiser> = appraiserFor,
+  appraiser: (listing: ListingRecord) => Promise<Appraiser> = (listing) => appraiserFor(listing),
 ): Promise<void> {
   if (kind === "Provisioning") {
     await runProvisioning(ctx, jobId);
@@ -43,7 +55,7 @@ export async function runJob(
     return;
   }
   if (kind === "Appraisal") {
-    await runAppraisal(ctx, jobId, await appraiser("knowledge@1"));
+    await runAppraisal(ctx, jobId, appraiser);
     return;
   }
   // The other kinds are v2 (§3.5).

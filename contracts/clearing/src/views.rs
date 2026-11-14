@@ -69,6 +69,8 @@ impl Clearing {
             // does not hash into it (SDD §3.12.3 step 4), so the view has to carry every field the
             // commitment covers.
             "disclosure_policy": listing.disclosure_policy,
+            // Whether a judge outside the room may see this good at all (SDD §3.16, opt-in).
+            "external_judges_allowed": listing.external_judges_allowed,
             "token": listing.token,
             "max_copies": listing.max_copies,
             "copies": listing.copies,

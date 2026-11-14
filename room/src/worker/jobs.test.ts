@@ -90,6 +90,9 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
       pk_l: null,
       appraiser: "knowledge@1",
       value_class: "M",
+      rule: { Posted: { ask: "400000000" } },
+      disclosure_policy: "DisputeOnly",
+      external_judges_allowed: false,
     },
   });
   const channel = localChannel(keys, operator, record);

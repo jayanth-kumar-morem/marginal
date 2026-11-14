@@ -171,6 +171,8 @@ export interface ListingRecord {
   /** Everything below is part of `job_commitment`, which the room recomputes (SDD §3.12.3). */
   readonly rule: unknown;
   readonly disclosure_policy: unknown;
+  /** Whether this seller lets an external judge see the good (§3.16). */
+  readonly external_judges_allowed: boolean;
 }
 
 /** A snapshot of a buyer's context, as `get_snapshot` reports it. */

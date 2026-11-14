@@ -13,13 +13,13 @@
  */
 import { call } from "@marginal/core-wasm";
 
-import { snapshotRecord } from "../chain.js";
+import { snapshotRecord, type ListingRecord } from "../chain.js";
 import { signCertificate } from "../cert/forget.js";
 import { sealDelivery, deliveryPayload } from "../crypto/delivery.js";
 import { aeadOpen, memzero, randomBytes } from "../crypto/sodium.js";
 import { MIN_CONTEXT_CLAIMS } from "../appraisers/knowledge/index.js";
 import { claims } from "../appraisers/knowledge/novelty.js";
-import type { Appraiser } from "../appraisers/types.js";
+import type { Appraiser, JudgeFactor } from "../appraisers/types.js";
 import { loadJob, openGood, type JobData, type WorkerContext } from "./context.js";
 import { listingKeyFor, type DerivedKey } from "./keys.js";
 import { base64, certificateKey, commitmentOf, hashOf } from "./report.js";
@@ -114,6 +114,8 @@ export interface Appraised {
 interface Verdict {
   readonly status: string;
   readonly components: number[];
+  /** What the judges said. Empty when none ran, which leaves the ceiling alone (§3.7). */
+  readonly factors: JudgeFactor[];
   readonly delivery: string | null;
 }
 
@@ -121,7 +123,7 @@ interface Verdict {
 export async function runAppraisal(
   ctx: WorkerContext,
   jobId: number,
-  appraiser: Appraiser,
+  make: (listing: ListingRecord) => Promise<Appraiser>,
 ): Promise<Appraised> {
   const started = ctx.now();
   const data = await loadJob(ctx, jobId);
@@ -129,6 +131,7 @@ export async function runAppraisal(
   if (job.kind !== "Appraisal") throw new Error(`job ${jobId} is a ${job.kind} job`);
   await checkCommitment(ctx, data);
 
+  const appraiser = await make(listing);
   const keys = await listingKeyFor({ ...ctx }, job, listing, ctx.appKeySource);
   const decided = await decide(ctx, data, keys, appraiser);
   try {
@@ -156,7 +159,9 @@ async function decide(
     "get_context_key",
     { job_id: String(job.id) },
   );
-  if (sealedContextKey === null) return { status: "InputRejected", components: [0, 0], delivery: null };
+  if (sealedContextKey === null) {
+    return { status: "InputRejected", components: [0, 0], factors: [], delivery: null };
+  }
   const dekC = new Uint8Array(
     Buffer.from(await ctx.channel.unseal(Buffer.from(sealedContextKey, "base64").toString("hex")), "hex"),
   );
@@ -168,19 +173,20 @@ async function decide(
 
   // Step 3: too little context to measure against, and the good is never decrypted.
   if (claims(bundle.context).length < MIN_CONTEXT_CLAIMS) {
-    return { status: "InputRejected", components: [0, 0], delivery: null };
+    return { status: "InputRejected", components: [0, 0], factors: [], delivery: null };
   }
 
   const good = await openGood(ctx, listing, keys, aeadOpen);
   try {
     // Step 4: the buyer said they would not take this, so nothing else is computed.
     if (restrictedMatch(Buffer.from(good.plaintext).toString("utf8"), bundle.restricted) !== undefined) {
-      return { status: "Restricted", components: [0, 0], delivery: null };
+      return { status: "Restricted", components: [0, 0], factors: [], delivery: null };
     }
     const appraisal = await appraiser.appraise({
       good: Buffer.from(good.plaintext).toString("utf8"),
       context: bundle.context,
       need: bundle.need,
+      requestId: `${ctx.config.clearing}/${job.id}`,
     });
     // On a deal the buyer needs the key, and the delivery is derived, so it can be built now and
     // reproduced by any room later (§3.19).
@@ -196,6 +202,7 @@ async function decide(
     return {
       status: "Ok",
       components: appraisal.components,
+      factors: appraisal.factors,
       delivery: call("delivery_encode", delivery) as string,
     };
   } finally {
@@ -251,7 +258,7 @@ async function submit(
     status: decided.status,
     privacy: job.privacy,
     // M1 is Open and blind: the components are published and no field is shown (E6.1).
-    open: { components: decided.components, factors: [], shown: [] },
+    open: { components: decided.components, factors: decided.factors, shown: [] },
     sealed: null,
     delivery_commitment: deliveryHash,
     cert_hash: certificate.hash,

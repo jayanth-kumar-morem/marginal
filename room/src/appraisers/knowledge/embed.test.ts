@@ -92,7 +92,7 @@ test("a document the buyer already has scores far below one they do not", async 
   assert.ok(doesNot.bps > 6_000, `news to the buyer scored ${doesNot.bps} bps`);
 
   // And the appraiser publishes those as quantised components, with counts but no values.
-  const appraised = await knowledgeAppraiser(model).appraise({ good: fresh, context, need });
+  const appraised = await knowledgeAppraiser(model).appraise({ good: fresh, context, need, requestId: "job-1" });
   assert.equal(appraised.components.length, 2);
   assert.equal(appraised.components[0] ?? -1, Math.round(doesNot.bps / 500) * 500);
   assert.equal(appraised.components[1], N_PUB_WITHOUT_CORPUS);

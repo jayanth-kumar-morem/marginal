@@ -80,8 +80,8 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E5](#e5-clearing-jobs-funding-leakage-agents) | Clearing: jobs, funding, leakage, agents | 7 | **7** | D1, D4, D5 |
 | [E6](#e6-clearing-verdicts-settlement-claims) | Clearing: verdicts, settlement, claims | 5 | **5** | D1, D6, D7, D8, D11 |
 | [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | **2** (2 more built, waiting on a live room and on E8) | D1, D3 |
-| [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | — | D1, D8, D9 |
-| [E9](#e9-judges) | NEAR AI judges | 1 | — | D6 |
+| [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | **5** (2 more built, waiting on a live MPC derivation and on E14.2's corpus) | D1, D8, D9 |
+| [E9](#e9-judges) | NEAR AI judges | 1 | — (built, waiting on a key) | D6 |
 | [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | — | D10 |
 | [E11](#e11-services) | Gateway, operator agent, compliance | 4 | — | all |
 | [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — | all, D2 |
@@ -883,7 +883,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E9. Judges
 
-- [ ] **E9.1 NEAR AI Cloud judges** · P1 · D6 · §3.16 · **blocked on [P-2](#paid-and-account-gated-steps-jay)**
+- [ ] **E9.1 NEAR AI Cloud judges** · P1 · D6 · §3.16 · built; Done line **blocked on [P-2](#paid-and-account-gated-steps-jay)**
   - **First (S-5):** strict JSON, with reasoning off and `signature_kind == provider_tee`.
   - Models: `Qwen/Qwen3.8-27B` and `z-ai/glm-5.3-flash` (`reasoning_effort: "low"`).
   - Request: temperature 0, `stream: false`, headers `x-no-aliasing: true` and `Accept-Encoding: identity`, LETHE's delimiter prompt.
@@ -896,6 +896,32 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - governance registers that address with `set_ai_signer(address, model, expires_at)`, and the model string must match the factor's `model_id`: that pairing is the allow-list;
     - a receipt's text is accepted once, ever (the replay set), so a cached receipt cannot be reused on a second job.
     - **Unverified until this task runs:** whether NEAR AI's real `text` actually embeds `sha256(response_body)` in hex. E6.2's tests sign a receipt the way the provider's TEE would, not a real one. If the real format differs, only `binds_body` changes (`marginal-core`), and its vectors with it.
+  - **Built, 2026-11-14.** `room/src/judges/`: the prompt (ported from LETHE's `ai.js`, with the
+    scale changed to an integer 0..10), the NEAR AI client, the simulated stand-in, and the chooser.
+    The appraiser carries the factors into the verdict, so `judgement_factor` takes the minimum of
+    what came back and clamps it up to the listing's floor.
+  - **The API key is not in the room, and cannot be.** A key written into the compose file would be
+    published with the measurement, and `allowed_envs: []` means the host cannot pass one in either.
+    So the client takes its transport as an argument: in a room that is the supervisor's egress
+    proxy, which adds the key on the way out (§3.14.3). The room sends no `Authorization` header at
+    all, and a deployment with no key needs no configuration — the call fails, the factor is zero,
+    and zero resolves to the floor.
+  - **Every failure is a factor of zero, never an exception**, because a judge that is down must not
+    stop a job: twelve cases are tested (HTTP error, not a completion, not JSON, a reasoning field
+    in the body, content that is not the strict shape, a value outside the scale, a signature
+    endpoint that errors, a signature that is not `provider_tee`, one that is not 65 bytes, a
+    receipt whose text does not bind the body, and either endpoint throwing).
+  - **The room checks a receipt before it publishes one**, with `marginal-core`'s own
+    `judge_body_ok`, `parse_relevance` and `receipt_binds_body` — the same functions clearing uses —
+    so it never spends gas on a receipt the contract would refuse.
+  - **`get_listing` now carries `external_judges_allowed`.** External judges are opt-in per listing
+    (T35: NEAR AI's engines are launched at run time from a public repository and a signer address
+    does not pin the code), and the room cannot honour an opt-in it cannot read.
+  - **Not verified:** anything against the real service — no key, so no real receipt, no real
+    `text` format, no latency and no cost. The simulated judge is what runs today, and it is
+    flagged `Simulated` on chain so a demo cannot pass it off as a real one.
+  - **To close:** a NEAR AI key ([P-2](#paid-and-account-gated-steps-jay)) and E11.2's proxy, then
+    DRC-6: the injected memo clamped to the floor with its price at or below the ceiling.
 
 ## E10. Sealed verdicts (D10)
 

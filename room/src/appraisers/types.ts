@@ -20,6 +20,8 @@ export interface AppraisalInput {
   readonly context: string;
   /** What the buyer said they need. */
   readonly need: string;
+  /** Binds a judge's answer to one job, so a cached one cannot be reused (§3.16). */
+  readonly requestId: string;
 }
 
 export interface Appraisal {
