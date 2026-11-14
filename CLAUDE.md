@@ -159,6 +159,8 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
 ## Deploys and secrets
 
 - Profiles: `sandbox` (local, simulated elements allowed) and `testnet-demo` (HDP: real MPC CKD, real quote verification). There is no mainnet profile in M1.
+- **The whole demo runs locally** (E14.4): [`docs/local-demo.md`](docs/local-demo.md) is the runbook. The sandbox profile deploys **`keypolicy-sim`** (`simulated_rooms = true`, refused on any other network by the validator and again by `deploy.ts`), the room registers with no TDX (`MARGINAL_SIMULATED_ATTESTATION=1`), key release is **`RoomSealed`** rather than MPC CKD (SDD §3.12.7 and the §2.7 profile table), and the browser signs with a **sandbox-only dev key** — no browser wallet knows a local node. Every one of those four is flagged on chain and in the UI, and none of them makes §1.6's "ready on testnet from a fresh browser" true.
+- **Changing a compliance seed invalidates every credential issued under it.** `deploy/services/.env.<profile>` (0600, gitignored) holds the seeds; the profile holds their public keys. The deploy preserves existing seeds and prints a `!!!` line naming the key to paste if the two ever disagree.
 - **Sub-accounts.** `up.sh` only does fresh deploys. Sub-accounts are `<name>.<deployer>`, and it refuses if any already exists.
 - **Testnet deploy guards.** A testnet deploy refuses a dirty tree and always rebuilds reproducibly. The manifest records the git commit and each contract's code hash.
 - **Testnet deployer setup** (once, by the user):
@@ -167,8 +169,8 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
   near account create-account sponsor-by-faucet-service marginal-demo.testnet \
     autogenerate-new-keypair save-to-legacy-keychain network-config testnet create
   ```
-  This writes `~/.near-credentials/testnet/marginal-demo.testnet.json`, which `up.sh` reads. Then top the account up to 18 NEAR from a testnet faucet (docs.near.org/getting-started/faucet).
-- **Funding.** The deployer must hold the total of `balances()` in `scripts/src/deploy.ts` plus 1 NEAR (18 NEAR on testnet). Otherwise the deploy is refused before anything is created.
+  This writes `~/.near-credentials/testnet/marginal-demo.testnet.json`, which `up.sh` reads. Then top the account up to 19 NEAR. The web faucet form is unreliable; the CLI's faucet service grants exactly **10 NEAR per new account**, so create a throwaway with `near account create-account sponsor-by-faucet-service <name>.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create` and sweep it with `near account delete-account <name>.testnet beneficiary marginal-demo.testnet network-config testnet sign-with-legacy-keychain send`. Repeat for another 10.
+- **Funding.** The deployer must hold the total of `balances()` in `scripts/src/deploy.ts` plus 1 NEAR (19 NEAR on testnet, since E14.4 added the operator agent's account). Otherwise the deploy is refused before anything is created.
 - **Keys.** Created account keys are written to `deploy/.keys/<profile>.json` (mode 0600, gitignored) as each account is created. Back up the testnet file. `up.sh` refuses to overwrite it.
 - Never print, log or commit secret keys. Manifests contain public keys only.
 

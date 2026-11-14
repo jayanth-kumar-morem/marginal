@@ -78,7 +78,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 
 | # | Step | Needs | Cost | Blocks | Do it when |
 |---|---|---|---|---|---|
-| P-1 | Boot the room CVM (E7.1) | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4, E7.5; E8.2–E8.5; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
+| P-1 | Boot the room CVM (E7.1) — **optional for a working demo since E14.4**: it buys DRC-3's real attestation and nothing else, because the sandbox now runs a flagged simulated room end to end | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4, E7.5; E8.2–E8.5; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
 | P-2 | A NEAR AI Cloud API key (E9.1) | A NEAR AI account | Under **$0.003 per appraisal** ([SDD §1.5](SDD.md)); a few cents for the demo | E9.1, D6, DRC-6. The judge port has a test double, so everything else runs without it | Before E9.1. Not needed for E3–E6 |
 | ~~P-3~~ | ~~Fund the testnet deployer (E15.1)~~ **done 2026-11-14** | The `marginal-demo.testnet` account, already created | **Free**: 19.99 NEAR held, against the 18 the deploy needs | — unblocked: E3.3, E3.6, E8.2, E15.1 | **Done.** The web faucet form was failing, so the funds came from the CLI's own faucet service, which grants exactly **10 NEAR per new account**: create a throwaway with `near account create-account sponsor-by-faucet-service <name>.testnet autogenerate-new-keypair save-to-legacy-keychain network-config testnet create`, then sweep it whole with `near account delete-account <name>.testnet beneficiary marginal-demo.testnet network-config testnet sign-with-legacy-keychain send`. Repeatable for another 10 NEAR whenever a redeploy needs it |
 | P-5 | Publish the room image (E7.2) | A container registry the CVM can pull from without credentials | **Free** on ghcr.io for a public package | E7.1 and everything behind it: the compose file has to name the image by digest, and a dstack CVM holds no registry credentials (`allowed_envs: []`), so the image has to be **public**. That publishes the room's built `dist/` — the repository stays private either way, but this is a disclosure decision, so it is yours (X-2) | With P-1, before the boot: `room/image/build.sh image` prints the digest to push and to pin |
@@ -208,6 +208,8 @@ To fix in SDD v0.3.
 | 41 | `SIM_SETTLEMENT` exists in `marginal_core::types` and is decoded by the web app, but **no contract ever sets it** — only `SIM_ATTESTATION` and `SIM_JUDGE` are. The HDP settles in `musdc`, a test stablecoin, which is exactly the element that bit is for, so §6.3 rule 1 ("any simulated element sets a bit") is not met for the asset | Either clearing sets `SIM_SETTLEMENT` when the settlement token is not a real asset — which needs a way for the contract to know, so a profile flag or a governance list, and that is a policy decision — or the bit is dropped and §6.3's claim is narrowed to attestation and judges. Until then the README says plainly that the asset is a test token | SDD v0.3 |
 | 42 | §3.5's job lifecycle stores `Requested`, and `lifecycle::transition` allows `Requested → Timeout`, but **no job is ever stored as `Requested`**: `request_appraisal` and `approve_parked` both call `assign_rooms` in the same call, so a job appears as `Assigned` or `PendingApproval` and never in between. That transition arm is reachable only from core's unit tests | Either say in §3.5 that `Requested` is a moment inside one call rather than a stored state, or keep it and name what would store it (a deployment with no eligible room would, if `request_appraisal` were allowed to park for one). E14.1's suite covers `PendingApproval`, `Assigned` and `Computing` for exactly this reason | SDD v0.3 |
 | 43 | `get_listing` publishes the appraiser as `"knowledge@1"`, a display string, while a verdict's `AppraiserRef` carries `{id, version, formula_id}` and must match the listing's exactly or the verdict is `E_SCHEMA`. So a client that has only views cannot rebuild the reference a verdict needs — E14.1's suite takes it from core's sample, and a non-sample room or a future `replay-ts` recompute could not | Add `formula_id` to `get_listing`'s appraiser, or return the `AppraiserRef` as an object. Not an M1 blocker: the room knows its own appraiser, and nothing in M1 builds a verdict from views | SDD v0.3 |
+| 44 | §3.13 and `deploy/services/docker-compose.yaml` both say the operator agent signs with **a function-call key, never a full-access one**, so that it can only call the methods a room may ask for. That is not achievable: every call the agent relays for a room is `#[payable]` and attaches a storage deposit or a fee (`issue_nonce` charges `NONCE_FEE`, `register_room` charges `ATTESTATION_FEE`), and NEAR refuses a deposit from a function-call access key. So the agent's key must be full access, and what bounds the damage is the account's own balance, not the key's permission | Either say in §3.13 that the agent's key is full access on a dedicated, thinly funded account (which is what E14.4's deploy does, and it logs the fact), or make KeyPolicy's fees payable by someone else so the restricted key becomes possible. The second is a real design change and not an M1 one | SDD v0.3 |
+| 45 | §1.6 defines ready as "the surface works end to end **on testnet** from a fresh browser", and §2.7 allows simulated elements only in the `sandbox` profile — but no browser wallet can sign against a local sandbox node (MyNearWallet and Meteor know only testnet and mainnet, and `apps/web/src/components/wallet.tsx` already detects this and goes read-only). So the two profiles between them leave **no configuration in which a browser can drive the demo without real TDX hardware**: sandbox cannot be signed from a browser, and testnet cannot admit a simulated room | E14.4 adds a sandbox-only in-browser dev signer, labelled as a dev key and explicitly not a claim of readiness. If the SDD wants a browser-driven demo without hardware it should say which profile provides it; otherwise §1.6's definition stands and the dev signer is a development aid, which is how it is presented | SDD v0.3 |
 
 ---
 
@@ -1426,12 +1428,86 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 - [ ] **E14.3 Demo scripts** · P0 (D5: P1)
   - Sybil probe (DRC-4), the injected buyer-agent run (DRC-5), and the room kill (DRC-11).
 
+- [ ] **E14.4 The demo runs locally** · P0 · D1, D4, D5, D11 · DRC-1, -4, -5, -11, -12 · §3.12.7, §3.13, §6.1
+  - **Why this exists.** Everything below was found while answering "can't we test the entire product
+    locally?" The answer should have been yes — SDD line 302's profile table says the `sandbox`
+    profile runs simulated attestation and **RoomSealed** key release — and it was no, for four
+    reasons, three of which break testnet just as badly:
+    1. `deploy.ts`'s `[4/6] seeding room policy` was a **stub that threw**. Nothing was ever seeded,
+       so `admit_room` fails `E_PLATFORM_NOT_ADMITTED` / `E_MEASUREMENT_NOT_APPROVED` and **no room
+       could be admitted on any profile.** Booting the CVM would not have helped.
+    2. The deploy called **none of clearing's gov setters**. `create_listing` requires a registered
+       appraiser (`listing.rs:294`), so a fresh chain could not create a listing, let alone settle
+       one. E15.1 listed these as "all built", which was true of the contract methods and false of
+       the deploy meant to call them.
+    3. `up.sh` deployed the **real** KeyPolicy even on sandbox, whose `dcap_verifier` is a testnet
+       account that does not exist on a local node. `keypolicy-sim` was built and tested by
+       `make wasm-dev` and deployed by nothing.
+    4. The room only implemented **Ckd** key release. On a sandbox node `v1.signer-prod.testnet`
+       does not exist, and the MPC double answers a fixed `bls12381g1:Yfixed` that the room's
+       pairing check rightly rejects — so a job died at key derivation. `RoomSealed` is the
+       specified fallback (§3.12.7) and the contract already supported it; the room never read
+       `key_mode` and `/sell` hard-coded `"Ckd"`.
+  - **Done:** `up.sh sandbox` produces a chain a demo can be walked on end to end from a browser —
+    a room registered and admitted, a listing created, published, appraised, settled, the delivery
+    decrypted and both certificates verified — with every simulated element flagged on chain and
+    shown as such in the UI, and with `simulated_rooms = true` **impossible** on any profile whose
+    network is not `sandbox` (enforced in the validator and again in `deploy.ts`, mirroring
+    KeyPolicy's own `compile_error!` for `sim-attestation` + `mainnet`).
+  - **What it does not do:** it does not make DRC-3 pass. A simulated room is labelled, not
+    attested: `register_room_simulated` records `tcb_status: "Simulated"` and
+    `AttestationMode::Simulated`. A real attested room still needs [P-1](#paid-and-account-gated-steps-jay),
+    and no recorded quote can substitute, because `room_report_data` binds the signing key, the box
+    key and a one-shot nonce that this KeyPolicy must have issued.
+  - Core additions: `MeasurementSet` moved from clearing into `marginal_core::attest` (governance,
+    the deploy script and the tests all build the same bytes; it crosses the interface as opaque
+    Borsh, so it is not in the ABI), with `measurement_set_encode` and `sim_room_encode` ops and
+    their vectors.
+  - **Completed 2026-11-14.** Built by five parallel agents plus the contract work, each piece
+    verified on its own before anything was wired together.
+    - **Contracts and core (mine).** `clearing::room_ack(ack, room_sig)` with `RoomAckV1` and
+      `room_ack_signing_bytes` in `marginal_core::lifecycle`, a hand-computed vector for the signing
+      bytes, and **its own audit kind** (`AuditKind::RoomAck`, appended) rather than reusing
+      `KeyReleaseAuthorized` — a room starting work on its own word must not look, to the audit
+      chain `replay-ts` reads, like KeyPolicy authorising a key release. Nine tests in
+      `tests/room_ack.rs`: a RoomSealed job acks and settles to `Deal`, and every refusal (wrong
+      domain, chain or contract; unknown job; a Ckd job; commitment mismatch; unassigned room;
+      expired room; three ways of getting the signature wrong; a replay).
+    - **Deploy.** The seed step is real: appraiser, fee table, verifying key, measurement set,
+      platform, the agent account, and the token storage entry for clearing. `keypolicy-sim` chosen
+      by profile, refused off-sandbox in the validator **and** in `deploy.ts`.
+    - **Room and operator.** Simulated registration with no quote; RoomSealed key release through
+      `box_sk` by supervisor IPC; the delivery's ephemeral key derived by the supervisor so `box_sk`
+      never enters a worker; `room_ack` sent before the work, because a job refused at its context
+      never opens the wrap and still has to submit a verdict.
+    - **Web.** `/sell` publishes RoomSealed in two calls instead of four, sealing `DEK_g` to the
+      room's `box_pk` after cross-checking KeyPolicy's record against clearing's; a sandbox-only dev
+      signer, gated on a **loopback RPC** so no manifest can claim it on testnet.
+    - **Found by running it, not by testing it** — each of these passed every mocked test:
+      1. `ft_transfer_call` into clearing failed `The account clearing.sandbox is not registered`:
+         NEP-141 needs the receiver registered, and clearing is the one account with nobody to do it
+         for it. **No buyer could have deposited on testnet either.** The deploy now registers it
+         with `storage_balance_bounds.min` and refuses to write a manifest if it did not.
+      2. The operator underpaid two deposits: one constant served `NONCE_FEE` (2 mN), `TICKET_FEE`
+         (5 mN) and `ATTESTATION_FEE` (10 mN) at 1 mN, so `issue_nonce` and `authorize` would both
+         have died with `E_DEPOSIT` on any real chain.
+      3. `set_verifying_key` was seeded by nothing, so every sealed verdict (D10) would have failed.
+      4. The services image had been unbuildable since E12.2 wired `@marginal/replay-ts` into the
+         gateway: the Dockerfile never built or copied it.
+      5. Its build context was **20.6 GB** (171 s) with no `.dockerignore` anywhere; now 101 MB and
+         1.1 s, through `deploy/services/Dockerfile.dockerignore` — **not** a root `.dockerignore`,
+         because `room/image/build.sh` stages its context with `git archive` and a root one would
+         change what the **measured** image sees.
+    - **Not verified:** the browser walk itself (no browser in this session — `docs/local-demo.md`
+      is the runbook for it); a sealed proof submitted over RPC; and DRC-3, which cannot pass
+      locally by construction.
+
 ## E15. Demo and submission
 
 Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may change.
 
 - [ ] **E15.1 Deploy HDP** · P0
-  - **Blocked on [P-3](#paid-and-account-gated-steps-jay)**: fund `marginal-demo.testnet` with 18 NEAR (free faucet; 16 before KeyPolicy grew to 235 KB). Steps in `CLAUDE.md` → Deploys. The room half also needs [P-1](#paid-and-account-gated-steps-jay).
+  - **~~Blocked on [P-3]~~ done 2026-11-14:** `marginal-demo.testnet` holds 19.99 NEAR against the **19** the deploy now needs (18 before E14.4 added the agent account; 16 before KeyPolicy grew to 235 KB). Steps in `CLAUDE.md` → Deploys. The room half still needs [P-1](#paid-and-account-gated-steps-jay).
   - `up.sh testnet-demo` and register the room.
   - Fund the demo personas with `musdc` and nullifier credentials. Seed listings for D1–D9.
   - **Watch the balances:** clearing's wasm is now 464 KB and KeyPolicy's 235 KB, about 4.6 and 2.4 NEAR of code storage against the 8 and 4 NEAR `deploy.ts` funds them with. That leaves roughly 3 NEAR of state headroom each, which is ample for a demo but is the number to check if a deploy ever fails on storage.

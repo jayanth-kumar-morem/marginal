@@ -39,16 +39,31 @@ Status words, used strictly:
 
 ## What stands between this and a run
 
-1. **[P-3], free:** fund `marginal-demo.testnet` from the faucet. Until then nothing is deployed,
-   and no browser wallet can sign — MyNearWallet does not know a local sandbox. This unblocks the
-   write half of every page.
+**Changed 2026-11-14 by E14.4.** Items 1, 3, 4 and 5 below are done, and a **local** run is now
+possible end to end — see [`local-demo.md`](local-demo.md). That matters for this scorecard in a
+specific, limited way: it moves checks from "built" towards "shown", but **only ever as a local run
+with three elements stood in for** (simulated attestation, RoomSealed key release instead of MPC
+CKD, and a pasted sandbox dev key instead of a browser wallet), each flagged on chain and in the UI.
+No row below is marked **shown** on that basis, because §1.6's definition of ready names testnet and
+a fresh browser. When a local walk is run, record it as its own line — "run locally, with X stood in
+for" — and keep **shown** for the testnet run.
+
+Two things E14.4 found by running what the tests already passed, both of which would have broken the
+testnet deploy: nothing registered clearing with the settlement token, so **no buyer could have
+deposited**; and `set_verifying_key` was seeded by nothing, so **every sealed verdict (DRC-10) would
+have failed**. Both are fixed, and the deploy now refuses to write a manifest if the first is not
+done. The lesson for the remaining checks is that a green gate is not a run.
+
+1. ~~**[P-3], free:** fund `marginal-demo.testnet` from the faucet.~~ **Done 2026-11-14:** the
+   account holds 19.99 NEAR against the 19 the deploy now needs. A browser still cannot sign against
+   a local sandbox — MyNearWallet does not know one — which is why the sandbox-only dev signer
+   exists, and why it is not a readiness claim.
 2. **[P-1], about $0.25:** boot the room's CVM and capture a real quote. This unblocks DRC-3, the
    CKD key release in DRC-1, and the room kill in DRC-11.
-3. **E14.1**, the cross-contract suite with `keypolicy-sim`: makes the D1 walk, the refund paths and
-   the leakage wall runnable without hardware, which is what lets DRC-1, -4, -5 and -11 be shown
-   locally before they are shown on testnet.
-4. **E14.2**, the fixtures: the corpus DRC-1 and DRC-6 measure, the MNPI memo DRC-8 holds, and the
-   OFAC address its payout block needs.
+3. ~~**E14.1**, the cross-contract suite with `keypolicy-sim`~~ **done**: the D1 walk, the refund
+   paths and the leakage wall run without hardware, natively.
+4. ~~**E14.2**, the fixtures~~ **done**: the corpus DRC-1 and DRC-6 measure, the MNPI memo DRC-8
+   holds, and the real OFAC SDN entry its payout block needs.
 5. **E14.3**, the three scripts: the sybil probe (DRC-4), the injected agent run (DRC-5) and the room
    kill (DRC-11).
 
