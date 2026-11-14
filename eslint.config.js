@@ -2,7 +2,18 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["**/dist/**", "**/node_modules/**", "**/.next/**", "target/**", "contracts/**"] },
+  {
+    ignores: [
+      "**/dist/**",
+      "**/node_modules/**",
+      "**/.next/**",
+      "target/**",
+      "contracts/**",
+      // circom's generated witness code, and the two tools that only ever run from a shell.
+      "circuits/build/**",
+      "circuits/*.mjs",
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { files: ["**/*.ts"], rules: { "@typescript-eslint/no-explicit-any": "error" } },

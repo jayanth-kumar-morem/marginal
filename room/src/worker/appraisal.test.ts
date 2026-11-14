@@ -21,6 +21,7 @@ import {
   sealGood,
   testConfig,
 } from "../testing.js";
+import { closeProver } from "../prove.js";
 import { checkCommitment, parseBundle, restrictedMatch, runAppraisal, contextKey } from "./appraisal.js";
 import { loadJob, type WorkerContext } from "./context.js";
 import { runJob } from "./main.js";
@@ -58,7 +59,14 @@ const measurement = {
 
 /** A whole job: a listing, a buyer's sealed context, a sealed good, and a chain that agrees. */
 function world(
-  options: { good?: string; context?: string; restricted?: string[]; compliance?: boolean; rule?: unknown } = {},
+  options: {
+    good?: string;
+    context?: string;
+    restricted?: string[];
+    compliance?: boolean;
+    rule?: unknown;
+    privacy?: string;
+  } = {},
 ) {
   const keys = generateRoomKeys();
   const roomKeyHex = Buffer.from(keys.signPk).toString("hex");
@@ -93,6 +101,7 @@ function world(
     pk_l: Buffer.from(derived.publicKey).toString("hex"),
     appraiser: "knowledge@1",
     value_class: "M",
+    l_floor_bps: 1_000,
     rule,
     disclosure_policy: "DisputeOnly",
     external_judges_allowed: false,
@@ -101,6 +110,7 @@ function world(
     kind: "Appraisal",
     listing_id: 3,
     listing_version: 1,
+    privacy: options.privacy ?? "Open",
     delivery_pk: Buffer.from(buyer.publicKey).toString("hex"),
     compliance_pk: options.compliance === true ? Buffer.from(compliance.publicKey).toString("hex") : null,
   });
@@ -386,4 +396,62 @@ test("the pipeline runs the real knowledge@1 from the image", async () => {
   assert.equal(pub, 10_000, "no public corpus in M1");
   assert.ok(novel !== undefined && novel % 500 === 0, `components are quantised: ${String(novel)}`);
   assert.ok(novel > 0, "a document the buyer has never seen is worth something");
+});
+
+/**
+ * E10.3: the same pipeline in Sealed mode. The verdict carries a proof and a commitment instead of
+ * the components, and the room reports no components back either — the buyer sees the outcome and
+ * the price, and nothing about the measurement.
+ */
+test("a sealed job publishes a proof instead of its components (D10)", async () => {
+  const w = world({ privacy: "Sealed" });
+  // One judge, scoring a whole, so the factor goes into the proof without changing the price: the
+  // factors are part of what stays private, so they are what the commitment covers.
+  const judged = {
+    ...stubAppraiser(),
+    appraise: () =>
+      Promise.resolve({
+        components: [8_000, 10_000],
+        factors: [{ model_id: "m", factor_bps: 10_000, proof: { Simulated: { signer: "s" } } }],
+        shown: [] as never[],
+        datasheet: {},
+      }),
+  };
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(judged));
+  assert.equal(appraised.status, "Ok");
+  assert.deepEqual(appraised.components, [], "nothing about the measurement is published");
+
+  const sent = call("verdict_decode", {
+    bytes: Buffer.from(w.operator.submitted[2]?.args.verdict as string, "base64").toString("hex"),
+  }) as { open: unknown; sealed: Record<string, unknown> | null; privacy: string };
+  assert.equal(sent.privacy, "Sealed");
+  assert.equal(sent.open, null);
+  assert.ok(sent.sealed);
+  assert.deepEqual(sent.sealed.shown, []);
+  // 8,000 * 10,000 / 10^4 = 8,000, no judges, so m = 8,000 and V = 400,000,000: exactly the ask.
+  assert.equal(sent.sealed.outcome, "Deal");
+  assert.equal(sent.sealed.price, "400000000");
+  assert.equal((sent.sealed.commitment as string).length, 64);
+  assert.equal((sent.sealed.proof as string).length, 2 * 256);
+  await closeProver();
+});
+
+test("a sealed job this room cannot prove is refused rather than answered", async () => {
+  const other = world({ privacy: "Sealed" });
+  await assert.rejects(
+    () =>
+      runAppraisal(other.ctx, 11, () =>
+        Promise.resolve({ ...stubAppraiser(), formulaId: "DatasetLiteV0" }),
+      ),
+    /sealed mode is built for KnowledgeV1/,
+  );
+
+  const indexed = world({
+    privacy: "Sealed",
+    rule: { ValueIndexed: { p_min: "1", p_full: "2", price_quantum_bps: 100 } },
+  });
+  await assert.rejects(
+    () => runAppraisal(indexed.ctx, 11, () => Promise.resolve(stubAppraiser())),
+    /sealed mode is built for R1/,
+  );
 });

@@ -65,6 +65,9 @@ impl Clearing {
             "appraiser": format!("{}@{}", listing.appraiser.id, listing.appraiser.version),
             "schema_hash": to_hex(&listing.schema_hash),
             "rule": listing.rule,
+            // The judgement floor is part of a Sealed proof's public inputs, so the room has to
+            // read it (SDD §3.17); it is also what a buyer needs to see what a judge can cost.
+            "l_floor_bps": listing.l_floor_bps,
             // The room recomputes `job_commitment` itself and will not trust a job parameter that
             // does not hash into it (SDD §3.12.3 step 4), so the view has to carry every field the
             // commitment covers.

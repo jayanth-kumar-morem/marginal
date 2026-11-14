@@ -2,9 +2,12 @@
 //!
 //! A relayer sends the call, so the room's signature is the authority. Clearing checks it, checks
 //! every binding, then **recomputes the price itself** with `marginal-core` from the published
-//! components and factors: the room's own numbers are never taken on trust. Sealed mode is E10.
+//! components and factors: the room's own numbers are never taken on trust. In Sealed mode it
+//! cannot see them at all, so a Groth16 proof stands in for the recompute (§3.17, E10.2) — and
+//! clearing still decides every public input itself.
 
 use marginal_core::audit::AuditKind;
+use marginal_core::groth16::{commitment_limbs, u128_le, u32_le};
 use marginal_core::json::to_hex;
 use marginal_core::judge::{binds_body, parse_relevance, personal_sign_preimage, receipt_id};
 use marginal_core::pricing::{apply_rule, measured_index, RuleOutcome};
@@ -12,8 +15,10 @@ use marginal_core::verdict::{
     verdict_signing_bytes, JudgeFactor, ModelProof, VerdictStatus, VerdictV1,
 };
 use marginal_core::{
-    CoreError, Job, JobState, Listing, Outcome, VerdictPrivacy, SIM_ATTESTATION, SIM_JUDGE,
+    CoreError, Job, JobState, Listing, Outcome, PricingRule, VerdictPrivacy, SIM_ATTESTATION,
+    SIM_JUDGE,
 };
+use marginal_groth16::{verify, PreparedKey};
 use near_sdk::borsh::from_slice;
 use near_sdk::json_types::Base64VecU8;
 use near_sdk::serde_json::{json, Value};
@@ -29,6 +34,9 @@ pub(crate) struct Checked {
     /// The state the job ends in, from core's outcome table.
     pub ends_in: marginal_core::JobState,
     pub price: u128,
+    /// Sealed mode only (SDD §3.3): the commitment the proof was checked against, which is what a
+    /// later opening is replayed against. Open mode publishes the components themselves.
+    pub components_commitment: Option<[u8; 32]>,
     pub simulated_flags: u8,
     /// The receipts this verdict used. They enter the replay set only if it is accepted: a
     /// rejected verdict must leave no trace, or a room could never fix one and try again.
@@ -126,6 +134,95 @@ impl Clearing {
         }
     }
 
+    /// A Sealed verdict (SDD §3.17, D10): the scores stay in the room and a Groth16 proof says the
+    /// price follows from them.
+    ///
+    /// Clearing checks nothing about the measurement itself — it cannot, that is the point — but it
+    /// does decide every public input itself, from the job and the listing, rather than taking them
+    /// from the verdict. The only values the room contributes are the commitment, the outcome and
+    /// the price, and the proof is what ties those to scores in range under the right formula.
+    ///
+    /// Judge provenance is **not** checked here. In Sealed mode the attested room checks the
+    /// receipts and the opening can be re-checked later (§3.17); on chain there is nothing to see.
+    fn check_sealed(
+        &self,
+        verdict: &VerdictV1,
+        job: &Job,
+        listing: &Listing,
+    ) -> Result<Checked, CoreError> {
+        if verdict.open.is_some() {
+            return Err(CoreError::Schema);
+        }
+        let mut simulated_flags = 0u8;
+        if self.attestation_is_simulated(&verdict.room_key) {
+            simulated_flags |= SIM_ATTESTATION;
+        }
+        // A Sealed job can still end without a price. A restricted good or an input the appraiser
+        // cannot read has nothing to prove, so the room sends the status alone, with no body and no
+        // proof, and the job ends there — otherwise such a job could only ever time out (§3.17).
+        let unpriced = match verdict.status {
+            VerdictStatus::Ok => None,
+            VerdictStatus::Restricted => Some(Outcome::Restricted),
+            VerdictStatus::InputRejected | VerdictStatus::InputError => {
+                Some(Outcome::InputRejected)
+            }
+            VerdictStatus::SchemaFailure => return Err(CoreError::Schema),
+        };
+        if let Some(outcome) = unpriced {
+            if verdict.sealed.is_some() {
+                return Err(CoreError::Schema);
+            }
+            return self.accepted(outcome, 0, simulated_flags, Vec::new(), verdict);
+        }
+        if self.verifying_key.is_empty() {
+            return Err(CoreError::ProofDisabled);
+        }
+        let body = verdict.sealed.as_ref().ok_or(CoreError::Schema)?;
+        if !body.shown.is_empty() {
+            return Err(CoreError::DisplayDisabled);
+        }
+        // One verifying key, one rule: R1. Another rule would need its own key (§3.17).
+        let PricingRule::Posted { ask } = listing.rule else {
+            return Err(CoreError::RuleDisabled);
+        };
+        let outcome_bit = match body.outcome {
+            Outcome::Deal => 1u32,
+            Outcome::NoDeal => 0u32,
+            // The circuit proves one bit, so a body can only say deal or no deal. Everything else
+            // is an unpriced status, handled above.
+            _ => return Err(CoreError::Schema),
+        };
+
+        let (hi, lo) = commitment_limbs(&job.job_commitment);
+        let inputs = [
+            hi,
+            lo,
+            u128_le(job.buckets.budget),
+            u128_le(ask),
+            u32_le(listing.l_floor_bps),
+            u32_le(outcome_bit),
+            u128_le(body.price),
+            body.commitment,
+        ];
+        let key = PreparedKey::parse(&self.verifying_key)?;
+        if !verify(&key, &body.proof, &inputs)? {
+            return Err(CoreError::ProofInvalid);
+        }
+
+        if body.outcome == Outcome::Deal && verdict.delivery_commitment.is_none() {
+            return Err(CoreError::DeliveryMissing);
+        }
+        let mut checked = self.accepted(
+            body.outcome,
+            body.price,
+            simulated_flags,
+            Vec::new(),
+            verdict,
+        )?;
+        checked.components_commitment = Some(body.commitment);
+        Ok(checked)
+    }
+
     /// Everything that can make clearing refuse a signed verdict without the job ending. Each
     /// refusal is a stable code the room can act on.
     fn check_verdict(
@@ -134,12 +231,16 @@ impl Clearing {
         job: &Job,
         listing: &Listing,
     ) -> Result<Checked, CoreError> {
-        if verdict.privacy != VerdictPrivacy::Open || job.privacy != VerdictPrivacy::Open {
-            // Sealed verdicts are E10: the proof verifier is not built.
-            return Err(CoreError::ProofInvalid);
+        // The buyer chose the mode at request time and it is bound into `job_commitment`, so a
+        // room cannot answer a Sealed job with an Open verdict or the other way round.
+        if verdict.privacy != job.privacy {
+            return Err(CoreError::Schema);
         }
         if verdict.appraiser != listing.appraiser {
             return Err(CoreError::Schema);
+        }
+        if job.privacy == VerdictPrivacy::Sealed {
+            return self.check_sealed(verdict, job, listing);
         }
         let body = verdict.open.as_ref().ok_or(CoreError::Schema)?;
         if verdict.sealed.is_some() {
@@ -221,6 +322,7 @@ impl Clearing {
             ends_in: marginal_core::settle::state_for(outcome)
                 .expect("a settleable outcome has an end state"),
             price,
+            components_commitment: None,
             simulated_flags,
             receipts,
         })

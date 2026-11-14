@@ -81,6 +81,12 @@ fn schema() -> Value {
     json!({"fields": [], "component_alphabets": [21, 21], "judge_scale": 11})
 }
 
+/// The dev ceremony's artefacts, so the wire format is pinned against snarkjs's own output.
+fn groth16() -> serde_json::Value {
+    serde_json::from_str(include_str!("../../../fixtures/groth16-vectors.json"))
+        .expect("the groth16 vectors parse")
+}
+
 fn sha256_of(parts: &[&[u8]]) -> String {
     let mut hasher = Sha256::new();
     parts.iter().for_each(|p| hasher.update(p));
@@ -269,6 +275,59 @@ fn attestation_cases() -> Vec<Case> {
             "ppid_hash",
             json!({"ppid": to_hex(&report.ppid)}),
             ok(json!(sha256_of(&[b"marginal/ppid/v1", &report.ppid]))),
+        ),
+        // Groth16's wire format (SDD §3.17, E10.2), against the dev ceremony's own artefacts.
+        case(
+            "groth16: the verifying key, prepared for the host functions",
+            "groth16_vkey_prepare",
+            groth16()["vkey"].clone(),
+        ),
+        case(
+            "groth16: a proof, encoded",
+            "groth16_proof_encode",
+            groth16()["proof"].clone(),
+        ),
+        case(
+            "groth16: the public signals, encoded",
+            "groth16_inputs_encode",
+            json!({"signals": groth16()["publicSignals"].clone()}),
+        ),
+        // Each of the three encodings refuses what it cannot encode, and the op passes the code
+        // through rather than answering with bytes that would not verify.
+        known(
+            "groth16: a verifying key whose IC does not match its input count",
+            "groth16_vkey_prepare",
+            {
+                let mut key = groth16()["vkey"].clone();
+                key["IC"].as_array_mut().unwrap().pop();
+                key
+            },
+            err("E_PROOF_INVALID"),
+        ),
+        known(
+            "groth16: a proof of another protocol",
+            "groth16_proof_encode",
+            {
+                let mut proof = groth16()["proof"].clone();
+                proof["protocol"] = json!("plonk");
+                proof
+            },
+            err("E_PROOF_INVALID"),
+        ),
+        known(
+            "groth16: a signal that is not a number",
+            "groth16_inputs_encode",
+            json!({"signals": ["1", "two"]}),
+            err("E_PROOF_INVALID"),
+        ),
+        known(
+            "groth16: a job commitment as the circuit's two limbs",
+            "commitment_limbs",
+            json!({"commitment": to_hex(&h(9))}),
+            ok(json!({
+                "hi": "0909090909090909090909090909090900000000000000000000000000000000",
+                "lo": "0909090909090909090909090909090900000000000000000000000000000000",
+            })),
         ),
         known(
             "attestation ref: a certificate's one reference to the attestation it was issued under",
@@ -873,6 +932,10 @@ fn the_cases_cover_every_operation_and_error() {
         "measurement_hash",
         "ppid_hash",
         "attestation_ref",
+        "groth16_vkey_prepare",
+        "groth16_proof_encode",
+        "groth16_inputs_encode",
+        "commitment_limbs",
         "provisioning_signing_bytes",
         "screening_signing_bytes",
         "nullifier_signing_bytes",

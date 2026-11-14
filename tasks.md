@@ -8,17 +8,39 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
 - All eleven demo surfaces (D1–D11) and every readiness check (DRC-1 to DRC-12) are unchanged.
 - The cut work moves to M2. [What M1 cuts](#what-m1-cuts) lists each cut and why no demo surface loses anything.
 
-## Where this stands (2026-11-14)
+## Where this stands (2026-11-14, 13:30 UTC)
 
-**31 of M1's 69 tasks are closed: every contract is built, and so is the room's supervisor.** E1–E6 are complete — the deploy, `marginal-core`, the immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict, settlement, delivery and a claim. E7.3 and E7.5 add the room's reproducible build and its job loop. `make ci` passes on a clean tree: 710 Rust tests and 129 TypeScript tests, 100% coverage of lines, functions and regions in Rust and of lines, branches and functions in TypeScript, the 10⁶-case property tests, reproducible Docker builds and the sandbox end to end.
+**42 of M1's 69 tasks are closed: every contract, the room's supervisor and its worker, the judges,
+the Sealed path and the three host services.** E1–E6 are complete — the deploy, `marginal-core`, the
+immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced
+verdict, settlement, delivery and a claim. E7 adds the room's reproducible build and its job loop;
+E8 the worker, the sealed-box crypto, MPC CKD recovery, the appraisal pipeline, `knowledge@1` with a
+real MiniLM from the measured image, and `dataset-lite@0`; E9 the judges, with the API key outside
+the room; E10 Sealed verdicts end to end — the circuit, Groth16 verification on chain, and the
+room's prover; E11 the gateway, the operator agent and the compliance service.
 
-**The room exists but has never run on real hardware** (E7), and **nothing of the worker, the services, the SDK or the web app exists yet** (E8–E14), so no demo surface runs end to end. What the contracts prove today they prove in a local sandbox, with the room's side played by test keys; what the supervisor proves today it proves against a guest agent, an operator agent and an RPC built for the tests, on real sockets and real forked processes.
+**What is left is the surface the demo is seen through:** E12 (the SDK and `replay-ts`), E13 (the web
+app, 7 tasks), E14 (the cross-contract suite, the demo corpus and the scripts) and E15 (the testnet
+deploy, DRC-1 to DRC-12, the README, the video and the submission). Nothing in that list is blocked
+by anything but time.
 
-**Five tasks are code-complete but cannot be ticked**, because their **Done:** lines name something only a live room or testnet can show: E3.2 (the E7.1 quote fixture), E3.3 (a live registration), E3.6 (a key derived through MPC), E7.2 (the model pins E8.6 brings) and E7.4 (a live guest agent). Each carries a **To close** line with the exact steps.
+**Nothing has yet run on real hardware or on testnet.** The room has never booted in a CVM (E7.1,
+[P-1](#paid-and-account-gated-steps-jay)), no key has been derived through the real MPC network
+(E8.2), no NEAR AI receipt is real (E9.1, [P-2](#paid-and-account-gated-steps-jay)) and nothing is
+deployed to testnet ([P-3](#paid-and-account-gated-steps-jay), free). Every room-side proof today is
+against a guest agent, an operator agent and an RPC built for the tests — on real sockets and real
+forked processes, but not real hardware.
 
-**What the open work waits on.** E7.1 needs [P-1](#paid-and-account-gated-steps-jay) (the Phala CVM, about $0.25 for a capture) and [P-5](#paid-and-account-gated-steps-jay) (a public room image, free but a disclosure decision); E9.1 needs [P-2](#paid-and-account-gated-steps-jay) (a NEAR AI key); every testnet Done line needs [P-3](#paid-and-account-gated-steps-jay) (a free faucet top-up). Everything else is unblocked.
+**Nine tasks are code-complete but cannot be ticked**, because their **Done:** lines name something
+only a live room, a key or another task can show: E3.2, E3.3, E3.6, E7.2, E7.4, E8.2 (a live room or
+testnet), E8.5 (the SDK, E12.1), E8.6 (E14.2's corpus) and E9.1 (a NEAR AI key). Each carries a
+**To close** line with the exact steps.
 
-**The deadline is 2026-11-14 23:59 UTC.** The contracts and the supervisor are done; the demo is not. E8 (the worker and the appraisers) is the next epic, and E7.1 is the boot that turns the room from code into an admitted room.
+**Order note.** E11 was built before E10 although E10 comes first in this list: E11's services are
+P0 and on every demo surface, E10 is P2 and on one (D10).
+
+**The deadline is 2026-11-14 23:59 UTC.** `make check` passes with 100% coverage on both sides; the
+demo surface is what remains.
 
 ## How this list works
 
@@ -32,7 +54,7 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
   - `P2`: D9 and D10.
 - **One sub-issue ≈ one PR.** Each has a **Done** line, and tests ship in the same PR as the code. `needs` lists hard dependencies only.
 - **Parallel tracks** after E1–E2:
-  - contracts: E3–E6 and E10 — **E3–E6 are closed**, so only E10 (Sealed verdicts, P2) is left on this track;
+  - contracts: E3–E6 and E10 — **E3–E6 and E10 are closed**, so nothing is left on this track;
   - room: E7–E9;
   - off-chain: E11–E14.
 - **What each open task needs from the contracts** is written into it, under "From the contracts": the exact message, operation or view, so nobody has to re-read six epics of notes to build against them. Every such operation has a vector in `fixtures/vectors.json`.
@@ -82,7 +104,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | **2** (2 more built, waiting on a live room and on E8) | D1, D3 |
 | [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | **5** (2 more built, waiting on a live MPC derivation and on E14.2's corpus) | D1, D8, D9 |
 | [E9](#e9-judges) | NEAR AI judges | 1 | — (built, waiting on a key) | D6 |
-| [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | — | D10 |
+| [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | **3** | D10 |
 | [E11](#e11-services) | Gateway, operator agent, compliance | 4 | **4** | all |
 | [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — | all, D2 |
 | [E13](#e13-web-app) | Web app | 7 | — | all |
@@ -174,6 +196,8 @@ To fix in SDD v0.3.
 | 34 | §3.13 and §3.14.3 are silent on where the compose hash comes from, so the listing reads as if any JSON with those keys would do. dstack hashes the **file's bytes** (`dstack-util/src/system_setup.rs`: `sha256_file(app_compose_file)`) while its SDKs predict the hash from recursively key-sorted compact JSON — two different numbers for the same keys in a different order | `build.sh compose` writes the canonical form, so both agree, and `room/src/image.test.ts` pins that. Say in §3.13 that the compose hash is the SHA-256 of the deployed file and that the file is written canonically | SDD v0.3 |
 | 35 | §3.18 gives `ForgetCertificateV1.attestation_ref` the type `[u8; 32]` and the comment "quote hash ‖ collateral hash". Those are two 32-byte hashes, so the field as written does not fit, and a verifier has no rule to recompute it by | `marginal_core::certificate::attestation_ref(quote_hash, collateral_hash)`: `SHA-256("marginal/attestation-ref/v1" ‖ borsh((quote_hash, collateral_hash)))`, with a vector, so the room and `replay-ts` agree and a certificate can be tied to one KeyPolicy record. Say so in §3.18 | SDD v0.3 |
 | 36 | §3.18 requires every forget certificate to carry an `Outcome`, but §3.9.2's outcome table is about appraisals. A provisioning or screening job has no outcome in it, and the enum has no value for "the job ran and nothing was priced" | M1 writes `NoDeal`, which is literally true of both — no value changed hands — and says so in the code. Either give §3.18 a `Completed` outcome for non-appraisal kinds or state that `NoDeal` is the value; `replay-ts` (E12.2) has to accept whichever it is | SDD v0.3 |
+| 37 | §3.17 specifies phase 1 from PSE's perpetual powers of tau (`ppot_0080_13.ptau`). That file's host answers **403** (checked 2026-11-14) and PSE's own mirror is a torrent of the 2^28 file, so the ceremony as written cannot be run | `circuits/build.sh` generates phase 1 locally with deterministic entropy and labels the whole setup `dev`, which is what §3.17's own "M1 runs a dev setup" allows. Name a reachable phase-1 source in §3.17, or say that M1's phase 1 is local | SDD v0.3 |
+| 38 | §3.17's Sealed mode has no path for a verdict with no price. A restricted good or an unreadable input has nothing to prove, but the mode as written requires a sealed body with an outcome bit, so such a job could only ever time out and its funds would sit until `refund_expired` | A Sealed verdict may carry a status (`Restricted`, `InputRejected`, `InputError`) with **no** body and no proof, and settles like the Open one does. `check_sealed` does that (E10.2) and `a_sealed_job_can_end_without_a_price` pins it. Say so in §3.17 | SDD v0.3 |
 
 ---
 
@@ -925,17 +949,88 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E10. Sealed verdicts (D10)
 
-- [ ] **E10.1 Circuit and dev setup** · P2 · §3.17
+- [x] **E10.1 Circuit and dev setup** · P2 · §3.17
   - One circuit for `KnowledgeV1` with R1, plus the Poseidon commitment.
   - Phase 1: `ppot_0080_13.ptau`. Phase 2: one team contribution, labelled `dev`. The verifying key is stored pre-encoded.
   - **Done:** wrong witnesses fail, and the circuit agrees with core on 10³ vectors.
-- [ ] **E10.2 Verification in clearing** · P2 · §3.17
+  - **Completed 2026-11-14.** `circuits/formula_knowledge_v1.circom`: 938 non-linear and 750 linear
+    constraints, 8 public inputs (`jc_hi`, `jc_lo`, budget, ask, floor, outcome, price, commitment)
+    and 5 private ones. Everything is integer basis-point arithmetic with range checks, floored the
+    way `pricing.rs` floors it — a circuit that agreed with a real-number model but not with the
+    contract would be worthless. The commitment is `Poseidon(7)` over the job's two limbs, the four
+    private scores and a salt, so an opening cannot be moved to another job.
+  - `circuits/build.sh circuit|ceremony` builds it. The committed artefacts are the verifying key,
+    the proving key and the witness generator, pinned by `circuits/SHA256SUMS`: a re-run ceremony
+    would produce a different proving key, so the one that matches the committed verifying key has
+    to be the committed one. The intermediate `.r1cs`, `.sym` and the ceremony are gitignored.
+  - **Verified:** `room/src/prove.test.ts` runs 10³ pseudorandom cases — components, factors, floor
+    and ask drawn by a fixed xorshift so every machine runs the same ones — prices each with
+    `marginal-core` through `@marginal/core-wasm`, and hands the answer to the circuit's witness
+    generator, which checks every `===` constraint. All 1,000 are accepted; all 1,000 with the
+    outcome bit flipped are refused. It asserts both branches are present (deals and no-deals), so a
+    run that priced everything the same way could not pass. About 25 s.
+  - **Not verified:** the setup is `dev` and that is not decoration. Phase 1 is local
+    ([issue 37](#sdd-issues-found-while-planning)) and phase 2 has one contribution, from this
+    machine; anyone holding either phase's toxic waste could forge a proof. Acceptable only because
+    every M1 deployment is flagged on chain, and it is E19's to redo.
+- [x] **E10.2 Verification in clearing** · P2 · §3.17
   - **First (S-3):** measure the gas.
   - `marginal-groth16` runs inside `submit_verdict` in M1: one multiexp, a `g1_sum`, and the pairing check.
   - **Done:** Blind + Sealed debits exactly 1,000 mbits; an invalid proof gives `E_PROOF_INVALID`.
-- [ ] **E10.3 Room prover** · P2
+  - **Completed 2026-11-14.** `crates/marginal-groth16` does the verification over the host's
+    `alt_bn128` functions: one multiexp over `IC`, one `g1_sum` to negate `A`, one pairing check of
+    four pairs. It deliberately does not parse a verifying key — a key arrives **already prepared**
+    (`marginal_core::groth16::VerifyingKeyJson::prepare`, off chain), because decoding one from its
+    JSON on chain would cost more than the verification it enables. `set_verifying_key` (gov) checks
+    the shape once, when it is set, so a key that is stored is a key that can be used.
+  - Also in core: `groth16.rs` (`decimal_le`, proof and input encoding, `commitment_limbs`) with four
+    new wasm ops and vectors, so the room and `replay-ts` encode exactly what the contract reads.
+  - Two gaps found while building it and fixed: the settlement record's `components_commitment` was
+    always `None`, although §3.3 marks it "Sealed mode only" — it now holds the commitment the proof
+    was checked against, which is what a later opening is replayed against, and `get_settlement`
+    shows it; and `get_listing` did not expose `l_floor_bps`, which is one of the proof's public
+    inputs, so the room could not read a value it has to prove against.
+  - **Verified:** `contracts/clearing/src/tests/sealed.rs`, 12 tests, against **two real snarkjs
+    proofs** made for that test's own job (`fixtures/groth16-vectors.json`, under `sealed`; the
+    fixtures' public inputs are asserted to be the job's, so a change to the request or the listing
+    fails loudly instead of as a pairing error). A Sealed deal settles at the ask and debits exactly
+    1,000 mbits; a Sealed no-deal refunds the buyer and debits 1,000; a **valid proof of the other
+    outcome** gives `E_PROOF_INVALID`, leaves the job `Computing` and writes no settlement; with no
+    key set it is `E_PROOF_DISABLED`; and the schema refusals (both bodies, no body, a shown field,
+    a body with a price but a status without one, another rule) each leave the job open.
+  - **Not verified: the gas (S-3).** The pairing check has only run under near-sdk's mocked host,
+    which charges nothing. From NEAR's published parameters the call is about **78 TGas** — multiexp
+    17.1 + 9 × 3.4, pairing check 9.7 + 4 × 5.1, the `g1_sum` negligible — which leaves room inside
+    the 300 TGas limit, but that is arithmetic, not a measurement. A near-workspaces test that walks
+    a Sealed job to `Computing` and submits one of these proofs is the measurement; it belongs with
+    E14.1's cross-contract suite.
+- [x] **E10.3 Room prover** · P2
   - snarkjs in the worker.
   - **Done:** DRC-10; the buyer sees only the outcome.
+  - **Completed 2026-11-14.** `room/src/prove.ts`: the outcome and the price are what core says
+    (`measured_index`, `apply_rule` through `@marginal/core-wasm`), and this file only arranges them
+    into the circuit's public inputs — a prover that disagreed with the contract would produce
+    proofs the contract rejects, which is the failure mode worth having. The witness generator and
+    the proving key are read through `readVerified`, like the embedder's weights, so a host cannot
+    swap in a key that proves something else (DR-9).
+  - `room/src/measured.ts` is new: `readVerified` moved out of the embedder, because the prover
+    needs the same check (CLAUDE.md rule 5). Its own test moved with it.
+  - **Two dependencies join the room's measurement:** `snarkjs@0.7.6` and `circomlibjs@0.1.7`. Both
+    are pure JavaScript and wasm with no install script, which is what lets them be in an image
+    built with `--ignore-scripts`. snarkjs caches its worker pool on the global object, so
+    `proveSealed` releases it after each proof: one proof per job, and a process that kept the pool
+    would never exit.
+  - **Verified:** `room/src/prove.test.ts` — the room's own proof, from the same inputs, carries the
+    commitment the contract's fixture carries and verifies against the committed verifying key; and
+    `room/src/worker/appraisal.test.ts` runs the whole pipeline in Sealed mode: the submitted verdict
+    has `open: null`, a 32-byte commitment and a 256-byte proof, the outcome and the price clearing
+    would have computed, and the room reports **no components** back. A job whose formula or rule the
+    committed key is not for is refused rather than answered with a proof that cannot check out.
+  - **Not verified:** one process end to end — the room's tests talk to a fake operator and a fake
+    chain, so the proof has never gone from a real room into a real `submit_verdict` (that is E14.1
+    and the testnet demo); and the image cannot run yet, which is E7.2's own open item. The image
+    build does carry the circuits (`room/image/Dockerfile` copies them to the path `prove.js`
+    resolves, and `build.sh image` prints `circuits_sha256`).
 
 ## E11. Services
 

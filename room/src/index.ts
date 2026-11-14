@@ -164,14 +164,8 @@ export {
   N_PUB_WITHOUT_CORPUS,
   MIN_CONTEXT_CLAIMS,
 } from "./appraisers/knowledge/index.js";
-export {
-  embedder,
-  similarity,
-  readVerified,
-  EMBED_DIMENSIONS,
-  MODEL_DIR,
-  type Embedder,
-} from "./appraisers/knowledge/embed.js";
+export { embedder, similarity, EMBED_DIMENSIONS, MODEL_DIR, type Embedder } from "./appraisers/knowledge/embed.js";
+export { readVerified } from "./measured.js";
 export {
   datasetLiteAppraiser,
   lift,

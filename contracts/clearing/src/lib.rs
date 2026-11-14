@@ -93,6 +93,10 @@ pub struct Clearing {
     pub(crate) next_snapshot_id: u64,
     pub(crate) audit_seq: u64,
     pub(crate) audit_head: [u8; 32],
+    /// The Groth16 verifying key Sealed verdicts are checked against, already in the bytes the
+    /// host functions take (SDD §3.17). Empty until governance sets one, and a Sealed verdict is
+    /// refused until it does.
+    pub(crate) verifying_key: Vec<u8>,
 }
 
 #[near]
@@ -132,6 +136,7 @@ impl Clearing {
             next_snapshot_id: 1,
             audit_seq: 0,
             audit_head: AUDIT_GENESIS,
+            verifying_key: Vec::new(),
         }
     }
 }

@@ -77,7 +77,7 @@ impl Clearing {
             outcome: checked.outcome,
             privacy: job.privacy,
             value: Some(checked.price),
-            components_commitment: None,
+            components_commitment: checked.components_commitment,
             price: checked.price,
             fees: settled.fees.clone(),
             refund: settled.refund,

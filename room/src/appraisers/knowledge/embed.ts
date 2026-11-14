@@ -18,11 +18,10 @@
  * room whose outputs are signed: no thread pool, no batch-shape variance, and every input padded to
  * the 128 tokens `tokenizer.json` specifies.
  */
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as ort from "onnxruntime-web";
 
+import { readVerified } from "../../measured.js";
 import { MAX_TOKENS, encode, type TokenizerModel } from "./tokenizer.js";
 
 /** `all-MiniLM-L6-v2`'s output width. */
@@ -34,22 +33,6 @@ export const MODEL_DIR = fileURLToPath(new URL("../../../models/all-MiniLM-L6-v2
 export interface Embedder {
   /** One unit-length vector per text, in order. */
   embed(texts: readonly string[]): Promise<Float32Array[]>;
-}
-
-/**
- * Reads a file and refuses it unless its SHA-256 is the one `SHA256SUMS` records. The sums file is
- * part of the image and therefore of the compose hash, so a swapped weight file cannot pass
- * unnoticed.
- */
-export function readVerified(dir: string, name: string): Buffer {
-  const sums = readFileSync(`${dir}SHA256SUMS`, "utf8");
-  const line = sums.split("\n").find((row) => row.trimEnd().endsWith(` ${name}`));
-  if (line === undefined) throw new Error(`models: ${name} is not in SHA256SUMS`);
-  const expected = line.slice(0, 64);
-  const bytes = readFileSync(`${dir}${name}`);
-  const actual = createHash("sha256").update(bytes).digest("hex");
-  if (actual !== expected) throw new Error(`models: ${name} is ${actual}, not ${expected}`);
-  return bytes;
 }
 
 /**

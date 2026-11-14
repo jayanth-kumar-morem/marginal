@@ -168,6 +168,8 @@ export interface ListingRecord {
   readonly pk_l: string | null;
   readonly appraiser: string;
   readonly value_class: string;
+  /** The judgement floor: a public input of a Sealed proof, and what a judge can cost (§3.7). */
+  readonly l_floor_bps: number;
   /** Everything below is part of `job_commitment`, which the room recomputes (SDD §3.12.3). */
   readonly rule: unknown;
   readonly disclosure_policy: unknown;

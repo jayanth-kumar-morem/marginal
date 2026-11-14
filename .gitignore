@@ -24,3 +24,14 @@ room/models/**/tokenizer.json
 room/models/**/config.json
 room/models/**/tokenizer_config.json
 room/models/**/special_tokens_map.json
+# the circuit's intermediate build output (E10.1). The two artefacts the room and the tests need —
+# `build/formula_knowledge_v1.zkey` and `build/formula_knowledge_v1_js/formula_knowledge_v1.wasm` —
+# are committed and pinned by circuits/SHA256SUMS: a re-run ceremony would produce a different
+# proving key, and the committed verifying key has to match the one that proves.
+circuits/ceremony/
+circuits/build/*.r1cs
+circuits/build/*.sym
+circuits/build/*_0000.zkey
+circuits/build/*.vkey.json
+circuits/build/formula_knowledge_v1_js/generate_witness.js
+circuits/build/formula_knowledge_v1_js/witness_calculator.js

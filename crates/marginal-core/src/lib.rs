@@ -36,6 +36,7 @@ pub mod credential;
 pub mod delivery;
 pub mod error;
 pub mod funding;
+pub mod groth16;
 pub mod json;
 pub mod judge;
 pub mod keyrelease;

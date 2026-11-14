@@ -18,6 +18,7 @@ import { signCertificate } from "../cert/forget.js";
 import { sealDelivery, deliveryPayload } from "../crypto/delivery.js";
 import { aeadOpen, memzero, randomBytes } from "../crypto/sodium.js";
 import { MIN_CONTEXT_CLAIMS } from "../appraisers/knowledge/index.js";
+import { SEALED_FORMULA, postedAsk, proveSealed, type SealedBody } from "../prove.js";
 import { claims } from "../appraisers/knowledge/novelty.js";
 import type { Appraiser, JudgeFactor } from "../appraisers/types.js";
 import { loadJob, openGood, type JobData, type WorkerContext } from "./context.js";
@@ -211,6 +212,27 @@ async function decide(
   }
 }
 
+/**
+ * The Sealed body for this job. The verifying key on chain is for one formula and one rule, so an
+ * appraiser or a listing the proof could not be checked against is refused here rather than
+ * answered with a proof clearing will reject.
+ */
+function sealedBody(data: JobData, appraiser: Appraiser, decided: Verdict): Promise<SealedBody> {
+  const { job, listing } = data;
+  if (appraiser.formulaId !== SEALED_FORMULA) {
+    throw new Error(`sealed mode is built for ${SEALED_FORMULA}, not ${appraiser.formulaId}`);
+  }
+  return proveSealed(
+    {
+      jobCommitment: job.job_commitment,
+      budget: job.buckets.budget,
+      ask: postedAsk(listing.rule),
+      lFloorBps: listing.l_floor_bps,
+    },
+    { components: decided.components, factors: decided.factors.map((f) => f.factor_bps) },
+  );
+}
+
 /** Steps 10 to 12: the certificate, the verdict, and the delivery receipt on a deal. */
 async function submit(
   ctx: WorkerContext,
@@ -246,6 +268,12 @@ async function submit(
   });
   await ctx.channel.putBlob(certificateKey(certificate.hash), certificate.bytes);
 
+  // Sealed mode: the components stay in the room and a proof says the price follows from them
+  // (§3.17, E10.3). A status with no price has nothing to prove, so it is sent as it is.
+  const sealed =
+    job.privacy === "Sealed" && decided.status === "Ok"
+      ? await sealedBody(data, appraiser, decided)
+      : null;
   const verdict = {
     domain: VERDICT_DOMAIN,
     chain_id: clearing.chain_id,
@@ -257,9 +285,10 @@ async function submit(
     appraiser: { id: appraiser.id, version: appraiser.version, formula_id: appraiser.formulaId },
     status: decided.status,
     privacy: job.privacy,
-    // M1 is Open and blind: the components are published and no field is shown (E6.1).
-    open: { components: decided.components, factors: decided.factors, shown: [] },
-    sealed: null,
+    // Blind either way: no field is shown (E6.1). In Open mode the components are published and
+    // clearing recomputes the price from them; in Sealed mode neither is.
+    open: sealed === null ? { components: decided.components, factors: decided.factors, shown: [] } : null,
+    sealed,
     delivery_commitment: deliveryHash,
     cert_hash: certificate.hash,
     room_key: ctx.roomKeyHex,
@@ -284,7 +313,8 @@ async function submit(
   }
   return {
     status: decided.status,
-    components: decided.components,
+    // A Sealed verdict publishes no components, so neither does what the room reports back.
+    components: sealed === null ? decided.components : [],
     price: typeof answered?.price === "string" ? answered.price : null,
     deliveryHash,
   };

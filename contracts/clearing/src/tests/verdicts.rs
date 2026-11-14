@@ -242,9 +242,10 @@ fn a_verdict_that_does_not_check_out_leaves_the_job_open() {
                     vec![marginal_core::verdict::ShownField { id: 1, index: 0 }];
             }),
         ),
-        // Sealed mode is E10: the proof verifier is not built.
+        // The mode is bound into `job_commitment`, so an Open job answered in Sealed mode is a
+        // schema refusal, whatever the sealed body says. E10's own tests cover the Sealed path.
         (
-            "E_PROOF_INVALID",
+            "E_SCHEMA",
             Box::new(|v: &mut VerdictV1| v.privacy = VerdictPrivacy::Sealed),
         ),
         (
@@ -433,16 +434,7 @@ fn the_other_two_kinds_of_judge_proof() {
 
     // A room registered under a simulated attestation sets the other bit (§6.3 rule 2).
     let mut c = contract();
-    call_as(GOV, SET_FEE);
-    c.approve_measurement_set(Base64VecU8(
-        near_sdk::borsh::to_vec(&measurement_set()).unwrap(),
-    ));
-    call_as(GOV, PLATFORM_FEE);
-    c.admit_platform(hex::encode(PPID), account(OPERATOR), U128(1_000));
-    let mut room = admit(room_key(), measurement(false), PPID);
-    room["attestation_mode"] = json!("Simulated");
-    call_as(KEYPOLICY, no_deposit());
-    c.admit_room(room);
+    with_simulated_room(&mut c);
     let listing_id = active(&mut c);
     fund_buyer(&mut c, 10_000_000_000);
     register_judge(&mut c);

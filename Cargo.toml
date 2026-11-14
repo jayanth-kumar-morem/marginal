@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/marginal-groth16",
   "crates/marginal-core",
   "crates/marginal-core-wasm",
   "contracts/clearing",

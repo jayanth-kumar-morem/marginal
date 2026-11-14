@@ -19,7 +19,10 @@
     "eslint": "9.39.4",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.72.2"
+    "typescript-eslint": "8.72.2",
+    "circomlib": "2.0.5",
+    "snarkjs": "0.7.6",
+    "circomlibjs": "0.1.7"
   },
   "type": "module"
 }

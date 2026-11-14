@@ -62,6 +62,7 @@ cmd_image() {
 
   echo "core_wasm_sha256=$(shasum -a 256 "$repo/crates/marginal-core-wasm/core.wasm" | cut -d' ' -f1)"
   echo "models_sha256=$(shasum -a 256 "$repo/$MODEL_SUMS" | cut -d' ' -f1)"
+  echo "circuits_sha256=$(shasum -a 256 "$repo/circuits/SHA256SUMS" | cut -d' ' -f1)"
   echo "commit=$commit"
   node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(`image_digest=${m["containerimage.digest"]}`)' \
     "$out/image-metadata.json"

@@ -70,6 +70,9 @@ errors! {
     Schema = "E_SCHEMA",
     RecomputeMismatch = "E_RECOMPUTE_MISMATCH",
     ProofInvalid = "E_PROOF_INVALID",
+    /// A Sealed verdict arrived before governance set a verifying key: nothing can check it, and
+    /// a verdict nobody can check must not settle (SDD §3.17).
+    ProofDisabled = "E_PROOF_DISABLED",
     ReceiptSigner = "E_RECEIPT_SIGNER",
     ReceiptBodyHash = "E_RECEIPT_BODY_HASH",
     ReceiptReplay = "E_RECEIPT_REPLAY",

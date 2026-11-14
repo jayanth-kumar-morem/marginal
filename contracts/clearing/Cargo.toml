@@ -20,6 +20,7 @@ container_build_command = ["cargo", "near", "build", "non-reproducible-wasm", "-
 # receipt's secp256k1 signature (SDD §3.16, E6.2). Nothing else in this crate uses it.
 near-sdk = { workspace = true, features = ["unstable"] }
 marginal-core = { path = "../../crates/marginal-core", default-features = false }
+marginal-groth16 = { path = "../../crates/marginal-groth16" }
 
 [dev-dependencies]
 near-sdk = { workspace = true, features = ["unit-testing"] }

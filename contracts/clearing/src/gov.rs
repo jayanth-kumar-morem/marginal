@@ -9,12 +9,13 @@ use marginal_core::audit::AuditKind;
 use marginal_core::json::{parse_hex, to_hex};
 use marginal_core::{CoreError, FormulaId};
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::serde_json::{from_value, json, Value};
 use near_sdk::{near, require, AccountId};
 
 use crate::store::{self, appraiser_id, Table};
 use crate::{fail, now_secs, Clearing, ClearingExt};
+use marginal_groth16::PreparedKey;
 
 /// What the clearing fee is, and how it is split (SDD §3.9.1). Rates are basis points; the three
 /// shares are shares *of the fee* and must add up to one whole.
@@ -135,6 +136,30 @@ impl Clearing {
     ///
     /// `address` is the signer's 20-byte Ethereum address in hex, because that is what recovering
     /// a receipt's signature gives back (§3.16, E6.2). The model it signs for is the allow-list:
+    /// Stores the verifying key Sealed verdicts are checked against (SDD §3.17, E10.2).
+    ///
+    /// It is stored **prepared** — already in the bytes the `alt_bn128` host functions take —
+    /// because decoding a key from its JSON on chain would cost about 40 TGas, more than the
+    /// verification it enables. `marginal_core::groth16::VerifyingKeyJson::prepare` is what
+    /// produces these bytes, off chain, from what `snarkjs` wrote.
+    ///
+    /// One key, because M1 has one (formula, rule) pair and §3.17 makes a key specific to one. A
+    /// deployment with a second formula needs a map, which is M2 (E16).
+    pub fn set_verifying_key(&mut self, key: Base64VecU8) {
+        self.only_gov();
+        // Parsed to check its shape before it is stored: a key with half a point in it would
+        // otherwise fail every verdict, and the room would have no way to tell why.
+        let inputs = PreparedKey::parse(&key.0)
+            .unwrap_or_else(|e| fail(e))
+            .inputs();
+        self.verifying_key = key.0;
+        let bytes = self.verifying_key.len();
+        self.policy_changed(
+            "verifying_key_set",
+            json!({ "inputs": inputs, "bytes": bytes }),
+        );
+    }
+
     /// a receipt is accepted only for the model its signer is registered against.
     pub fn set_ai_signer(&mut self, address: String, model: String, expires_at: u64) {
         self.only_gov();

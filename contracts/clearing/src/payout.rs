@@ -347,6 +347,8 @@ impl Clearing {
             "fees": crate::settle::fees_json(&record.fees),
             "leakage_debit_mbits": record.leakage_debit_mbits,
             "leakage_comp": U128(record.leakage_comp),
+            // Sealed mode only: what a later opening of the scores is replayed against (§3.17).
+            "components_commitment": record.components_commitment.map(|h| to_hex(&h)),
             "delivery_commitment": record.delivery_commitment.map(|h| to_hex(&h)),
             "delivery_receipt": record.delivery_receipt.map(|h| to_hex(&h)),
             "cert_hashes": record.cert_hashes.iter().map(|h| to_hex(h)).collect::<Vec<_>>(),

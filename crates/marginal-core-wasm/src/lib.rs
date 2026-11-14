@@ -27,7 +27,7 @@ use marginal_core::credential::{
 };
 use marginal_core::delivery::{delivery_hash, DeliveryV1};
 use marginal_core::funding::{fund, total};
-use marginal_core::json::{dec, hex};
+use marginal_core::json::{dec, hex, to_hex};
 use marginal_core::judge::{binds_body, has_reasoning, parse_relevance, personal_sign_preimage};
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
@@ -210,6 +210,26 @@ struct PpidIn {
     ppid: Vec<u8>,
 }
 
+/// A proof's public signals, as snarkjs prints them.
+#[derive(Deserialize)]
+struct SignalsIn {
+    signals: Vec<String>,
+}
+
+/// A job commitment to split into the circuit's two limbs.
+#[derive(Deserialize)]
+struct LimbsIn {
+    #[serde(with = "hex")]
+    commitment: [u8; 32],
+}
+
+/// The two limbs, as little-endian field elements.
+#[derive(Serialize)]
+struct Limbs {
+    hi: String,
+    lo: String,
+}
+
 /// The two hashes KeyPolicy's attestation record holds, which a certificate refers to as one.
 #[derive(Deserialize)]
 struct AttestationRefIn {
@@ -384,6 +404,22 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
         }),
         "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
         "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),
+        "groth16_vkey_prepare" => run(input, |k: marginal_core::groth16::VerifyingKeyJson| {
+            Ok(Hex(k.prepare()?))
+        }),
+        "groth16_proof_encode" => run(input, |p: marginal_core::groth16::ProofJson| {
+            Ok(Hex(p.encode()?))
+        }),
+        "groth16_inputs_encode" => run(input, |i: SignalsIn| {
+            Ok(Hex(marginal_core::groth16::encode_inputs(&i.signals)?))
+        }),
+        "commitment_limbs" => run(input, |i: LimbsIn| {
+            let (hi, lo) = marginal_core::groth16::commitment_limbs(&i.commitment);
+            Ok(Limbs {
+                hi: to_hex(&hi),
+                lo: to_hex(&lo),
+            })
+        }),
         "attestation_ref" => run(input, |i: AttestationRefIn| {
             Ok(Hex(attestation_ref(&i.quote_hash, &i.collateral_hash)))
         }),

@@ -150,6 +150,21 @@ fn with_room(c: &mut Clearing) {
     c.admit_room(admit(room_key(), measurement(false), PPID));
 }
 
+/// The same, but the room's attestation was simulated, which every record it touches must say
+/// (§6.3 rule 2). It is the room's registration that differs, so nothing in `job_commitment` does.
+fn with_simulated_room(c: &mut Clearing) {
+    call_as(GOV, SET_FEE);
+    c.approve_measurement_set(Base64VecU8(
+        near_sdk::borsh::to_vec(&measurement_set()).unwrap(),
+    ));
+    call_as(GOV, PLATFORM_FEE);
+    c.admit_platform(hex::encode(PPID), account(OPERATOR), U128(1_000));
+    let mut room = admit(room_key(), measurement(false), PPID);
+    room["attestation_mode"] = json!("Simulated");
+    call_as(KEYPOLICY, no_deposit());
+    c.admit_room(room);
+}
+
 fn b64<T: borsh::BorshSerialize>(value: &T) -> Base64VecU8 {
     Base64VecU8(to_bytes(value))
 }
@@ -490,5 +505,6 @@ mod jobs;
 mod listings;
 mod payouts;
 mod registry;
+mod sealed;
 mod verdicts;
 mod views;

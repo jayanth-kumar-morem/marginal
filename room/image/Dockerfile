@@ -33,6 +33,10 @@ RUN set -eu; \
 FROM node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee AS runtime
 
 COPY --from=build /out /app
+# The Sealed-mode prover's artefacts: the verifying key, the proving key and the witness generator,
+# at the path `dist/prove.js` resolves (`../../circuits/` from `/app/dist/`). They are committed and
+# pinned by `circuits/SHA256SUMS`, which `readVerified` checks before either is used (DR-9).
+COPY --from=build /src/circuits /circuits
 WORKDIR /app
 USER node
 
