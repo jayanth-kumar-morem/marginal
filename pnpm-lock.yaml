@@ -119,7 +119,26 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  services/common:
+    devDependencies:
+      '@types/node':
+        specifier: 22.19.17
+        version: 22.19.17
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
   services/compliance:
+    dependencies:
+      '@marginal/core-wasm':
+        specifier: workspace:*
+        version: link:../../crates/marginal-core-wasm
+      '@marginal/service-common':
+        specifier: workspace:*
+        version: link:../common
     devDependencies:
       '@types/node':
         specifier: 22.19.17
@@ -132,6 +151,10 @@ importers:
         version: 5.9.3
 
   services/gateway:
+    dependencies:
+      '@marginal/service-common':
+        specifier: workspace:*
+        version: link:../common
     devDependencies:
       '@types/node':
         specifier: 22.19.17
@@ -144,7 +167,20 @@ importers:
         version: 5.9.3
 
   services/operator-agent:
+    dependencies:
+      '@marginal/core-wasm':
+        specifier: workspace:*
+        version: link:../../crates/marginal-core-wasm
+      '@marginal/service-common':
+        specifier: workspace:*
+        version: link:../common
+      near-api-js:
+        specifier: 7.5.3
+        version: 7.5.3
     devDependencies:
+      '@marginal/gateway':
+        specifier: workspace:*
+        version: link:../gateway
       '@types/node':
         specifier: 22.19.17
         version: 22.19.17

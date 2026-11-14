@@ -360,6 +360,7 @@ marginal/
 │   │                               build.sh, MEASUREMENTS.md; build.sh assembles out/ (not committed)
 │   └── test/
 ├── services/
+│   ├── common/                     the HTTP plumbing the three host services share (routing, errors, env)
 │   ├── gateway/                    REST + WebSocket API; presigned blob upload; read models
 │   ├── indexer/                    block poller (HDP) or NEAR Lake (prod) → Postgres; event decoder; audit mirror
 │   ├── relayer/                    NEP-366 meta-transactions; per-identity gas quotas
@@ -373,7 +374,8 @@ marginal/
 ├── sdk/ts/                         @marginal/sdk: sealing, tx builders, job watcher
 ├── cli/                            `marginal` CLI (seller, buyer, gov, debug)
 ├── sim/                            economic simulation, red-team harness (Sybil probing, injection corpora)
-├── deploy/                         profiles/{local,sandbox,testnet-demo,mainnet-canary}.toml, scripts/
+├── deploy/                         profiles/{local,sandbox,testnet-demo,mainnet-canary}.toml, scripts/,
+│                                   services/ (the host services' Dockerfile and docker compose)
 ├── fixtures/                       vectors.json: test vectors that marginal-core, the room and replay-ts must all reproduce
 ├── transparency/                   measurements.json, policy-history.json (mirrors on-chain events)
 └── docs/                           SPEC.md, SDD.md, test-plan.md, runbooks/ (incident, revocation drill, deploy)

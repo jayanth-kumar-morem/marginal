@@ -112,7 +112,7 @@ export {
 } from "./worker/context.js";
 export { runProvisioning, PROVISIONING_DOMAIN } from "./worker/provisioning.js";
 export { runScreening, SCREENING_DOMAIN } from "./worker/screening.js";
-export { runJob, appraiserFor, main as workerMain } from "./worker/main.js";
+export { runJob, appraiserFor, appraiserVia, judgeFetch, main as workerMain } from "./worker/main.js";
 export {
   runAppraisal,
   checkCommitment,

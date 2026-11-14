@@ -5,7 +5,7 @@
  * exit is load-bearing: it is what makes the forget certificate's `process-exit` basis true, so
  * there is no path here that finishes a job and keeps running.
  */
-import { loadConfig } from "../config.js";
+import { loadConfig, type RoomConfig } from "../config.js";
 import { chainClient, type ListingRecord } from "../chain.js";
 import { embedder } from "../appraisers/knowledge/embed.js";
 import { knowledgeAppraiser } from "../appraisers/knowledge/index.js";
@@ -16,6 +16,19 @@ import { runProvisioning } from "./provisioning.js";
 import { runScreening } from "./screening.js";
 import { workerChannel, type ChannelProcess } from "./ipc.js";
 import type { WorkerContext } from "./context.js";
+
+/**
+ * A `fetch` that goes to the operator agent's judge proxy instead of to NEAR AI. The room keeps no
+ * API key — one in the compose file would be published with the measurement — so the agent adds it
+ * on the way out and the room never learns it (§3.14.3).
+ */
+export function judgeFetch(operatorUrl: string): typeof globalThis.fetch {
+  const base = operatorUrl.replace(/\/$/, "");
+  return ((url: string | URL, init?: RequestInit) => {
+    const target = new URL(String(url));
+    return globalThis.fetch(`${base}/v1/judge${target.pathname}${target.search}`, init);
+  }) as typeof globalThis.fetch;
+}
 
 /**
  * The appraiser for a listing. M1 has one, and loading it means reading 90 MB of weights, so it is
@@ -37,6 +50,14 @@ export async function appraiserFor(
     fetchImpl,
   });
   return knowledgeAppraiser(model, judges);
+}
+
+/**
+ * How this room builds an appraiser: with the judge proxy pointed at the operator agent, which is
+ * the only route out of the room a judge can be reached by (§3.14.3, E11.3).
+ */
+export function appraiserVia(config: RoomConfig): (listing: ListingRecord) => Promise<Appraiser> {
+  return (listing) => appraiserFor(listing, judgeFetch(config.operatorUrl));
 }
 
 /** Runs one job and returns, leaving nothing behind. */
@@ -83,5 +104,6 @@ export async function main(
     },
     job.kind,
     job.id,
+    appraiserVia(config),
   );
 }

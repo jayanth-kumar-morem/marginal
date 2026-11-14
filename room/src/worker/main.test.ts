@@ -20,7 +20,7 @@ import {
   viewMethod,
   viewReply,
 } from "../testing.js";
-import { main } from "./main.js";
+import { appraiserVia, judgeFetch, main } from "./main.js";
 import type { ChannelProcess } from "./ipc.js";
 
 const env = {
@@ -190,4 +190,50 @@ test("a forked worker runs its job end to end through main", async () => {
   // And the key it reported is the one CKD gave it, not one it made up.
   const report = Buffer.from(operator.submitted[2]?.args.report as string, "base64").toString("hex");
   assert.ok(report.includes(Buffer.from(derived.publicKey).toString("hex")), "pk_L is in the report");
+});
+
+test("a room builds its appraiser with the agent's judge proxy", async () => {
+  const { testConfig } = await import("../testing.js");
+  const build = appraiserVia(testConfig());
+  // The appraiser itself is checked in the appraisal tests; what matters here is that a listing
+  // this room cannot appraise is refused before 90 MB of weights are read.
+  await assert.rejects(
+    () =>
+      build({
+        id: 1,
+        seller: "a.testnet",
+        version: 1,
+        status: "Active",
+        good_commitment: "00".repeat(32),
+        ciphertext: { uri_hash: "00".repeat(32), sha256: "00".repeat(32), size_class: 1 },
+        key_mode: "Ckd",
+        pk_l: null,
+        appraiser: "dataset-lite@0",
+        value_class: "M",
+        rule: {},
+        disclosure_policy: "DisputeOnly",
+        external_judges_allowed: false,
+      }),
+    /does not run dataset-lite@0/,
+  );
+});
+
+test("a judge is reached through the operator agent, never directly", async () => {
+  const seen: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = ((url: string) => {
+    seen.push(String(url));
+    return Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof globalThis.fetch;
+  try {
+    const through = judgeFetch("http://127.0.0.1:8082/");
+    await through("https://cloud-api.near.ai/v1/chat/completions");
+    await through("https://cloud-api.near.ai/v1/signature/chat-1?model=m");
+    assert.deepEqual(seen, [
+      "http://127.0.0.1:8082/v1/judge/v1/chat/completions",
+      "http://127.0.0.1:8082/v1/judge/v1/signature/chat-1?model=m",
+    ]);
+  } finally {
+    globalThis.fetch = real;
+  }
 });

@@ -1,0 +1,71 @@
+# The services host (SDD §2.7; E11.1).
+#
+# The gateway and the operator agent run together, because they are the same operator's and talk to
+# each other over localhost. **Compliance is its own container** with its own volume: it holds the
+# two keys that can grant something, and nothing else in the system holds either.
+#
+# None of this is attested. A room trusts none of it: every message the agent relays is signed by
+# the room, every object the gateway serves is checked against a hash the chain already committed
+# to, and both of compliance's answers are signatures clearing verifies itself.
+services:
+  gateway:
+    build: { context: ../.., dockerfile: deploy/services/Dockerfile }
+    command:
+      - node
+      - -e
+      - import('/app/services/gateway/dist/main.js').then((m) => m.main())
+    environment:
+      PORT: "8081"
+      MARGINAL_BLOB_DIR: /var/lib/marginal/blobs
+      MARGINAL_UPLOAD_SECRET: ${MARGINAL_UPLOAD_SECRET}
+    volumes:
+      - blobs:/var/lib/marginal/blobs
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  operator-agent:
+    build: { context: ../.., dockerfile: deploy/services/Dockerfile }
+    command:
+      - node
+      - -e
+      - import('/app/services/operator-agent/dist/main.js').then((m) => m.main())
+    environment:
+      PORT: "8082"
+      MARGINAL_RPC_URL: ${MARGINAL_RPC_URL}
+      MARGINAL_AGENT_ACCOUNT: ${MARGINAL_AGENT_ACCOUNT}
+      # A function-call key, never a full-access one: the agent can only call the methods the room
+      # is allowed to ask for (SDD §3.13).
+      MARGINAL_AGENT_KEY: ${MARGINAL_AGENT_KEY}
+      MARGINAL_CLEARING: ${MARGINAL_CLEARING}
+      MARGINAL_KEYPOLICY: ${MARGINAL_KEYPOLICY}
+      MARGINAL_GATEWAY_URL: http://gateway:8081
+      # Optional. Without it the room's judges are simulated and flagged on chain.
+      MARGINAL_NEARAI_KEY: ${MARGINAL_NEARAI_KEY:-}
+    depends_on: [gateway]
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
+  compliance:
+    build: { context: ../.., dockerfile: deploy/services/Dockerfile }
+    command:
+      - node
+      - -e
+      - import('/app/services/compliance/dist/main.js').then((m) => m.main())
+    environment:
+      PORT: "8083"
+      MARGINAL_CHAIN_ID: ${MARGINAL_CHAIN_ID}
+      MARGINAL_CLEARING: ${MARGINAL_CLEARING}
+      MARGINAL_ISSUER_SEED: ${MARGINAL_ISSUER_SEED}
+      MARGINAL_COMPLIANCE_SEED: ${MARGINAL_COMPLIANCE_SEED}
+      MARGINAL_ALLOWED_IDENTITIES: ${MARGINAL_ALLOWED_IDENTITIES}
+    volumes:
+      - compliance:/var/lib/marginal/compliance
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+
+volumes:
+  blobs:
+  compliance:

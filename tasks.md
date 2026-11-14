@@ -83,7 +83,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | **5** (2 more built, waiting on a live MPC derivation and on E14.2's corpus) | D1, D8, D9 |
 | [E9](#e9-judges) | NEAR AI judges | 1 | — (built, waiting on a key) | D6 |
 | [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | — | D10 |
-| [E11](#e11-services) | Gateway, operator agent, compliance | 4 | — | all |
+| [E11](#e11-services) | Gateway, operator agent, compliance | 4 | **4** | all |
 | [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — | all, D2 |
 | [E13](#e13-web-app) | Web app | 7 | — | all |
 | [E14](#e14-tests-fixtures-and-demo-scripts) | Tests, fixtures, demo scripts | 3 | — | D4, D5, D6, D11 |
@@ -939,22 +939,89 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E11. Services
 
-- [ ] **E11.1 Services host** · P0 · §2.7
+- [x] **E11.1 Services host** · P0 · §2.7
   - One docker compose: gateway, operator agent and MinIO. Compliance runs as its own container.
-- [ ] **E11.2 Gateway** · P0 · §3.22
+  - **Completed 2026-11-14.** `deploy/services/`: one Dockerfile for all three (same workspace, the
+    command picks the entry point) and a compose file. Compliance is its own container with its own
+    volume, because it holds the two keys that can grant something. `services/common` is the HTTP
+    plumbing the three share — routing, bodies, errors, env — so none of it is copied.
+  - **Deviation: no MinIO.** The gateway stores objects itself, content-addressed, with HMAC-signed
+    upload grants. An S3 server would be a second thing to run and secure for no demo surface, and
+    the property that matters — an object cannot be swapped for another — comes from the grant
+    naming the content's SHA-256, not from S3. `deploy/services/README.md` says so.
+  - **Not the room's image.** Nothing here is measured or reproducible: these services are untrusted
+    by design, and `room/image/` is the one with pinned digests because that one is what a seller
+    pins.
+  - **Not verified:** the compose has not been brought up (that needs a funded agent key and a
+    deployed clearing, [P-3](#paid-and-account-gated-steps-jay)); each service is tested over real
+    HTTP in process.
+- [x] **E11.2 Gateway** · P0 · §3.22
   - Content-addressed presigned uploads (ciphertext only).
   - `GET /v1/replay/{job_id}`: runs `replay-ts` with the `dcap-qvl` CLI.
   - A 1Click dry-quote proxy that stores nothing and never logs response bodies (D7).
-- [ ] **E11.3 Operator agent** · P0 · §3.13
+  - **Completed 2026-11-14.** `services/gateway/`: the content-addressed store, the replay endpoint
+    and the dry-quote proxy, all over real HTTP in the tests.
+  - **An upload is two steps and the second is checked.** `POST /v1/uploads` issues a grant naming
+    the key, the content's SHA-256 and its size, signed with the deployment's HMAC key; `PUT
+    /v1/blob/{key}` is refused unless the bytes hash to what the grant said. So the gateway being
+    untrusted costs nothing: it cannot substitute an object, and it holds no upload state.
+  - **Tested:** the whole flow; an upload with different bytes of the same length, the wrong length,
+    another key, a token from another deployment's key, an expired grant, and no token at all; a key
+    with `..` in it; and a grant request with every field malformed.
+  - **`/v1/replay/{job_id}`** takes `replay-ts` as a dependency and answers 503 when it is not
+    configured, which is the honest answer until E12.2 exists — the route is wired, the verifier is
+    not written.
+  - **The dry quote forces `dry: true`** whatever the caller asked, so this proxy can never commit
+    anyone to a swap, and it keeps nothing: no body is stored and none is logged (D7).
+  - **Not verified:** no real 1Click call (the upstream is stubbed), and the replay endpoint has
+    never served a real replay.
+- [x] **E11.3 Operator agent** · P0 · §3.13
   - `issue_nonce`, collateral fetch, `register_room` relay and renewal.
   - Relays the room's signed submissions from a funded function-call key. Restarts the CVM.
   - **From the contracts (E3).** A nonce is bound to the account that asked for it, so the same key must call `issue_nonce` and `register_room`; it lasts 5,000 blocks (about 80 minutes) and one `register_room` spends it whatever happens next. Registration costs 0.01 NEAR of storage and the verifier call gets 200 TGas, so **run the pre-flight first**: the `evaluate_quote` operation in `@marginal/core-wasm` makes the same checks KeyPolicy will, against the quote and event log the room produced, and a registration that would fail is then caught before it spends gas. Collateral comes from `pccs.phala.network` through `dcap-qvl`, and the attestation is only good for 24 h, so renew daily.
-- [ ] **E11.4 Compliance service** · P0 (OFAC: P1, D8) · §3.20
+  - **Completed 2026-11-14.** `services/operator-agent/`: the nonce, the registration relay with its
+    collateral, the submission relay, the blob channel and the judge proxy. The `near.ts` relay is
+    the real `near-api-js` client and is tested against a **fake JSON-RPC node** — signing, action
+    encoding, gas and deposit included — rather than behind a double.
+  - **The agent can only do what the room is allowed to ask for.** Methods are an allow-list per
+    contract (`authorize` and `derive` on KeyPolicy; the four submissions on clearing), and anything
+    else is a 403 that never reaches the chain. It attaches the storage deposits KeyPolicy charges,
+    and 300 TGas for a registration because the verifier call alone takes 200.
+  - **The NEAR AI key lives here and nowhere else.** `/v1/judge` forwards exactly two paths to NEAR
+    AI, adds the `Authorization` header and **forces `x-no-aliasing: true`** whatever the room asked
+    — aliasing would make the signature the gateway's rather than the model's TEE, which is not the
+    room's choice to make. The body is passed through untouched and never logged: it is what the
+    provider's TEE signs over and what ends up on chain in Open mode.
+  - **Collateral is `dcap-qvl`'s.** A missing binary is a 503 naming it, not a 500, because an
+    operator has to install it and the message should say so.
+  - **Not built: the CVM restart.** It needs Phala's API and a running CVM
+    ([P-1](#paid-and-account-gated-steps-jay)); the agent has no credentials for Phala and does not
+    pretend to. **Not built: the room's own pre-flight before registering** — the room already runs
+    `rtmr3_replay` and `room_events` on its own quote before handing it over (E7.4), so the agent
+    would be checking a second time; `evaluate_quote` on the agent's side is worth adding when there
+    is a real quote to try it on.
+  - **Not verified:** nothing has run against a real chain or a real `dcap-qvl`.
+- [x] **E11.4 Compliance service** · P0 (OFAC: P1, D8) · §3.20
   - Issuer key labelled `demo`; SQLite.
   - `POST /v1/nullifiers` for allow-listed demo identities.
   - `POST /v1/payout-approvals` screens against the OFAC SDN file, fetched at start and daily.
   - **Done:** D4 credentials work, and a payout to a listed address is blocked.
   - **From the contracts (E5.4, E6.4).** Both are ed25519 over bytes `marginal-core` builds, with vectors: `nullifier_signing_bytes(NullifierCredential{chain_id, clearing, subject, listing_id, epoch, nullifier, expiry_height})` under the key set by `set_issuer_key`, and `payout_approval_signing_bytes(PayoutApproval{…, route_hash, list_version, screening_id, blocked, expiry_height})` under `set_compliance_key`. `route_hash` is `sha256(borsh(PayoutRoute))` of the listing's own route. A sanctions match is `blocked: true` with the screening id, which clearing records as `Blocked` rather than paying; it is not a refusal to sign.
+  - **Completed 2026-11-14.** `services/compliance/`: the two signing keys, the SDN parser, the
+    SQLite record and the two endpoints. Both answers are signatures over `marginal-core`'s own
+    bytes, verified in the tests the way clearing verifies them.
+  - **D4 works and D8 blocks.** A demo identity gets the same nullifier for the same subject,
+    listing and epoch — which is what stops one person appraising a listing twice through two
+    accounts — and a different one next epoch. A payout to a listed address comes back
+    `blocked: true` with a screening id and the list version, which clearing records as `Blocked`
+    while keeping the money claimable: nothing is seized and the decision can be re-checked against
+    a file anyone can download.
+  - **It refuses rather than guesses.** An unread list is a 503, never a quiet "not listed"; a list
+    that cannot be fetched is an error, not an empty list; and the service never learns the payout
+    route, because the route is hashed before it arrives.
+  - **Not verified:** the real SDN file has never been parsed (the tests use a fixture in Treasury's
+    own shape, and a 10 MB download does not belong in a test), and nothing has been checked against
+    a deployed clearing.
 
 ## E12. SDK and verifier
 
