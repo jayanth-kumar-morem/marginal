@@ -10,15 +10,15 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
 
 ## Where this stands (2026-11-14)
 
-**29 of M1's 69 tasks are closed: every contract is built.** E1–E6 are complete — the deploy, `marginal-core`, the immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict, settlement, delivery and a claim. `make ci` passes on a clean tree: 710 tests, 100% coverage of lines, functions and regions in Rust and of lines, branches and functions in TypeScript, the 10⁶-case property tests, reproducible Docker builds and the sandbox end to end.
+**31 of M1's 69 tasks are closed: every contract is built, and so is the room's supervisor.** E1–E6 are complete — the deploy, `marginal-core`, the immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict, settlement, delivery and a claim. E7.3 and E7.5 add the room's reproducible build and its job loop. `make ci` passes on a clean tree: 710 Rust tests and 129 TypeScript tests, 100% coverage of lines, functions and regions in Rust and of lines, branches and functions in TypeScript, the 10⁶-case property tests, reproducible Docker builds and the sandbox end to end.
 
-**Nothing of the room, the services, the SDK or the web app exists yet** (E7–E14), so no demo surface runs end to end. What the contracts prove today they prove in a local sandbox, with the room's side played by test keys.
+**The room exists but has never run on real hardware** (E7), and **nothing of the worker, the services, the SDK or the web app exists yet** (E8–E14), so no demo surface runs end to end. What the contracts prove today they prove in a local sandbox, with the room's side played by test keys; what the supervisor proves today it proves against a guest agent, an operator agent and an RPC built for the tests, on real sockets and real forked processes.
 
-**Three tasks are code-complete but cannot be ticked**, because their **Done:** lines name something only a live room or testnet can show: E3.2 (the E7.1 quote fixture), E3.3 (a live registration) and E3.6 (a key derived through MPC). Each carries a **To close** line with the exact steps.
+**Five tasks are code-complete but cannot be ticked**, because their **Done:** lines name something only a live room or testnet can show: E3.2 (the E7.1 quote fixture), E3.3 (a live registration), E3.6 (a key derived through MPC), E7.2 (the model pins E8.6 brings) and E7.4 (a live guest agent). Each carries a **To close** line with the exact steps.
 
-**What the open work waits on.** E7.1 needs [P-1](#paid-and-account-gated-steps-jay) (the Phala CVM, about $0.25 for a capture); E9.1 needs [P-2](#paid-and-account-gated-steps-jay) (a NEAR AI key); every testnet Done line needs [P-3](#paid-and-account-gated-steps-jay) (a free faucet top-up). Everything else is unblocked.
+**What the open work waits on.** E7.1 needs [P-1](#paid-and-account-gated-steps-jay) (the Phala CVM, about $0.25 for a capture) and [P-5](#paid-and-account-gated-steps-jay) (a public room image, free but a disclosure decision); E9.1 needs [P-2](#paid-and-account-gated-steps-jay) (a NEAR AI key); every testnet Done line needs [P-3](#paid-and-account-gated-steps-jay) (a free faucet top-up). Everything else is unblocked.
 
-**The deadline is 2026-11-14 23:59 UTC.** The contracts are done; the demo is not. E7 (the room) is the next epic, and it is the one every remaining P0 surface depends on.
+**The deadline is 2026-11-14 23:59 UTC.** The contracts and the supervisor are done; the demo is not. E8 (the worker and the appraisers) is the next epic, and E7.1 is the boot that turns the room from code into an admitted room.
 
 ## How this list works
 
