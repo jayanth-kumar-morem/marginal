@@ -155,6 +155,28 @@ export {
   type Embedder,
 } from "./appraisers/knowledge/embed.js";
 export {
+  datasetLiteAppraiser,
+  lift,
+  parseRows,
+  checkIntegrity,
+  OVERLAP_SIMILARITY,
+  BOOTSTRAP,
+  LOWER_PERCENTILE,
+  MAX_SELLER_ROWS,
+  MAX_EVAL_ROWS,
+  type Row,
+  type EvalSet,
+  type Lift,
+} from "./appraisers/dataset-lite/index.js";
+export {
+  choleskySolve,
+  normalEquations,
+  predict,
+  seededRandom,
+  percentile,
+  LAMBDA,
+} from "./appraisers/dataset-lite/linear.js";
+export {
   claims,
   claimNovelty,
   novelty,

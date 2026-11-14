@@ -853,12 +853,33 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     separation above is on two documents written for the test, not on the demo corpus, so nothing
     here shows that A gets `Deal` and B gets `No deal` through the rule.
   - **To close:** E14.2 brings the corpus; run `knowledge@1` on it and check the two outcomes.
-- [ ] **E8.7 `dataset-lite@0`** · P2 · D9 · §3.15.3
+- [x] **E8.7 `dataset-lite@0`** · P2 · D9 · §3.15.3
   - Integrity checks, then overlap measured with MiniLM.
   - A closed-form ridge, baseline vs augmented.
   - A bootstrap over eval-row correctness (B = 200, seeded from `job_commitment`, no retraining).
   - Outputs: bucket and price.
   - **Done:** DRC-9 completes within its duration class.
+  - **Completed 2026-11-14.** `room/src/appraisers/dataset-lite/`: the integrity checks, the overlap
+    measurement, the closed-form ridge probe (`linear.ts`) and the seeded bootstrap. Nothing
+    iterates and nothing is drawn at random: one-vs-rest least squares in float64 with a fixed λ,
+    solved by Cholesky, and a `xorshift128+` bootstrap seeded from the first eight bytes of
+    `job_commitment` — so two rooms measuring the same job get the same interval to the last bit.
+  - **A judgement the SDD left open:** the buyer's label set is taken from their whole dataset, not
+    just the rows they trained on. A class the buyer can measure but cannot yet predict is exactly
+    what a seller might be able to fix, and refusing those rows would make the appraiser blind to
+    the lift it exists to measure. The test turns on that case.
+  - **Verified:** rows the buyer already has count as overlap and are worth nothing; a dataset that
+    teaches the buyer's evaluation set shows a lower bound above zero; the same job measured twice
+    gives the identical answer, bootstrap and all (AC-38); and every malformed input — a row that is
+    not `{text, label}`, a label the buyer does not use, too many rows, a context that is not a
+    split — is refused rather than defaulted. A repeated row is dropped, not counted twice.
+  - **Not verified: DRC-9's timing.** Nothing has been run at §3.15.3's caps (20k seller rows, 5k
+    evaluation rows) on a `tdx.large`, so "completes within its duration class" is unmeasured. The
+    caps are enforced, and the cost is one embedding pass plus a 384×384 Cholesky, but the number
+    is not in hand.
+  - **Note on the formula:** `DatasetLiteV0` divides by `delta_star`, and clearing commits
+    `FormulaParams::default()` (zero) in M1, which `ceiling` reads as one — so `D` is effectively
+    `1 − o` until a listing can set `delta_star_bps`. That is clearing's side (E16), not this task's.
 
 ## E9. Judges
 
