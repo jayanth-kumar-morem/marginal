@@ -647,8 +647,27 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E8. Room worker and appraisers
 
-- [ ] **E8.1 Crypto** · P0
+- [x] **E8.1 Crypto** · P0
   - libsodium sealed boxes, XChaCha20-Poly1305, HKDF and `memzero`. Secrets are kept only in `Uint8Array`s.
+  - **Completed 2026-11-14.** `room/src/crypto/sodium.ts`: sealed boxes, XChaCha20-Poly1305,
+    X25519, HKDF-SHA256 and `memzero`, in one module so the room has one implementation of each and
+    the SDK (E12.1) can produce the same bytes. `libsodium-wrappers` is pinned at `0.8.4`; HKDF
+    comes from node, because libsodium's own KDF is not HKDF and §3.19 specifies HKDF-SHA256 with a
+    salt and an info string.
+  - **Checked against published vectors, not only against itself:** libsodium's own
+    XChaCha20-Poly1305 IETF vector and RFC 5869 test case 1. These formats cross into a buyer's
+    browser, so a round-trip against our own code would prove nothing about interoperability.
+  - Every failure path is a thrown error with its own message (a sealed box that does not open, a
+    ciphertext that does not authenticate, a wrong key or nonce length), so no caller can mistake a
+    failure for a plaintext. Tampering with any byte of a sealed box, a nonce, a key or the
+    associated data is tested.
+  - The module readies libsodium with a top-level `await`, so there is no "did you initialise it"
+    state for a caller to get wrong.
+  - **Honest about zeroisation:** `memzero` is defence in depth. V8 can copy a buffer during garbage
+    collection, so non-persistence rests on the worker process exiting, the CVM having no persistent
+    storage and no swap, and TDX memory protection — which is what the forget certificate states
+    (§3.14.2, §3.18).
+  - **Not verified:** nothing uses these yet; E8.2 to E8.5 are the callers.
 - [ ] **E8.2 CKD recovery** · P0 · §3.12.3 · **do first (S-1)**
   - **First:** call `request_app_private_key` from a dev account on testnet and recover the key.
   - Then, per job:

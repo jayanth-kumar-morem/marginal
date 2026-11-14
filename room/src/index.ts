@@ -7,6 +7,24 @@
  */
 export const PACKAGE = "@marginal/room";
 
+export {
+  seal,
+  unseal,
+  aeadSeal,
+  aeadOpen,
+  hkdf,
+  memzero,
+  randomBytes,
+  boxKeys,
+  boxPublicKey,
+  sharedSecret,
+  AEAD_KEY_BYTES,
+  AEAD_NONCE_BYTES,
+  AEAD_TAG_BYTES,
+  SEAL_OVERHEAD_BYTES,
+  type BoxKeys,
+} from "./crypto/sodium.js";
+
 export { loadConfig, DEFAULTS, type RoomConfig } from "./config.js";
 export { generateRoomKeys, type RoomKeys, type PublicKey } from "./keys.js";
 export { dstackClient, isHttpError, type DstackPort, type DstackOptions, type Quote, type RawEvent } from "./dstack.js";
