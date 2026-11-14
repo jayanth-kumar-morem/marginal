@@ -177,7 +177,13 @@ export async function runAppraisal(
   // its verdict still has to be accepted, which needs the job in `Computing` (§3.5). A screening or
   // provisioning report is the other way round — it is accepted only while the job is `Assigned` —
   // so neither of those kinds acks.
-  if (key.mode === "RoomSealed") await ackJob(ctx, job, data.clearing);
+  // Only while the job is still waiting for it. A worker that dies after acking is re-forked by the
+  // supervisor, and a second ack is refused with `E_JOB_STATE` because the job has already moved —
+  // which would make every retry fail for ever, on a job that is otherwise fine. Seen in a live
+  // run: one worker acked, died later in the appraisal, and the job could never be picked up again.
+  if (key.mode === "RoomSealed" && job.state === "Assigned") {
+    await ackJob(ctx, job, data.clearing);
+  }
   const decided = await decide(ctx, data, key, appraiser);
   try {
     return await submit(ctx, data, key, appraiser, decided, started);
@@ -329,8 +335,15 @@ async function submit(
     status: decided.status,
     privacy: job.privacy,
     // Blind either way: no field is shown (E6.1). In Open mode the components are published and
-    // clearing recomputes the price from them; in Sealed mode neither is.
-    open: sealed === null ? { components: decided.components, factors: decided.factors, shown: [] } : null,
+    // clearing recomputes the price from them; **in Sealed mode there is no open body at all**,
+    // whether or not there was anything to prove. Deciding that by `sealed === null` attached one
+    // to every unpriced Sealed verdict — a restricted good or an input the appraiser cannot read —
+    // and clearing refused each with `E_SCHEMA`, leaving the job to time out with the buyer's
+    // funds locked (`clearing/src/verdict.rs`: "the room sends the status alone").
+    open:
+      job.privacy === "Sealed"
+        ? null
+        : { components: decided.components, factors: decided.factors, shown: [] },
     sealed,
     delivery_commitment: deliveryHash,
     cert_hash: certificate.hash,
@@ -343,7 +356,15 @@ async function submit(
   const answered = (await ctx.channel.submit("submit_verdict", {
     verdict: base64(call("verdict_encode", verdict) as string),
     sig: base64(signature),
-  })) as { price?: unknown } | null;
+  })) as { status?: unknown; reason?: unknown; price?: unknown } | null;
+  // Clearing refuses a verdict it cannot check by **returning** the reason and leaving the job
+  // open, so the room can fix it and try again before the deadline (`clearing/src/verdict.rs`).
+  // That only works if the room looks: taking any answer for acceptance made a refused verdict
+  // indistinguishable from an accepted one, and the job sat in `Computing` until it timed out
+  // while the room reported success and forgot about it.
+  if (answered?.status === "Rejected") {
+    throw new Error(`job ${job.id}: clearing refused the verdict (${String(answered.reason)})`);
+  }
 
   // The good itself goes to the blob store and the receipt to clearing, so the seller can be paid
   // (§3.19; clearing refuses a receipt whose hash is not the one the verdict committed to).

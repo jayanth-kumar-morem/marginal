@@ -80,6 +80,7 @@ function world(
     rule?: unknown;
     privacy?: string;
     keyMode?: string;
+    jobState?: string;
   } = {},
 ) {
   const keys = generateRoomKeys();
@@ -128,6 +129,11 @@ function world(
     kind: "Appraisal",
     listing_id: 3,
     listing_version: 1,
+    // The state a worker really finds. A Ckd job is already `Computing`, because KeyPolicy's
+    // `authorize_release` moved it; a RoomSealed job is still `Assigned`, and the room's own ack is
+    // what moves it. `options.jobState` is for the retry case, where a worker is re-forked for a
+    // job this room has already acked.
+    state: options.jobState ?? (options.keyMode === "RoomSealed" ? "Assigned" : "Computing"),
     privacy: options.privacy ?? "Open",
     delivery_pk: Buffer.from(buyer.publicKey).toString("hex"),
     compliance_pk: options.compliance === true ? Buffer.from(compliance.publicKey).toString("hex") : null,
@@ -610,6 +616,67 @@ test("a RoomSealed appraisal acks the job to clearing before it computes (§3.5,
     true,
     "signed by the room whose key the ack names",
   );
+});
+
+/**
+ * The retry. A worker that acked and then died — for any reason — is re-forked by the supervisor
+ * for the same job, which clearing has already moved to `Computing`. Acking again is refused with
+ * `E_JOB_STATE`, so a second ack would make every retry fail for ever on a job that is otherwise
+ * fine. Seen on a live chain: one worker acked, died later in the appraisal, and the job could
+ * never be picked up again — the operator agent logged nothing but `Contract panicked: E_JOB_STATE`.
+ */
+/**
+ * Clearing refuses a verdict by **returning** `{status: "Rejected", reason}` and leaving the job
+ * open, so the room can fix it and try again before the deadline. Taking any answer for acceptance
+ * made a refusal indistinguishable from success: the room reported done, the job sat in
+ * `Computing` until it timed out, and the buyer's escrow stayed locked with no error anywhere.
+ */
+test("a verdict clearing refuses is an error the room reports, not a success", async () => {
+  const w = world({ keyMode: "RoomSealed" });
+  const real = w.operator.submit.bind(w.operator);
+  w.operator.submit = (method: string, args: Record<string, unknown>, contract?: "clearing" | "keypolicy") => {
+    void real(method, args, contract);
+    return Promise.resolve(
+      method === "submit_verdict" ? { status: "Rejected", reason: "E_SCHEMA" } : null,
+    );
+  };
+  await assert.rejects(
+    () => runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser([8_000, 10_000]))),
+    /clearing refused the verdict \(E_SCHEMA\)/,
+  );
+});
+
+/**
+ * A Sealed job that ends without a price — a restricted good, or an input the appraiser cannot
+ * read — carries **no body at all**. Clearing refuses an open body on a Sealed verdict with
+ * `E_SCHEMA` whether or not there was anything to prove, and because a refused verdict leaves the
+ * job open, such a job could only ever time out with the buyer's funds locked. Seen on a live
+ * chain: `VerdictRejected` in the audit chain, the job stuck in `Computing`.
+ */
+test("an unpriced Sealed verdict carries no body, not an empty open one", async () => {
+  const w = world({ keyMode: "RoomSealed", privacy: "Sealed", context: "" });
+  await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser([8_000, 10_000])));
+  const sent = w.operator.submitted.find((s) => s.method === "submit_verdict");
+  assert.notEqual(sent, undefined, "a verdict is still submitted");
+  const decoded = call("verdict_decode", {
+    bytes: Buffer.from(String((sent?.args as { verdict: string }).verdict), "base64").toString("hex"),
+  }) as { status: string; open: unknown; sealed: unknown; privacy: string };
+  assert.equal(decoded.privacy, "Sealed");
+  assert.notEqual(decoded.status, "Ok", "this job had nothing to price");
+  assert.equal(decoded.open, null, "no open body on a Sealed verdict");
+  assert.equal(decoded.sealed, null, "and nothing to prove either");
+});
+
+test("a re-forked worker does not ack a job this room has already acked", async () => {
+  const w = world({ keyMode: "RoomSealed", jobState: "Computing" });
+  await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser([8_000, 10_000])));
+  const sent = w.operator.submitted.map((s) => s.method);
+  assert.equal(
+    sent.includes("room_ack"),
+    false,
+    `a job already in Computing is not acked again, got ${sent.join(", ")}`,
+  );
+  assert.equal(sent.includes("submit_verdict"), true, "and the work still finishes");
 });
 
 test("a RoomSealed job acks even when it rejects its input, so its verdict is still accepted", async () => {
