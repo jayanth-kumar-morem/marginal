@@ -8,6 +8,18 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
 - All eleven demo surfaces (D1–D11) and every readiness check (DRC-1 to DRC-12) are unchanged.
 - The cut work moves to M2. [What M1 cuts](#what-m1-cuts) lists each cut and why no demo surface loses anything.
 
+## Where this stands (2026-11-14)
+
+**29 of M1's 69 tasks are closed: every contract is built.** E1–E6 are complete — the deploy, `marginal-core`, the immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict, settlement, delivery and a claim. `make ci` passes on a clean tree: 710 tests, 100% coverage of lines, functions and regions in Rust and of lines, branches and functions in TypeScript, the 10⁶-case property tests, reproducible Docker builds and the sandbox end to end.
+
+**Nothing of the room, the services, the SDK or the web app exists yet** (E7–E14), so no demo surface runs end to end. What the contracts prove today they prove in a local sandbox, with the room's side played by test keys.
+
+**Three tasks are code-complete but cannot be ticked**, because their **Done:** lines name something only a live room or testnet can show: E3.2 (the E7.1 quote fixture), E3.3 (a live registration) and E3.6 (a key derived through MPC). Each carries a **To close** line with the exact steps.
+
+**What the open work waits on.** E7.1 needs [P-1](#paid-and-account-gated-steps-jay) (the Phala CVM, about $0.25 for a capture); E9.1 needs [P-2](#paid-and-account-gated-steps-jay) (a NEAR AI key); every testnet Done line needs [P-3](#paid-and-account-gated-steps-jay) (a free faucet top-up). Everything else is unblocked.
+
+**The deadline is 2026-11-14 23:59 UTC.** The contracts are done; the demo is not. E7 (the room) is the next epic, and it is the one every remaining P0 surface depends on.
+
 ## How this list works
 
 - **Milestones.**
@@ -20,17 +32,18 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
   - `P2`: D9 and D10.
 - **One sub-issue ≈ one PR.** Each has a **Done** line, and tests ship in the same PR as the code. `needs` lists hard dependencies only.
 - **Parallel tracks** after E1–E2:
-  - contracts: E3–E6 and E10;
+  - contracts: E3–E6 and E10 — **E3–E6 are closed**, so only E10 (Sealed verdicts, P2) is left on this track;
   - room: E7–E9;
   - off-chain: E11–E14.
+- **What each open task needs from the contracts** is written into it, under "From the contracts": the exact message, operation or view, so nobody has to re-read six epics of notes to build against them. Every such operation has a vector in `fixtures/vectors.json`.
 
 ### Do these first
 
 These three carry the most risk. Each is the opening step of a task, not a separate spike.
 
-1. **E7.1** Boot a Phala CVM and record a real quote. Spike S-4.
-2. **E8.2** Derive a key through MPC CKD from a dev account and recover it in TypeScript. Spike S-1.
-3. **E3.3** Register that quote through the locked tee-verifier. Spike S-2.
+1. **E7.1** Boot a Phala CVM and record a real quote. Spike S-4. **Still open**, and it needs [P-1](#paid-and-account-gated-steps-jay).
+2. **E8.2** Derive a key through MPC CKD from a dev account and recover it in TypeScript. Spike S-1. **Still open**: KeyPolicy's side of the call is built and tested against a mock MPC, with the argument layout copied from near/mpc 3.19.0, but no real derivation has run.
+3. ~~**E3.3** Register that quote through the locked tee-verifier. Spike S-2.~~ **The contract half is retired (2026-11-13):** the sandbox runs the real locked verifier (`fixtures/tee-verifier.wasm`, code hash `8SrqVCh3…VL3`) against a real TDX quote and it answers inside its gas budget — 125 TGas of the 200 it is given. What is left of S-2 is only E7.1's own quote.
 
 ### Paid and account-gated steps (jay)
 
@@ -38,7 +51,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 
 | # | Step | Needs | Cost | Blocks | Do it when |
 |---|---|---|---|---|---|
-| P-1 | Boot the room CVM (E7.1) | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
+| P-1 | Boot the room CVM (E7.1) | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4, E7.5; E8.2–E8.5; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
 | P-2 | A NEAR AI Cloud API key (E9.1) | A NEAR AI account | Under **$0.003 per appraisal** ([SDD §1.5](SDD.md)); a few cents for the demo | E9.1, D6, DRC-6. The judge port has a test double, so everything else runs without it | Before E9.1. Not needed for E3–E6 |
 | P-3 | Fund the testnet deployer (E15.1) | The `marginal-demo.testnet` account, already created | **Free** (testnet faucet): 18 NEAR, up from 16 since KeyPolicy grew to 235 KB | Every testnet Done line: E3.3, E3.6, E15.1. `up.sh` refuses before creating anything if the balance is short | Before the first testnet deploy. Independent of P-1, so it can be done any time |
 | P-4 | Submit (E15.5) | A person: the repo visibility decision (X-2), an X post, the submission form | **Free** | E15.5 | Last. Re-read the rules first; they may have changed |
@@ -57,24 +70,24 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 
 ## Epic index
 
-| Epic | Scope | Tasks | Demo surfaces |
-|---|---|---|---|
-| [E1](#e1-repo-and-deploy) | Repo, test token, deploy script | 3 | all |
-| [E2](#e2-marginal-core) | `marginal-core` | 4 | all |
-| [E3](#e3-keypolicy-immutable) | KeyPolicy (immutable) | 7 | D1, D3 |
-| [E4](#e4-clearing-rooms-listings-snapshots) | Clearing: rooms, listings, snapshots | 6 | D1, D3, D8 |
-| [E5](#e5-clearing-jobs-funding-leakage-agents) | Clearing: jobs, funding, leakage, agents | 7 | D1, D4, D5 |
-| [E6](#e6-clearing-verdicts-settlement-claims) | Clearing: verdicts, settlement, claims | 5 | D1, D6, D7, D8, D11 |
-| [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | D1, D3 |
-| [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | D1, D8, D9 |
-| [E9](#e9-judges) | NEAR AI judges | 1 | D6 |
-| [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | D10 |
-| [E11](#e11-services) | Gateway, operator agent, compliance | 4 | all |
-| [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | all, D2 |
-| [E13](#e13-web-app) | Web app | 7 | all |
-| [E14](#e14-tests-fixtures-and-demo-scripts) | Tests, fixtures, demo scripts | 3 | D4, D5, D6, D11 |
-| [E15](#e15-demo-and-submission) | Demo and submission | 5 | all |
-| [E16–E19](#m2-v1-mainnet-canary) | Mainnet canary | — | — |
+| Epic | Scope | Tasks | Done | Demo surfaces |
+|---|---|---|---|---|
+| [E1](#e1-repo-and-deploy) | Repo, test token, deploy script | 3 | **3** | all |
+| [E2](#e2-marginal-core) | `marginal-core` | 4 | **4** | all |
+| [E3](#e3-keypolicy-immutable) | KeyPolicy (immutable) | 7 | **4** (3 built, waiting on a live room) | D1, D3 |
+| [E4](#e4-clearing-rooms-listings-snapshots) | Clearing: rooms, listings, snapshots | 6 | **6** | D1, D3, D8 |
+| [E5](#e5-clearing-jobs-funding-leakage-agents) | Clearing: jobs, funding, leakage, agents | 7 | **7** | D1, D4, D5 |
+| [E6](#e6-clearing-verdicts-settlement-claims) | Clearing: verdicts, settlement, claims | 5 | **5** | D1, D6, D7, D8, D11 |
+| [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | — | D1, D3 |
+| [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | — | D1, D8, D9 |
+| [E9](#e9-judges) | NEAR AI judges | 1 | — | D6 |
+| [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | — | D10 |
+| [E11](#e11-services) | Gateway, operator agent, compliance | 4 | — | all |
+| [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — | all, D2 |
+| [E13](#e13-web-app) | Web app | 7 | — | all |
+| [E14](#e14-tests-fixtures-and-demo-scripts) | Tests, fixtures, demo scripts | 3 | — | D4, D5, D6, D11 |
+| [E15](#e15-demo-and-submission) | Demo and submission | 5 | — | all |
+| [E16–E19](#m2-v1-mainnet-canary) | Mainnet canary | — | — | — |
 
 ---
 
@@ -527,9 +540,11 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 - [ ] **E7.4 Boot and registration** · P0 · D3
   - Keys generated in memory; `report_data`; quote and event log through `@phala/dstack-sdk`.
   - Registration through the operator agent, with daily renewal. A restart always means new keys.
+  - **From the contracts (E3).** `report_data` is `room_report_data(binding)` — `SHA-512("marginal-room-v1" ‖ borsh(RoomBinding{chain_id, keypolicy, sign_pk, box_pk, nonce}))`, **not** a plain concatenation. The registration must also carry `sign_sig`, the room's own signature over `room_pop_signing_bytes(binding)`, or KeyPolicy refuses it: a quote proves what software runs, not who holds the key. Both are `@marginal/core-wasm` operations with vectors, and the nonce belongs to the account that asked for it, so the operator agent must issue and spend it from the same account.
 - [ ] **E7.5 Job loop** · P0 · §3.14
   - Poll `get_jobs_for_room` and fork one worker per job.
   - The supervisor keeps the signing key, signs over IPC, and submits through the operator agent.
+  - **From the contracts (E4, E5).** `get_jobs_for_room(room_key)` is live and returns only the room's **open** jobs (clearing removes one when it is answered or times out), each with its `kind`, `listing_id`, `job_commitment` and `deadline_height`. A room holds at most 32 open jobs. The context key a buyer sealed to the room is `get_context_key(job_id)`.
 
 ## E8. Room worker and appraisers
 
@@ -543,10 +558,12 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - recover σ, then check the pairing with the NEAR DST;
     - `K_L`, then `sk_L` and `pk_L`.
   - **Done:** the `ckd-example-cli` vectors pass, and a live derivation succeeds.
+  - **From the contracts (E3).** To get a key the room signs `key_request_signing_bytes(KeyRequest{chain_id, keypolicy, room_key, job_id, path, app_key, job_commitment, value_class})` and the relayer sends it to `keypolicy.authorize`; the path is `listing_path(seller, listing_id, version)`. KeyPolicy then asks clearing, and `derive(ticket_id)` is callable by anyone, because the answer is encrypted to the room's app key. Both the bytes and the path are `@marginal/core-wasm` operations.
 - [ ] **E8.3 Provisioning and screening jobs** · P0
   - Provisioning: derive `K_L` and submit `pk_L` with its certificate.
   - Screening: run `screening@1` and submit `Pass` or `Flag(code)` with its certificate.
-- [ ] **E8.4 Appraisal pipeline** · P0 · §3.14.2
+  - **From the contracts (E4).** Both are signed messages, not bare arguments: `provisioning_signing_bytes(ProvisioningV1{…, pk_l, cert_hash})` and `screening_signing_bytes(ScreeningV1{…, result, cert_hash})`, each binding the chain, the contract, the job, the listing version and the room key (`@marginal/core-wasm`, with vectors). M1's only flag reason is `FLAG_MNPI = 1`. Clearing refuses a report whose job is not `Assigned` to this room, so the room must answer the job it was given.
+- [ ] **E8.4 Appraisal pipeline** · P0 · §3.14.2 · **what clearing will check is built (E6.1, E6.2)**
   1. Load the job and recompute its commitment.
   2. Get the key through `authorize` + `derive`, and the context through `DEK_c`.
   3. A context that is too small gives `InputRejected`.
@@ -555,10 +572,12 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   6. Appraise and quantise.
   7. Decide the branch with core-wasm.
   8. Exit the process.
-- [ ] **E8.5 Delivery and certificate** · P0 · §3.18, §3.19
+  - **From the contracts (E6.1).** Clearing recomputes the price itself from the published components and factors, so the verdict's own numbers are only a claim: send `VerdictV1` with `open: Some(OpenBody{components, factors, shown: vec![]})` and sign `verdict_signing_bytes`. It is **rejected, not fatal**, if the components are not what the formula takes, any field is shown (M1 is blind), the appraiser is not the listing's, a deal has no `delivery_commitment`, or `cert_hash` is zero — the job stays `Computing` until its deadline, so the room can fix it and send again. A room whose attestation has lapsed is refused outright, so renew before the window closes.
+- [ ] **E8.5 Delivery and certificate** · P0 · §3.18, §3.19 · **clearing's side is built (E6.1, E6.4)**
   - Deterministic `DeliveryV1`, with an optional `compliance_pk` entry (D8), and `h_D`.
   - A `ForgetCertificateV1` for every job.
   - **Done:** the delivery is byte-identical across runs, and the SDK opens it.
+  - **From the contracts (E6.4).** The delivery hash the room submits to `submit_delivery_receipt` must equal the `delivery_commitment` the verdict carried, and it can be submitted once. Until it arrives the seller cannot be paid; past the listing's `delivery_deadline_blocks` the buyer gets the price and its fee back (`DeliveryFailure`). Certificates are anchored by hash in the audit chain, so the blob itself lives in the blob store.
 - [ ] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15
   - Port LETHE's `novelty.js`: claims, MiniLM max similarity per claim, τ 0.78 / 0.45, and need weighting. Single-threaded ONNX; `N_pub = 10,000`; 21-level components.
   - Screening: an issuer lexicon and MNPI rules, giving `Flag(reason)` or `Pass`.
@@ -578,6 +597,13 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - Request: temperature 0, `stream: false`, headers `x-no-aliasing: true` and `Accept-Encoding: identity`, LETHE's delimiter prompt.
   - Strict regex parse; any parse failure gives 0. `JudgePort` has a test double.
   - **Done:** the injected memo is clamped to the floor, and its price stays at or below the ceiling (DRC-6).
+  - **From the contracts (E6.2), which decide what a receipt is worth on chain:**
+    - the body must be exactly `{"relevance":k}`, `k` in 0..=10 (whitespace aside), or it scores 0 and resolves to the listing's floor. `marginal_core::judge::parse_relevance` is that parse, as a `@marginal/core-wasm` operation, so the room can check a body before it publishes one;
+    - the signed `text` must contain the lowercase hex of `sha256(response_body)`, which is how clearing binds the receipt to the body (`binds_body`);
+    - the signature is `personal_sign` over that text, recovered with `ecrecover` to a **20-byte Ethereum address**;
+    - governance registers that address with `set_ai_signer(address, model, expires_at)`, and the model string must match the factor's `model_id`: that pairing is the allow-list;
+    - a receipt's text is accepted once, ever (the replay set), so a cached receipt cannot be reused on a second job.
+    - **Unverified until this task runs:** whether NEAR AI's real `text` actually embeds `sha256(response_body)` in hex. E6.2's tests sign a receipt the way the provider's TEE would, not a real one. If the real format differs, only `binds_body` changes (`marginal-core`), and its vectors with it.
 
 ## E10. Sealed verdicts (D10)
 
@@ -604,11 +630,13 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 - [ ] **E11.3 Operator agent** · P0 · §3.13
   - `issue_nonce`, collateral fetch, `register_room` relay and renewal.
   - Relays the room's signed submissions from a funded function-call key. Restarts the CVM.
+  - **From the contracts (E3).** A nonce is bound to the account that asked for it, so the same key must call `issue_nonce` and `register_room`; it lasts 5,000 blocks (about 80 minutes) and one `register_room` spends it whatever happens next. Registration costs 0.01 NEAR of storage and the verifier call gets 200 TGas, so **run the pre-flight first**: the `evaluate_quote` operation in `@marginal/core-wasm` makes the same checks KeyPolicy will, against the quote and event log the room produced, and a registration that would fail is then caught before it spends gas. Collateral comes from `pccs.phala.network` through `dcap-qvl`, and the attestation is only good for 24 h, so renew daily.
 - [ ] **E11.4 Compliance service** · P0 (OFAC: P1, D8) · §3.20
   - Issuer key labelled `demo`; SQLite.
   - `POST /v1/nullifiers` for allow-listed demo identities.
   - `POST /v1/payout-approvals` screens against the OFAC SDN file, fetched at start and daily.
   - **Done:** D4 credentials work, and a payout to a listed address is blocked.
+  - **From the contracts (E5.4, E6.4).** Both are ed25519 over bytes `marginal-core` builds, with vectors: `nullifier_signing_bytes(NullifierCredential{chain_id, clearing, subject, listing_id, epoch, nullifier, expiry_height})` under the key set by `set_issuer_key`, and `payout_approval_signing_bytes(PayoutApproval{…, route_hash, list_version, screening_id, blocked, expiry_height})` under `set_compliance_key`. `route_hash` is `sha256(borsh(PayoutRoute))` of the listing's own route. A sanctions match is `blocked: true` with the screening id, which clearing records as `Blocked` rather than paying; it is not a refusal to sign.
 
 ## E12. SDK and verifier
 
@@ -619,6 +647,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - `watchJob`, by polling `get_job`;
     - `openDelivery`, which checks the good's commitment;
     - Chain Signatures address derivation and the 1Click dry quote, ported from LETHE.
+  - **From the contracts (E4, E5).** Every argument that carries a `marginal-core` type is **Borsh in base64**, built through `@marginal/core-wasm`, never hand-rolled JSON: `ListingSpec` for `create_listing`, `PublishSpec` for `publish_listing`, `BlobRef` for `anchor_snapshot`, `AppraisalRequest` for `request_appraisal`, `MeasurementSet` for `approve_measurement_set`. A deposit is `ft_transfer_call` with `msg = {"Deposit":{"account":"<id>"}}`. Run core's own checks before paying gas: `validate_spec` and `validate_request` refuse exactly what the contract will. Amounts come back from views as decimal strings.
 - [ ] **E12.2 `replay-ts`** · P0 · D2 · §3.18
   - Checks, per settlement:
     - signatures;
@@ -628,6 +657,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - the audit chain, via `get_audit`.
   - It follows each certificate to its quote with the `dcap-qvl` CLI, compares against the current approved set, and counts `simulated_flags`.
   - **Done:** DRC-2; flipping any stored byte makes it fail.
+  - **From the contracts (E2–E6).** Everything it needs to recompute is a `@marginal/core-wasm` operation with a vector in `fixtures/vectors.json` (84 cases): the verdict and certificate signing bytes, `measured_index` and `apply_rule` for the Open recompute, `max_debit` for the debit, `settle` for the outcome table, `check_conservation` for AC-4, `audit_step` for the chain, and the judge rules (`parse_relevance`, `binds_body`, `personal_sign_preimage`) for each receipt. Read the chain with `get_settlement`, `get_job`, `get_listing` and `get_audit(from, limit)` (capped at 100 entries a call).
 
 ## E13. Web app
 
@@ -670,8 +700,11 @@ Deadline: **2026-11-14 23:59 UTC**. Re-check the rules first, because they may c
   - **Blocked on [P-3](#paid-and-account-gated-steps-jay)**: fund `marginal-demo.testnet` with 18 NEAR (free faucet; 16 before KeyPolicy grew to 235 KB). Steps in `CLAUDE.md` → Deploys. The room half also needs [P-1](#paid-and-account-gated-steps-jay).
   - `up.sh testnet-demo` and register the room.
   - Fund the demo personas with `musdc` and nullifier credentials. Seed listings for D1–D9.
+  - **Watch the balances:** clearing's wasm is now 464 KB and KeyPolicy's 235 KB, about 4.6 and 2.4 NEAR of code storage against the 8 and 4 NEAR `deploy.ts` funds them with. That leaves roughly 3 NEAR of state headroom each, which is ample for a demo but is the number to check if a deploy ever fails on storage.
+  - **The seed step is the registry's:** `approve_measurement_set` (E7.3's measurement), `admit_platform` (Phala's PPID, exactly 16 bytes), `set_appraiser`, `set_tokens`, `set_issuer_key`, `set_compliance_key`, `set_ai_signer` and `set_fees` — all gov-only, all built (E4.1, E4.3).
 - [ ] **E15.2 Run DRC-1 to DRC-12** · P0 · §5.4
   - Record the results in `docs/demo-readiness.md`. Mark failing P1 or P2 surfaces "not shown".
+  - **Already proven in the sandbox, on built wasm** (so the live run is a demonstration, not a discovery): DRC-11's exact refund (E6.4), the key-release path end to end against the real KeyPolicy (E5.6), a deal from verdict through delivery, release and claim (E6), the real locked verifier answering a real quote (E3.3), and DRC-5's agent block and park (E5.7, natively). What the live run adds is the real room, the real MPC network, the real judges and real gas.
 - [ ] **E15.3 README** · P0 · PN-12
   - A real-vs-simulated table generated from on-chain flags.
   - Libraries and AI-generated code listed (Q-005).
