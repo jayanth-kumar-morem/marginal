@@ -91,6 +91,13 @@ export interface JobRecord {
   readonly state: string;
   readonly job_commitment: string;
   readonly privacy: string;
+  readonly mode: string;
+  readonly snapshot_id: number | null;
+  readonly max_debit_mbits: number;
+  /** Where a delivery is sealed to (SDD §3.19). */
+  readonly delivery_pk: string;
+  readonly compliance_pk: string | null;
+  readonly context_auth_pk: string;
   readonly deadline_height: number;
 }
 

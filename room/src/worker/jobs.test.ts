@@ -12,6 +12,7 @@ import {
   fakeChain,
   fakeOperator,
   job as jobFixture,
+  jobRecordFixture,
   localChannel,
   sealGood,
   testConfig,
@@ -63,7 +64,12 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
 
   const record = jobFixture(11, { kind: options.kind, listing_id: 3, listing_version: version });
   const chain = fakeChain({
-    get_job: { ...record, privacy: "Blind", job_commitment: record.job_commitment },
+    get_job: jobRecordFixture({
+      kind: options.kind,
+      listing_id: 3,
+      listing_version: version,
+      job_commitment: record.job_commitment,
+    }),
     config: { chain_id: config.chainId, keypolicy: KEYPOLICY, policy_version: 4 },
     get_attestation: {
       measurement,
@@ -197,7 +203,7 @@ test("a job is refused before any key is asked for when the chain says something
   const ctx = { ...w.ctx, chain: fakeChain(views) };
   await assert.rejects(() => loadJob(ctx, 11), /clearing has no such job/);
 
-  const job = { ...jobFixture(11, { kind: "Provisioning", listing_id: 3 }), privacy: "Blind" };
+  const job = jobRecordFixture({ kind: "Provisioning", listing_id: 3 });
   await assert.rejects(
     () => loadJob({ ...w.ctx, chain: fakeChain({ ...views, get_job: job, get_attestation: null }) }, 11),
     /this room has no attestation/,

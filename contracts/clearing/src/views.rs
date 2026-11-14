@@ -98,7 +98,15 @@ impl Clearing {
                 _ => Value::Null,
             },
             "privacy": format!("{:?}", job.privacy),
+            "mode": format!("{:?}", job.mode),
+            "snapshot_id": job.snapshot_id,
             "max_debit_mbits": job.max_debit_mbits,
+            // The room needs these to seal a delivery and to recompute `job_commitment` itself
+            // (SDD §3.14.2 step 1, §3.19): they are public keys, and the commitment already binds
+            // them, so publishing them reveals nothing a buyer did not already put on chain.
+            "delivery_pk": to_hex(&job.delivery_pk),
+            "compliance_pk": job.compliance_pk.map(|k| to_hex(&k)),
+            "context_auth_pk": to_hex(&job.context_auth_pk),
             "buckets": {
                 "budget": job.buckets.budget.to_string(),
                 "compute": job.buckets.compute.to_string(),

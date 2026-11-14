@@ -14,6 +14,7 @@ import {
   fakeOperator,
   httpJsonServer,
   job as jobFixture,
+  jobRecordFixture,
   sealGood,
   supervisorHost,
   viewMethod,
@@ -107,7 +108,13 @@ test("a forked worker runs its job end to end through main", async () => {
     if (method === "config") {
       return { json: viewReply({ chain_id: "sandbox", keypolicy: KEYPOLICY, policy_version: 4 }) };
     }
-    if (method === "get_job") return { json: viewReply({ ...record, privacy: "Blind" }) };
+    if (method === "get_job") {
+      return {
+        json: viewReply(
+          jobRecordFixture({ kind: "Provisioning", listing_id: 3, job_commitment: record.job_commitment }),
+        ),
+      };
+    }
     if (method === "get_attestation") {
       return {
         json: viewReply({

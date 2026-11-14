@@ -2,6 +2,32 @@
 
 use super::*;
 
+/// The room reads the keys it has to seal a delivery to out of `get_job`, so the view has to carry
+/// them — including the compliance copy, which is the one that is optional (SDD §3.19, AC-55).
+#[test]
+fn get_job_carries_the_keys_a_room_needs_to_deliver() {
+    let mut c = contract();
+    let listing_id = ready(&mut c);
+    call_as(BUYER, no_deposit());
+    let plain = created(&c.request_appraisal(b64(&request(listing_id))));
+    let job = c.get_job(U64(plain)).unwrap();
+    assert_eq!(job["delivery_pk"], to_hex(&[0x11; 32]));
+    assert_eq!(job["context_auth_pk"], to_hex(&[0x22; 32]));
+    assert_eq!(job["compliance_pk"], Value::Null);
+    assert_eq!(job["mode"], "Blind");
+    assert_eq!(job["snapshot_id"], Value::Null);
+
+    call_as(BUYER, no_deposit());
+    let with_copy = created(&c.request_appraisal(b64(&AppraisalRequest {
+        compliance_pk: Some([0x33; 32]),
+        ..request(listing_id)
+    })));
+    assert_eq!(
+        c.get_job(U64(with_copy)).unwrap()["compliance_pk"],
+        to_hex(&[0x33; 32])
+    );
+}
+
 /// The whole request: funds move, leakage is reserved, a room is assigned and the commitment is
 /// the one KeyPolicy will be shown.
 #[test]

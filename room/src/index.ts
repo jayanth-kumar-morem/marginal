@@ -37,6 +37,13 @@ export {
   type CkdResponse,
   type ListingKeys,
 } from "./crypto/ckd.js";
+export {
+  sealDelivery,
+  openDelivery,
+  deliveryPayload,
+  ephemeralKey,
+  type Delivery,
+} from "./crypto/delivery.js";
 
 export { loadConfig, DEFAULTS, type RoomConfig } from "./config.js";
 export { generateRoomKeys, type RoomKeys, type PublicKey } from "./keys.js";

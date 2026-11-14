@@ -756,11 +756,33 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   7. Decide the branch with core-wasm.
   8. Exit the process.
   - **From the contracts (E6.1).** Clearing recomputes the price itself from the published components and factors, so the verdict's own numbers are only a claim: send `VerdictV1` with `open: Some(OpenBody{components, factors, shown: vec![]})` and sign `verdict_signing_bytes`. It is **rejected, not fatal**, if the components are not what the formula takes, any field is shown (M1 is blind), the appraiser is not the listing's, a deal has no `delivery_commitment`, or `cert_hash` is zero — the job stays `Computing` until its deadline, so the room can fix it and send again. A room whose attestation has lapsed is refused outright, so renew before the window closes.
-- [ ] **E8.5 Delivery and certificate** · P0 · §3.18, §3.19 · **clearing's side is built (E6.1, E6.4)**
+- [ ] **E8.5 Delivery and certificate** · P0 · §3.18, §3.19 · **clearing's side is built (E6.1, E6.4)** · built; the SDK half of the Done line is E12.1
   - Deterministic `DeliveryV1`, with an optional `compliance_pk` entry (D8), and `h_D`.
   - A `ForgetCertificateV1` for every job.
   - **Done:** the delivery is byte-identical across runs, and the SDK opens it.
   - **From the contracts (E6.4).** The delivery hash the room submits to `submit_delivery_receipt` must equal the `delivery_commitment` the verdict carried, and it can be submitted once. Until it arrives the seller cannot be paid; past the listing's `delivery_deadline_blocks` the buyer gets the price and its fee back (`DeliveryFailure`). Certificates are anchored by hash in the audit chain, so the blob itself lives in the blob store.
+  - **Built, 2026-11-14.** `room/src/crypto/delivery.ts` is §3.19 exactly: the ephemeral key is
+    `HKDF(sk_L, salt = job_commitment, info = "marginal/delivery/v1")`, each recipient's key is
+    `HKDF(X25519(eph_sk, r), info = "marginal/delivery-key/v1" ‖ eph_pk ‖ r)`, the nonce is
+    `SHA-256(eph_pk ‖ r)[0..24]`, and the payload `DEK_g ‖ salt ‖ listing_version` is sealed with
+    `job_commitment` as the associated data. The forget certificate is `room/src/cert/forget.ts`,
+    already issued by both job kinds (E8.3).
+  - **Nothing in it is drawn.** Two runs produce byte-identical `D` and therefore the same `h_D`,
+    which is what the verdict commits to and what makes re-delivery possible from any room holding
+    `K_L` (AC-31). The derived nonce is safe only because each `(eph_sk, recipient)` pair encrypts
+    one message, so the nonce hashes both — the test checks two recipients get different ones.
+  - **Tested:** byte-identical across runs; `h_D` equals `SHA-256` of core's own `delivery_encode`;
+    the buyer and the compliance copy each open their entry and a stranger opens neither; another
+    job commitment does not authenticate; the ephemeral derivation is checked against §3.19's HKDF
+    rather than against itself.
+  - **`get_job` now exposes `delivery_pk`, `compliance_pk`, `context_auth_pk`, `mode` and
+    `snapshot_id`.** The room cannot seal a delivery or recompute `job_commitment` without them, and
+    they are public keys the commitment already binds, so publishing them reveals nothing new.
+  - **Not met: "the SDK opens it."** `openDelivery` here is the buyer's side and is tested, but the
+    SDK does not exist. **To close:** E12.1 imports this sealing instead of re-implementing it, and
+    opens a delivery the room produced.
+  - **Not verified:** no delivery has been submitted to clearing, because that happens at the end of
+    an appraisal (E8.4).
 - [ ] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15
   - Port LETHE's `novelty.js`: claims, MiniLM max similarity per claim, τ 0.78 / 0.45, and need weighting. Single-threaded ONNX; `N_pub = 10,000`; 21-level components.
   - Screening: an issuer lexicon and MNPI rules, giving `Flag(reason)` or `Pass`.

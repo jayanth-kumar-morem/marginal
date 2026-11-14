@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { bls12_381 } from "@noble/curves/bls12-381.js";
 import { base58 } from "@scure/base";
 
-import type { ChainPort, RoomJob } from "./chain.js";
+import type { ChainPort, JobRecord, RoomJob } from "./chain.js";
 import type { RoomConfig } from "./config.js";
 import type { DstackPort, Quote, RawEvent } from "./dstack.js";
 import type { OperatorPort } from "./operator.js";
@@ -186,6 +186,27 @@ export function job(id: number, overrides: Partial<RoomJob> = {}): RoomJob {
     listing_version: 1,
     state: "Assigned",
     job_commitment: "ab".repeat(32),
+    deadline_height: 1_000,
+    ...overrides,
+  };
+}
+
+/** A job as `get_job` reports it: everything the room reads, including the delivery keys. */
+export function jobRecordFixture(overrides: Partial<JobRecord> = {}): JobRecord {
+  return {
+    id: 11,
+    kind: "Appraisal",
+    listing_id: 3,
+    listing_version: 1,
+    state: "Computing",
+    job_commitment: "0a".repeat(32),
+    privacy: "Blind",
+    mode: "Blind",
+    snapshot_id: null,
+    max_debit_mbits: 4_000,
+    delivery_pk: "0b".repeat(32),
+    compliance_pk: null,
+    context_auth_pk: "0c".repeat(32),
     deadline_height: 1_000,
     ...overrides,
   };

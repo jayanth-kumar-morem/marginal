@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { call } from "@marginal/core-wasm";
 
 import { generateRoomKeys } from "../keys.js";
+import { jobRecordFixture } from "../testing.js";
 import {
   NP_NO_PERSISTENT_STORAGE,
   NP_NO_SWAP,
@@ -31,16 +32,7 @@ const attestation = {
   expires_at: 1,
 };
 
-const job = {
-  id: 11,
-  kind: "Appraisal",
-  listing_id: 3,
-  listing_version: 2,
-  state: "Computing",
-  job_commitment: "0a".repeat(32),
-  privacy: "Blind",
-  deadline_height: 99,
-};
+const job = jobRecordFixture({ listing_version: 2, deadline_height: 99 });
 
 const inputs = {
   job,
