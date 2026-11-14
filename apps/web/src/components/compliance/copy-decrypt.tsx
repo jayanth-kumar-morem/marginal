@@ -4,6 +4,8 @@ import { useCallback, useState } from 'react';
 import { IconLock, IconLockOpen2, IconTrash } from '@tabler/icons-react';
 import { toast } from 'sonner';
 
+import { fromHex, openDelivery } from '@marginal/sdk';
+
 import { Row, Rows } from '@/components/listings/detail-rows';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +24,12 @@ import type { Job } from '@/lib/records';
 
 /** A 32-byte secret key as the officer holds it: 64 characters of hex, nothing else. */
 const KEY_HEX = /^[0-9a-f]{64}$/;
+
+type Opened =
+  | { readonly state: 'idle' }
+  | { readonly state: 'opening' }
+  | { readonly state: 'failed'; readonly error: string }
+  | { readonly state: 'opened'; readonly dek: string; readonly listingVersion: number };
 
 type Fetched =
   | { readonly state: 'idle' }
@@ -56,6 +64,7 @@ export function CopyDecrypt({ jobs }: { jobs: readonly Job[] }) {
   const [key, setKey] = useState('');
   const [selected, setSelected] = useState<number | null>(jobs[0]?.id ?? null);
   const [fetched, setFetched] = useState<Fetched>({ state: 'idle' });
+  const [opened, setOpened] = useState<Opened>({ state: 'idle' });
 
   const job = jobs.find((candidate) => candidate.id === selected) ?? null;
   const valid = KEY_HEX.test(key);
@@ -66,18 +75,39 @@ export function CopyDecrypt({ jobs }: { jobs: readonly Job[] }) {
     void fetchDelivery(jobId).then(setFetched);
   }, []);
 
+  /**
+   * Opens the compliance entry with `@marginal/sdk`'s `openDelivery` — the same derivation the room
+   * runs in `room/src/crypto/delivery.ts`, and the only implementation of it on this side. What it
+   * yields is `DEK_g`, the key to the good, which is why the pasted key never leaves this tab.
+   */
   const open = useCallback(() => {
-    // TODO(E12.1): open the compliance entry with the SDK's `openDelivery(delivery, secretKey,
-    // jobCommitment)` from `sdk/ts/src/crypto.ts` — the same derivation the room already runs in
-    // `room/src/crypto/delivery.ts` (HKDF over X25519, XChaCha20-Poly1305 with the job commitment
-    // as AAD). It is not re-implemented here on purpose: a second implementation of a key-sealing
-    // format is a second chance to get it wrong, and the plaintext it yields is `DEK_g`, the key to
-    // the good itself. The UI below is complete and wired; only this call is waiting on E12.1.
-    toast.info('Opening the copy needs the SDK (E12.1)', {
-      description:
-        "The sealed bundle, the entry addressed to the compliance key and the job commitment are all here. What is missing is the SDK's openDelivery, which E12.1 adds; nothing on this page re-implements the sealing format.",
-    });
-  }, []);
+    if (!KEY_HEX.test(key) || job === null || fetched.state !== 'ready') return;
+    setOpened({ state: 'opening' });
+    void (async () => {
+      try {
+        const payload = await openDelivery(
+          fetched.delivery,
+          fromHex(key),
+          fromHex(job.job_commitment),
+        );
+        setOpened({
+          state: 'opened',
+          dek: Array.from(payload.dek)
+            .map((byte) => byte.toString(16).padStart(2, '0'))
+            .join(''),
+          listingVersion: payload.listingVersion,
+        });
+        toast.success('The compliance copy opened', {
+          description:
+            'This is the key to the good, not the good: fetch the listing’s ciphertext to read it, and check it against the commitment the listing published.',
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        setOpened({ state: 'failed', error: message });
+        toast.error('The copy did not open', { description: message });
+      }
+    })();
+  }, [fetched, job, key]);
 
   if (jobs.length === 0) {
     return (
@@ -214,19 +244,39 @@ export function CopyDecrypt({ jobs }: { jobs: readonly Job[] }) {
                 );
               })}
             </ul>
-            <Button onClick={open} disabled={!valid} className="rounded-md">
+            <Button
+              onClick={open}
+              disabled={!valid || opened.state === 'opening'}
+              className="rounded-md"
+            >
               {valid ? (
                 <IconLockOpen2 className="mr-1 size-4" />
               ) : (
                 <IconLock className="mr-1 size-4" />
               )}
-              Open the compliance copy
+              {opened.state === 'opening' ? 'Opening…' : 'Open the compliance copy'}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Opening runs the SDK&rsquo;s <span className="font-mono">openDelivery</span>, which
-              E12.1 adds; this page deliberately holds no second implementation of the sealing
-              format.
+              Opening runs the SDK&rsquo;s <span className="font-mono">openDelivery</span> in this
+              tab — the same derivation the room ran when it sealed the entry. This page holds no
+              second implementation of the sealing format.
             </p>
+            {opened.state === 'failed' && (
+              <p className="font-mono text-xs text-brand-primary">{opened.error}</p>
+            )}
+            {opened.state === 'opened' && (
+              <Rows>
+                <Row
+                  label="DEK_g"
+                  note="The key to the good itself. Fetch the listing's ciphertext to read it, and check it against the commitment the listing published (§3.19)."
+                >
+                  {short(opened.dek, 10)}
+                </Row>
+                <Row label="listing version" note="Which version of the listing this key opens.">
+                  {opened.listingVersion}
+                </Row>
+              </Rows>
+            )}
           </div>
         )}
       </CardContent>

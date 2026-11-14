@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import { DeliveryPanel } from '@/components/jobs/delivery-panel';
 import { JobActions } from '@/components/jobs/job-actions';
 import { ReplayPanel } from '@/components/jobs/replay-panel';
 import { Row, Rows } from '@/components/listings/detail-rows';
@@ -12,6 +13,7 @@ import { blockHeight, chainClient } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { account, bits, height, short, tokens } from '@/lib/format';
 import { buckets, jobActions, loadJob, outcomeNote } from '@/lib/jobs';
+import { loadListing } from '@/lib/listings';
 import { simulatedElements, simulatedSummary } from '@/lib/simulated';
 
 export const metadata = { title: 'Job' };
@@ -38,6 +40,8 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
 
   const { job, settlement } = loaded;
   const now = await blockHeight(config.rpcUrl).catch(() => job.requested_height);
+  // The listing carries the commitment a delivery is checked against (§3.19).
+  const listing = await loadListing(chain, config.clearing, job.listing_id).catch(() => null);
   const actions = jobActions(job, now);
   const flags = settlement === null ? 0 : settlement.simulated_flags;
 
@@ -188,6 +192,26 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
               <Row label="audit seq">{settlement.audit_seq}</Row>
             </Rows>
             <ReplayPanel jobId={job.id} />
+
+            {settlement.delivery_commitment !== null && listing !== null && (
+              <div className="space-y-3 border-t pt-5">
+                <div>
+                  <p className="text-sm font-medium">The good</p>
+                  <p className="pt-1 text-xs text-muted-foreground">
+                    The delivery carries the key, not the good: you open the listing&rsquo;s own
+                    ciphertext with it and check what comes out against the commitment the listing
+                    published. Both happen in this tab.
+                  </p>
+                </div>
+                <DeliveryPanel
+                  jobId={job.id}
+                  listingId={job.listing_id}
+                  listingVersion={job.listing_version}
+                  jobCommitment={job.job_commitment}
+                  goodCommitment={listing.listing.good_commitment}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

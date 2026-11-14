@@ -1145,10 +1145,22 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - **`goodCommitment` is pinned to core**, not merely consistent with it: a test computes the same
     commitment with `marginal-core`'s own `good_commitment` op and asserts the two are equal, which
     is what lets a seller publish a commitment the contract and the room will both accept.
+  - **`openDelivery` and `openGood` are built too** (2026-11-14), which is what DRC-1's "the
+    delivery decrypts in the browser and the commitment check passes" needs. The delivery's keys and
+    nonces are *derived*, not drawn (§3.19), so this side has to agree with the room's to the bit:
+    the test opens **a delivery the room's own `sealDelivery` produced**, for the buyer and for the
+    compliance copy, and checks that the wrong job commitment fails to authenticate. `openGood`
+    then opens the listing's ciphertext with the delivered key and refuses it unless
+    `SHA-256(salt ‖ good)` is the commitment the listing published — decrypting alone would prove
+    only that a key was delivered.
+  - Both are wired in: `/jobs/[id]` opens a delivery from the key this browser kept (or one pasted),
+    and `/compliance` opens the compliance copy with the officer's key. Neither key ever leaves the
+    tab; `/api/delivery` only fetches the two objects from the gateway and decodes the public
+    envelope, because the gateway sends no CORS headers and the Borsh is core's.
   - **Still to build:** the transaction builders as a package (the pages build their arguments
     through `/api/encode`'s allow-list today, which is the same `@marginal/core-wasm` call in the
-    same process — but the SDK is where a second client would find them), `watchJob`, `openDelivery`,
-    and the Chain Signatures address derivation and 1Click dry quote ported from LETHE.
+    same process — but the SDK is where a second client would find them), `watchJob`, and the Chain
+    Signatures address derivation and 1Click dry quote ported from LETHE.
   - **From the contracts (E4, E5).** Every argument that carries a `marginal-core` type is **Borsh in base64**, built through `@marginal/core-wasm`, never hand-rolled JSON: `ListingSpec` for `create_listing`, `PublishSpec` for `publish_listing`, `BlobRef` for `anchor_snapshot`, `AppraisalRequest` for `request_appraisal`, `MeasurementSet` for `approve_measurement_set`. A deposit is `ft_transfer_call` with `msg = {"Deposit":{"account":"<id>"}}`. Run core's own checks before paying gas: `validate_spec` and `validate_request` refuse exactly what the contract will. Amounts come back from views as decimal strings.
 - [ ] **E12.2 `replay-ts`** · P0 · D2 · §3.18 · **built, and honest about what views cannot give**
   - Checks, per settlement:

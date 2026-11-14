@@ -336,3 +336,155 @@ export async function getDeliveryKey(
   if (factory === undefined) return memory.get(jobId) ?? null;
   return (await withStore(factory, "readonly", (store) => store.get(jobId))) ?? null;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Opening a delivery (SDD §3.19; E12.1)
+
+/** `DEK_g ‖ salt ‖ listing_version`, 68 bytes: what a recipient's entry holds. */
+export const DELIVERY_PAYLOAD_BYTES = DEK_BYTES + SALT_BYTES + 4;
+
+// The room derives the ephemeral key from `sk_L` with its own info string; a recipient only ever
+// needs the per-recipient one, because the ephemeral public key arrives in the delivery.
+const KEY_INFO = "marginal/delivery-key/v1";
+
+/** A `DeliveryV1` in the JSON shape `marginal-core`'s `delivery_decode` gives back. */
+export interface Delivery {
+  readonly eph_pk: string;
+  readonly entries: readonly { readonly recipient: string; readonly ciphertext: string }[];
+}
+
+/** What was inside: the key that opens the good, the salt its commitment was taken with. */
+export interface DeliveryPayload {
+  readonly dek: Uint8Array;
+  readonly salt: Uint8Array;
+  readonly listingVersion: number;
+}
+
+/**
+ * HKDF-SHA256 through WebCrypto, which is what the room's `node:crypto` `hkdfSync` computes. The
+ * delivery's keys are derived rather than drawn (§3.19), so this has to agree with the room's to
+ * the bit — `crypto.test.ts` pins that against a delivery the room's own code sealed.
+ */
+export async function hkdf(
+  ikm: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+  length: number,
+): Promise<Uint8Array> {
+  if (length < 1) throw new Error("sdk: an HKDF output must be at least one byte");
+  const key = await crypto.subtle.importKey("raw", owned([ikm]), "HKDF", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "HKDF", hash: "SHA-256", salt: owned([salt]), info: owned([info]) },
+    key,
+    length * 8,
+  );
+  return new Uint8Array(bits);
+}
+
+/** The X25519 public key of a secret key. */
+export async function boxPublicKey(secretKey: Uint8Array): Promise<Uint8Array> {
+  await sodium.ready;
+  if (secretKey.length !== PUBLIC_KEY_BYTES) throw new Error("sdk: a secret key is 32 bytes");
+  return sodium.crypto_scalarmult_base(secretKey);
+}
+
+/** Raw X25519: the shared point, which only ever goes into `hkdf` (§3.19). */
+async function sharedSecret(secretKey: Uint8Array, publicKey: Uint8Array): Promise<Uint8Array> {
+  await sodium.ready;
+  return sodium.crypto_scalarmult(secretKey, publicKey);
+}
+
+/** XChaCha20-Poly1305 with the nonce given, which is how a delivery entry is sealed. */
+async function aeadOpenWith(
+  key: Uint8Array,
+  nonce: Uint8Array,
+  ciphertext: Uint8Array,
+  aad: Uint8Array,
+): Promise<Uint8Array> {
+  await sodium.ready;
+  try {
+    return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null,
+      ciphertext,
+      aad,
+      nonce,
+      key,
+    );
+  } catch {
+    throw new Error("sdk: the delivery entry does not authenticate");
+  }
+}
+
+/**
+ * Opens the entry a delivery holds for `secretKey`, which is the buyer's half of §3.19 — or the
+ * compliance officer's, since a compliance copy is just a second recipient (AC-55).
+ *
+ * The job commitment is the AEAD's additional data, so an entry from another job cannot be opened
+ * here even with the right key: the delivery is bound to the job it settled.
+ */
+export async function openDelivery(
+  delivery: Delivery,
+  secretKey: Uint8Array,
+  jobCommitment: Uint8Array,
+): Promise<DeliveryPayload> {
+  if (jobCommitment.length !== 32) throw new Error("sdk: a job commitment is 32 bytes");
+  const recipient = await boxPublicKey(secretKey);
+  const recipientHex = toHex(recipient);
+  const entry = delivery.entries.find((candidate) => candidate.recipient === recipientHex);
+  if (entry === undefined) throw new Error("sdk: this delivery holds no entry for this key");
+  const ephPk = fromHex(delivery.eph_pk);
+  if (ephPk.length !== PUBLIC_KEY_BYTES) {
+    throw new Error("sdk: the delivery's ephemeral key is not 32 bytes");
+  }
+  const key = await hkdf(
+    await sharedSecret(secretKey, ephPk),
+    new Uint8Array(0),
+    owned([new TextEncoder().encode(KEY_INFO), ephPk, recipient]),
+    32,
+  );
+  // The nonce is derived too, which is only safe because each (ephemeral key, recipient) pair
+  // encrypts exactly one message — so it is a hash of both (§3.19).
+  const nonce = fromHex(await digest(owned([ephPk, recipient]))).subarray(0, AEAD_NONCE_BYTES);
+  const payload = await aeadOpenWith(key, nonce, fromHex(entry.ciphertext), jobCommitment);
+  if (payload.length !== DELIVERY_PAYLOAD_BYTES) {
+    throw new Error(`sdk: a delivery payload is ${DELIVERY_PAYLOAD_BYTES} bytes`);
+  }
+  return {
+    dek: payload.subarray(0, DEK_BYTES),
+    salt: payload.subarray(DEK_BYTES, DEK_BYTES + SALT_BYTES),
+    listingVersion: new DataView(payload.buffer, payload.byteOffset + DEK_BYTES + SALT_BYTES, 4).getUint32(
+      0,
+      true,
+    ),
+  };
+}
+
+/**
+ * The buyer's decrypt-and-check (§3.19): open the listing's ciphertext with the delivered key, then
+ * confirm `SHA-256(salt ‖ good) == good_commitment`. Both halves matter — the first says the key
+ * works, the second says the good is the one that was appraised and sold, not another document.
+ */
+export async function openGood(
+  object: Uint8Array,
+  payload: DeliveryPayload,
+  goodCommitmentHex: string,
+): Promise<string> {
+  await sodium.ready;
+  if (object.length <= AEAD_NONCE_BYTES) {
+    throw new Error("sdk: the ciphertext is too short to hold a nonce");
+  }
+  const good = await aeadOpenWith(
+    payload.dek,
+    object.subarray(0, AEAD_NONCE_BYTES),
+    object.subarray(AEAD_NONCE_BYTES),
+    new Uint8Array(0),
+  );
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(good);
+  const commitment = await goodCommitment(payload.salt, text);
+  if (commitment !== goodCommitmentHex) {
+    throw new Error(
+      `sdk: the delivered good commits to ${commitment}, not the ${goodCommitmentHex} this listing published`,
+    );
+  }
+  return text;
+}

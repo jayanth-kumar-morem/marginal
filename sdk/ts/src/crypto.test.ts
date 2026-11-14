@@ -10,15 +10,20 @@ import {
   AEAD_NONCE_BYTES,
   CANONICAL_EXTENSIONS,
   DEK_BYTES,
+  DELIVERY_PAYLOAD_BYTES,
   MIN_CLAIM_WORDS,
   SALT_BYTES,
   aeadSeal,
+  boxPublicKey,
   canonicalise,
   claims,
   dek,
   fromHex,
   getDeliveryKey,
   goodCommitment,
+  hkdf,
+  openDelivery,
+  openGood,
   putDeliveryKey,
   salt,
   sealTo,
@@ -219,6 +224,35 @@ test("SHA-256 from WebCrypto is SHA-256", async () => {
   );
 });
 
+/** The shared point, the way `openDelivery` derives it. */
+async function sodiumSharedSecret(secretKey: Uint8Array, publicKey: Uint8Array): Promise<Uint8Array> {
+  await sodium.ready;
+  return sodium.crypto_scalarmult(secretKey, publicKey);
+}
+
+/** Bytes end to end, in a buffer this file owns. */
+function concatBytes(...parts: readonly Uint8Array[]): Uint8Array {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const out = new Uint8Array(new ArrayBuffer(total));
+  let at = 0;
+  for (const part of parts) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+/** XChaCha20-Poly1305 with a nonce of our choosing, which is how a delivery entry is sealed. */
+async function sealWithNonce(
+  key: Uint8Array,
+  nonce: Uint8Array,
+  plaintext: Uint8Array,
+  aad: Uint8Array,
+): Promise<Uint8Array> {
+  await sodium.ready;
+  return sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(plaintext, aad, null, nonce, key);
+}
+
 test("the good commitment is the one marginal-core computes", async () => {
   // The seller's commitment and the room's check have to be the same function, or the room would
   // refuse the good it was sold. This is that equality, against core itself.
@@ -363,5 +397,148 @@ test("an IndexedDB that refuses says so instead of losing the key quietly", asyn
   await assert.rejects(
     () => getDeliveryKey(1, fakeIdb("request").factory),
     /IndexedDB refused the request/,
+  );
+});
+
+// -----------------------------------------------------------------------------------------------
+// Opening a delivery (SDD §3.19)
+//
+// The delivery's keys and nonces are **derived**, not drawn, so this side has to agree with the
+// room's to the bit. The vector below was produced by the room's own `sealDelivery`
+// (`room/src/crypto/delivery.ts`) with the keys named in it — regenerate it from that function if
+// the format ever changes, and never by editing the bytes by hand.
+
+const VECTOR = {
+  listingSk: new Uint8Array(32).fill(7),
+  buyerSk: new Uint8Array(32).fill(9),
+  complianceSk: new Uint8Array(32).fill(11),
+  jobCommitment: new Uint8Array(32).fill(3),
+  dek: new Uint8Array(32).fill(5),
+  salt: new Uint8Array(32).fill(6),
+  listingVersion: 1,
+  delivery: {
+    eph_pk: "8dd8107471eddbd0decc577075e0c5348a3a1b45ac760102dd9f610ba8d55a72",
+    entries: [
+      {
+        recipient: "57db4b359f23ae5e146e4e2512056704722506348c150c14753d0c933d04d421",
+        ciphertext:
+          "d0cf5423f25ddf85536b8f3e84509e75afa817041da973cacd15e43a2d62763fe2774c71fee3e38d7f7280391457e0a44fd5e6ef1e4fe59caeccf04da8ec2da7f0ca5202f210dca7e4104269381440b91f176260",
+      },
+      {
+        recipient: "73b2d8b76aa9b53660032bc8f5d8bee3a3ae4e3b3a7fd49ade81f7347a34aa68",
+        ciphertext:
+          "461ea0fef0e5819e5059511688a67ebf78607d1b3e90ebafc4f4078864407aeaecb11e92c2e8cd108839a8eacd76e435bd7436692628a18e26c097cde72bee00d24763f868033e58473c73713446cba99da858ad",
+      },
+    ],
+  },
+};
+
+test("the buyer opens the entry the room sealed for them, and gets DEK_g and the salt", async () => {
+  const opened = await openDelivery(VECTOR.delivery, VECTOR.buyerSk, VECTOR.jobCommitment);
+  assert.deepEqual(opened.dek, VECTOR.dek);
+  assert.deepEqual(opened.salt, VECTOR.salt);
+  assert.equal(opened.listingVersion, VECTOR.listingVersion);
+  assert.equal(DELIVERY_PAYLOAD_BYTES, 68);
+});
+
+test("a secret key that is not 32 bytes has no public key", async () => {
+  await assert.rejects(() => boxPublicKey(new Uint8Array(31)), /a secret key is 32 bytes/);
+  // And a real one is the X25519 point the room addresses an entry to.
+  assert.equal((await boxPublicKey(new Uint8Array(32).fill(9))).length, 32);
+});
+
+test("HKDF refuses an empty output, which would be a key that is not one", async () => {
+  await assert.rejects(() => hkdf(new Uint8Array(32), new Uint8Array(0), new Uint8Array(0), 0), /at least one byte/);
+  // And a real derivation is 32 bytes of key material, deterministic for the same inputs.
+  const once = await hkdf(new Uint8Array(32).fill(1), new Uint8Array(0), new TextEncoder().encode("i"), 32);
+  const twice = await hkdf(new Uint8Array(32).fill(1), new Uint8Array(0), new TextEncoder().encode("i"), 32);
+  assert.equal(once.length, 32);
+  assert.deepEqual(twice, once);
+});
+
+test("a compliance copy is just the second recipient of the same delivery (AC-55)", async () => {
+  const opened = await openDelivery(VECTOR.delivery, VECTOR.complianceSk, VECTOR.jobCommitment);
+  assert.deepEqual(opened.dek, VECTOR.dek, "the same key, sealed again to another recipient");
+});
+
+test("a delivery is bound to its job and to its recipient, and says which failed", async () => {
+  // The right key, the wrong job: the commitment is the AEAD's additional data.
+  await assert.rejects(
+    () => openDelivery(VECTOR.delivery, VECTOR.buyerSk, new Uint8Array(32).fill(4)),
+    /does not authenticate/,
+  );
+  // A key the delivery was never sealed to.
+  await assert.rejects(
+    () => openDelivery(VECTOR.delivery, new Uint8Array(32).fill(13), VECTOR.jobCommitment),
+    /holds no entry for this key/,
+  );
+  // A commitment that is not 32 bytes, and an ephemeral key that is not.
+  await assert.rejects(
+    () => openDelivery(VECTOR.delivery, VECTOR.buyerSk, new Uint8Array(31)),
+    /a job commitment is 32 bytes/,
+  );
+  await assert.rejects(
+    () =>
+      openDelivery(
+        { ...VECTOR.delivery, eph_pk: "abcd" },
+        VECTOR.buyerSk,
+        VECTOR.jobCommitment,
+      ),
+    /ephemeral key is not 32 bytes/,
+  );
+  // A ciphertext that opens but is not 68 bytes could not be a payload. Sealed here exactly the
+  // way the room seals one, so what is being tested is the length check and nothing else.
+  const recipient = await boxPublicKey(VECTOR.buyerSk);
+  const ephPk = fromHex(VECTOR.delivery.eph_pk);
+  const entryKey = await hkdf(
+    await sodiumSharedSecret(VECTOR.buyerSk, ephPk),
+    new Uint8Array(0),
+    concatBytes(new TextEncoder().encode("marginal/delivery-key/v1"), ephPk, recipient),
+    32,
+  );
+  const entryNonce = fromHex(await sha256Hex(concatBytes(ephPk, recipient))).subarray(0, 24);
+  const stunted = {
+    eph_pk: VECTOR.delivery.eph_pk,
+    entries: [
+      {
+        recipient: toHex(recipient),
+        ciphertext: toHex(
+          await sealWithNonce(entryKey, entryNonce, new Uint8Array(4), VECTOR.jobCommitment),
+        ),
+      },
+    ],
+  };
+  await assert.rejects(
+    () => openDelivery(stunted, VECTOR.buyerSk, VECTOR.jobCommitment),
+    /a delivery payload is 68 bytes/,
+  );
+});
+
+test("the good opens with the delivered key and is checked against its commitment (§3.19)", async () => {
+  const text = "# Memo\n\nOne claim, and then another.\n";
+  const key = await dek();
+  const saltBytes = await salt();
+  // The good is sealed with no additional data, which is how the room opens it.
+  const object = await aeadSeal(key, new TextEncoder().encode(text), new Uint8Array(0));
+  const commitment = await goodCommitment(saltBytes, text);
+  const payload = { dek: key, salt: saltBytes, listingVersion: 1 };
+
+  assert.equal(await openGood(object, payload, commitment), text);
+
+  // The commitment is what makes this a check rather than a decryption: a good that opens but
+  // commits to something else is not the good that was appraised and sold.
+  await assert.rejects(
+    () => openGood(object, payload, "00".repeat(32)),
+    /commits to [0-9a-f]{64}, not the 0{64} this listing published/,
+  );
+  // A wrong key does not authenticate, and an object with no room for a nonce is refused.
+  const otherKey = await dek();
+  await assert.rejects(
+    () => openGood(object, { ...payload, dek: otherKey }, commitment),
+    /does not authenticate/,
+  );
+  await assert.rejects(
+    () => openGood(new Uint8Array(10), payload, commitment),
+    /too short to hold a nonce/,
   );
 });
