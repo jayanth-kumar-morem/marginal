@@ -54,9 +54,10 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | P-1 | Boot the room CVM (E7.1) | A Phala Cloud account with a card | **$0.232/h**, so about **$0.25** for a one-hour capture; **$5.60/day** if left up ([SDD §1.5](SDD.md)). It is destroyed after the capture and booted again for the demo, so nothing runs in between | E3.2, E3.3 and E3.6 Done lines; E7.1, E7.4, E7.5; E8.2–E8.5; the room half of E15.1; D3 and DRC-3 | After E7.2 and E7.3 build the image, so one boot captures the fixture. **First** run `phala os-images --prod --json` and confirm a **dstack ≥ 0.6.0** image exists (E3.2 finding 4): with 0.5.x the room can never register |
 | P-2 | A NEAR AI Cloud API key (E9.1) | A NEAR AI account | Under **$0.003 per appraisal** ([SDD §1.5](SDD.md)); a few cents for the demo | E9.1, D6, DRC-6. The judge port has a test double, so everything else runs without it | Before E9.1. Not needed for E3–E6 |
 | P-3 | Fund the testnet deployer (E15.1) | The `marginal-demo.testnet` account, already created | **Free** (testnet faucet): 18 NEAR, up from 16 since KeyPolicy grew to 235 KB | Every testnet Done line: E3.3, E3.6, E15.1. `up.sh` refuses before creating anything if the balance is short | Before the first testnet deploy. Independent of P-1, so it can be done any time |
+| P-5 | Publish the room image (E7.2) | A container registry the CVM can pull from without credentials | **Free** on ghcr.io for a public package | E7.1 and everything behind it: the compose file has to name the image by digest, and a dstack CVM holds no registry credentials (`allowed_envs: []`), so the image has to be **public**. That publishes the room's built `dist/` — the repository stays private either way, but this is a disclosure decision, so it is yours (X-2) | With P-1, before the boot: `room/image/build.sh image` prints the digest to push and to pin |
 | P-4 | Submit (E15.5) | A person: the repo visibility decision (X-2), an X post, the submission form | **Free** | E15.5 | Last. Re-read the rules first; they may have changed |
 
-**Nothing above is bought or started by me.** P-1 and P-2 cost money, so I stop and ask; P-3 and P-4 are free but only the user holds the account.
+**Nothing above is bought or started by me.** P-1 and P-2 cost money, so I stop and ask; P-3, P-4 and P-5 are free but only the user holds the account — and P-5 is a disclosure decision, not a cost.
 
 ## Simplicity rules
 
@@ -78,7 +79,7 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E4](#e4-clearing-rooms-listings-snapshots) | Clearing: rooms, listings, snapshots | 6 | **6** | D1, D3, D8 |
 | [E5](#e5-clearing-jobs-funding-leakage-agents) | Clearing: jobs, funding, leakage, agents | 7 | **7** | D1, D4, D5 |
 | [E6](#e6-clearing-verdicts-settlement-claims) | Clearing: verdicts, settlement, claims | 5 | **5** | D1, D6, D7, D8, D11 |
-| [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | — | D1, D3 |
+| [E7](#e7-room-image-and-supervisor) | Room image and supervisor | 5 | **2** (2 more built, waiting on a live room and on E8) | D1, D3 |
 | [E8](#e8-room-worker-and-appraisers) | Room worker and appraisers | 7 | — | D1, D8, D9 |
 | [E9](#e9-judges) | NEAR AI judges | 1 | — | D6 |
 | [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | — | D10 |
@@ -169,6 +170,8 @@ To fix in SDD v0.3.
 | 30 | §3.9.2 gives `Restricted` a "screening-only share" of the compute fee without saying what the share is | M1 pays the whole compute fee: the room did the work either way, and a fraction nobody has defined would be a number invented in code. Fix the table in §3.9.2 or drop the distinction | SDD v0.3 |
 | 31 | §3.16 says a body with a reasoning field is "rejected with factor 0", as a rule of its own. With the strict parse of DR-2, such a body already scores 0: the rule is unreachable on chain | Keep the rule in `marginal_core::judge` for the room and `replay-ts` (which must not publish such a body), and say in §3.16 that on chain the strict parse subsumes it (E6.2) | SDD v0.3 |
 | 32 | §3.5's job lifecycle has no way out of `PendingApproval` except approval, so a parked job nobody approves could never be refunded and its funds would be locked for good | `PendingApproval → Timeout` is allowed, and `refund_expired` ends a parked job like any other (E6.4) | SDD v0.3 |
+| 33 | §3.13's `app-compose.json` listing is not a deployable file: dstack also requires `manifest_version`, `name` and `runner`, and the listing shows `pre_launch_script: null` where omission is the only unambiguous encoding — dstack's own SDKs drop a falsy `pre_launch_script` when they normalise, which would predict a different compose hash from the one the guest measures | `room/image/app-compose.json` adds the three required keys (`manifest_version: 2`, `name: "marginal-room"`, `runner: "docker-compose"`) and omits `pre_launch_script` entirely. Add all four to the §3.13 listing | SDD v0.3 |
+| 34 | §3.13 and §3.14.3 are silent on where the compose hash comes from, so the listing reads as if any JSON with those keys would do. dstack hashes the **file's bytes** (`dstack-util/src/system_setup.rs`: `sha256_file(app_compose_file)`) while its SDKs predict the hash from recursively key-sorted compact JSON — two different numbers for the same keys in a different order | `build.sh compose` writes the canonical form, so both agree, and `room/src/image.test.ts` pins that. Say in §3.13 that the compose hash is the SHA-256 of the deployed file and that the file is written canonically | SDD v0.3 |
 
 ---
 
@@ -526,7 +529,16 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - **Check the image version first:** `phala os-images --prod --json`. The guest must be **dstack ≥ 0.6.0**, or KeyPolicy refuses every registration: the `storage-encrypted` event §3.13 requires does not exist before 0.6.0, and §3.13's "apps cannot add RTMR3 events" is also a 0.6.0 property. Upstream's stable line was still 0.5.14 on 2026-11-13 with 0.6.4 pre-release, and Phala does not publish which it deploys. If prod has no 0.6.x image, stop and decide before paying for a CVM (E3.2 note).
   - Deploy it as a **new app**, never as an upgrade, and do not pin an `app_id`: KeyPolicy requires `app-id` to be the first 20 bytes of the compose hash.
   - **Done:** the inner certificate is type 5; the PPID is on Phala's list; the TCB status is recorded; the RTMR3 replay matches; quote, collateral and event log are saved to `fixtures/quotes/`. Then E3.2 closes: the same three assertions as the two real CVMs in `crates/marginal-core/tests/attest.rs`, this time with `evaluate_quote` **accepting** the room.
-- [ ] **E7.2 Image and compose** · P0 · §3.13
+  - **Ready for it, 2026-11-14.** E7.2 and E7.3 build the image and print the compose hash, so one
+    boot can capture everything. Two things to get right on the day, both of which decide whether the
+    quote is usable at all:
+    - **Deploy `room/image/out/app-compose.json` byte for byte.** The compose hash is the SHA-256 of
+      the file dstack reads. If Phala's CLI assembles its own file from the compose instead of taking
+      ours, the hash is its file's, not the one we recorded — so save the deployed `app-compose.json`
+      next to the quote and check it against `build.sh compose` before trusting anything.
+    - **The image has to be public** ([P-5](#paid-and-account-gated-steps-jay)): the compose names it
+      by digest and a CVM holds no registry credentials.
+- [ ] **E7.2 Image and compose** · P0 · §3.13 · built except the model pins, which arrive with E8.6
   - Pinned base digests and Node 22; `npm ci --ignore-scripts`; onnxruntime-node and MiniLM files pinned by SHA-256; read-only root file system.
   - `app-compose.json` exactly as in §3.13, plus three keys that KeyPolicy's policy makes mandatory (found by reading dstack's source in E3.2; all three refuse the room if wrong):
     - `"no_instance_id": true` — the only thing that makes dstack write an empty `instance-id`;
@@ -534,17 +546,87 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - leave `event_log_version` unset: V1 is the default digest, and our replay implements V1 only.
   - A CPU-only room on dstack 0.6.x still gets a `gpu-policy-hash` event (`sha256("{}")`); the policy allows it and records it in the measurement.
   - The only operator input is the RPC URL.
-- [ ] **E7.3 Reproducible build** · P0 · D3 · §3.13
+  - **Built, 2026-11-14.** `room/image/`: `Dockerfile` (two stages on
+    `node:22.23.5-bookworm-slim@sha256:e9f565d3…21ee`, `pnpm install --frozen-lockfile
+    --ignore-scripts`, and a runtime stage holding nothing but `room/dist` and `@marginal/core-wasm`
+    with `core.wasm` beside it), `docker-compose.tmpl.yaml` (read-only rootfs, `cap_drop: [ALL]`,
+    `no-new-privileges`, a 16 MB `tmpfs` for `/tmp`, no swap, no port, no `env_file`, and the dstack
+    socket as its only mount) and `app-compose.json`. The build context is `git archive HEAD`, so no
+    uncommitted file and nothing under `deploy/.keys/` can reach the image.
+  - Nothing is a **runtime** input at all, which is stronger than the task asked: the RPC URL, the
+    operator agent's URL, the chain id and both contract accounts are written literally into the
+    compose file, so each of them changes the compose hash (DR-9). `dstack` drops host-supplied
+    variables anyway (`allowed_envs: []`), so a value that was not measured could not arrive.
+  - **Not built: the onnxruntime-node and MiniLM SHA-256 pins**, because `room/models/` does not
+    exist until E8.6 and inventing digests for files nobody has is worse than leaving the bullet
+    open. Two SDD issues found while writing the file: 33 (§3.13's listing is missing the three keys
+    dstack requires and shows `pre_launch_script: null` where omission is the only safe encoding) and
+    34 (the compose hash is the SHA-256 of the deployed file, which §3.13 never says).
+  - **To close:** E8.6 adds `room/models/` with its pins, then re-runs `build.sh` and updates
+    `room/image/MEASUREMENTS.md` with the new compose hash.
+- [x] **E7.3 Reproducible build** · P0 · D3 · §3.13
   - `build.sh` and `MEASUREMENTS.md`.
   - **Done:** a second build from the git tag reproduces the compose hash (DRC-3).
-- [ ] **E7.4 Boot and registration** · P0 · D3
+  - **Completed 2026-11-14.** `build.sh compose` assembles `out/docker-compose.yaml` and
+    `out/app-compose.json` from the committed templates and the deployment pins, and prints the
+    compose hash and the app id. `room/src/image.test.ts` is the DRC-3 check and runs on every `make
+    check`: the hash is the same across runs, it changes when any pin changes (the image digest and
+    the RPC URL are both exercised), it equals the SHA-256 of the file that gets deployed, the file
+    is canonical JSON, the compose file is embedded verbatim with no placeholder left and no
+    `env_file`, and a build missing any pin is refused rather than guessed.
+  - **Why the hash is computed twice over.** dstack measures `sha256_file(app-compose.json)` while
+    its own SDKs predict the hash from recursively key-sorted compact JSON. Writing the canonical
+    form makes the two answers the same number, so a verifier can use either (SDD issue 34).
+  - **Verified beyond the Done line:** `build.sh image` builds, and a second `--no-cache` build of
+    the same commit gave the same manifest digest,
+    `sha256:f0bacb3b0da4f4774bea1edb747052dac1f81c4165bf3dc81d3f54d7d3d5af08`.
+  - **Not verified:** that another machine reproduces that image digest (only this host was tried),
+    and the one known gap — `core.wasm` is built on the host rather than inside the image, so two
+    builders must also compare `core_wasm_sha256`. `MEASUREMENTS.md` says so.
+- [ ] **E7.4 Boot and registration** · P0 · D3 · code done; Done line **blocked on [P-1](#paid-and-account-gated-steps-jay)**
   - Keys generated in memory; `report_data`; quote and event log through `@phala/dstack-sdk`.
   - Registration through the operator agent, with daily renewal. A restart always means new keys.
   - **From the contracts (E3).** `report_data` is `room_report_data(binding)` — `SHA-512("marginal-room-v1" ‖ borsh(RoomBinding{chain_id, keypolicy, sign_pk, box_pk, nonce}))`, **not** a plain concatenation. The registration must also carry `sign_sig`, the room's own signature over `room_pop_signing_bytes(binding)`, or KeyPolicy refuses it: a quote proves what software runs, not who holds the key. Both are `@marginal/core-wasm` operations with vectors, and the nonce belongs to the account that asked for it, so the operator agent must issue and spend it from the same account.
-- [ ] **E7.5 Job loop** · P0 · §3.14
+  - **Built, 2026-11-14.** `room/src/{keys,dstack,registration,boot,main}.ts`. Keys are generated in
+    memory at every boot and never written anywhere, the binding and both signatures come from
+    `@marginal/core-wasm` (so the room computes exactly what KeyPolicy checks), and `boot` renews on
+    its own every five minutes while the attestation has less than an hour left — a failed renewal is
+    reported and tried again rather than ending the room, because a lapsed attestation means every
+    verdict is refused (E6.1).
+  - **The room checks its own registration before anyone pays for it:** it reads the report data back
+    out of the quote at offset 568, replays the RTMR3 log and applies the same event policy KeyPolicy
+    will (`rtmr3_replay`, `room_events`). The 200 TGas verifier call and the storage are the
+    operator's money, so a quote that cannot pass is refused locally.
+  - **Deviation from the task text: not `@phala/dstack-sdk`.** The room needs one call, `GetQuote`,
+    and node already frames an HTTP request over a unix socket, so `dstack.ts` is a direct client of
+    the guest agent's v0 surface (`{report_data: hex}` to `/prpc/GetQuote`, `{quote, event_log}`
+    back; dstack `guest-agent/src/backend.rs`). One dependency fewer inside the TEE is one fewer
+    thing in the measurement to audit. It is tested over a real unix socket, not a mock.
+  - **To close:** E7.1's CVM. Nothing here has met a real guest agent or a real registry: the route,
+    the quote's own bytes and the collateral the operator agent adds are all unexercised, and the
+    operator agent itself is E11.3.
+- [x] **E7.5 Job loop** · P0 · §3.14
   - Poll `get_jobs_for_room` and fork one worker per job.
   - The supervisor keeps the signing key, signs over IPC, and submits through the operator agent.
   - **From the contracts (E4, E5).** `get_jobs_for_room(room_key)` is live and returns only the room's **open** jobs (clearing removes one when it is answered or times out), each with its `kind`, `listing_id`, `job_commitment` and `deadline_height`. A room holds at most 32 open jobs. The context key a buyer sealed to the room is `get_context_key(job_id)`.
+  - **Completed 2026-11-14.** `room/src/{scheduler,spawn,signer}.ts`. The loop polls
+    `get_jobs_for_room`, never starts a job twice (the view still lists one until the room answers
+    it), caps how many run at once, and survives a chain that is down. `forkSpawner` is the fork: an
+    empty environment, a heap cap, one process per job, a ten-minute kill, and exactly two things a
+    worker may ask for over IPC — a signature, or a relay through the operator agent.
+  - **What the supervisor will not do.** It signs only a message beginning with one of the room's own
+    domains (`marginal/verdict/v1` and four others) and at most 64 KiB, so a worker that has been
+    talked into something cannot turn the room's key into a signature over a key request for another
+    job or a registration for another room. `room-pop` is deliberately not on that list: the
+    supervisor signs its own proof of possession and never takes one from a worker.
+  - **Verified:** real forks of real worker processes, not a double — the happy path through
+    signature and relay, a refused domain, a relay the agent rejects, a worker that exits non-zero,
+    one that will not finish (killed), one that cannot be started at all, one that sends a message
+    the supervisor does not take, and one that gives up before its relay comes back (the reply is
+    dropped, not an error).
+  - **Not verified:** anything a real worker does. The module `forkSpawner` forks,
+    `room/dist/worker/main.js`, is E8; until then a job that arrives is forked, fails to start and is
+    reported.
 
 ## E8. Room worker and appraisers
 
@@ -582,6 +664,10 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - Port LETHE's `novelty.js`: claims, MiniLM max similarity per claim, τ 0.78 / 0.45, and need weighting. Single-threaded ONNX; `N_pub = 10,000`; 21-level components.
   - Screening: an issuer lexicon and MNPI rules, giving `Flag(reason)` or `Pass`.
   - **Done:** on the D1 fixture, A gets Deal and B gets No deal. The MNPI fixture is flagged.
+  - **From E7.2.** This task brings `room/models/`, so it also carries the pins E7.2 could not: the
+    onnxruntime-node build and every MiniLM weight and tokenizer file pinned by SHA-256 and loaded
+    with no runtime download (§3.14.3, AC-38). Adding them changes the image, so re-run
+    `room/image/build.sh` and update `room/image/MEASUREMENTS.md` with the new compose hash.
 - [ ] **E8.7 `dataset-lite@0`** · P2 · D9 · §3.15.3
   - Integrity checks, then overlap measured with MiniLM.
   - A closed-form ridge, baseline vs augmented.

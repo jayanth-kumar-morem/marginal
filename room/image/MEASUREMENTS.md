@@ -27,8 +27,8 @@ as a **new app** with no pinned `app_id`.
 | Base image | `node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee` (linux/amd64 manifest `sha256:47725aca53d3295ec2d3be8f62726599b3033cc262edc2c7e429909b3ac599fc`) | `Dockerfile` |
 | pnpm | `pnpm@9.15.4`, through `corepack install` | root `package.json` |
 | JS dependencies | `pnpm install --frozen-lockfile --ignore-scripts` | `pnpm-lock.yaml` |
-| `core.wasm` | printed as `core_wasm_sha256` by `build.sh image` | built by `make wasm-core`, not committed |
-| Room image | the digest `build.sh image` prints, published and referenced by digest | `--image` |
+| `core.wasm` | printed as `core_wasm_sha256` by `build.sh image`; `d2f68f50a7beeb2e41ac0448c26968f731b0351c89514d5ef1b0fbc60e68123a` at commit `7d96482` | built by `make wasm-core`, not committed |
+| Room image | the digest `build.sh image` prints, published and then referenced by digest. At commit `7d96482` it is `sha256:f0bacb3b0da4f4774bea1edb747052dac1f81c4165bf3dc81d3f54d7d3d5af08`, and a second build of the same commit with `--no-cache` produced the same digest on the same host | `--image` |
 | RPC URL, operator agent URL, chain id, clearing and KeyPolicy accounts | written literally into the compose file | `--rpc-url`, `--operator-url`, `--chain-id`, `--clearing`, `--keypolicy` |
 
 Every one of those changes the compose hash, which is the point: a room cannot be pointed at another
@@ -96,7 +96,12 @@ it. `event_log_version` is left unset, because the replay implements V1 digests 
   `app-compose.json`. If Phala's CLI assembles its own file instead of taking `out/app-compose.json`
   verbatim, the hash is its file's, not ours. E7.1 confirms this on the live CVM and records the
   deployed file beside the quote in `fixtures/quotes/`.
-- **Cross-machine image reproducibility.** The build pins the base image, the lockfile and
-  `SOURCE_DATE_EPOCH`, and asks buildkit to rewrite timestamps, but `core.wasm` is built on the host
-  rather than inside the image, so two builders must also compare `core_wasm_sha256`. A Rust stage
-  inside the image build would close that gap (M2).
+- **Cross-machine image reproducibility.** Two `--no-cache` builds of the same commit on the same
+  host give the same digest (checked, 2026-11-14), which is what the pins above are for: the base
+  image by digest, the lockfile frozen, no install scripts, and `SOURCE_DATE_EPOCH` with buildkit
+  rewriting layer timestamps. **A second builder on another machine has not been tried**, and one
+  gap is known: `core.wasm` is built on the host rather than inside the image, so two builders must
+  also compare `core_wasm_sha256`. A Rust stage inside the image build would close that gap (M2).
+  Note that the digest tracks the room's *code*, not the repository's prose: only `room/dist` and
+  the `@marginal/core-wasm` package reach the runtime stage, so a documentation commit does not
+  change it.
