@@ -697,8 +697,15 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     a refusal for each of a wrong app id, a wrong scalar, a wrong MPC key, a substituted point, a
     non-G1 answer, an identity point, and a σ at infinity. A seller sealing `DEK_g` to the derived
     `pk_L` is shown to reach this room and no other.
-  - **Not verified:** the `ckd-example-cli` vectors and a live derivation — the two things the
-    **Done:** line names. No real MPC answer has been recovered.
+  - **The `ckd-example-cli` vectors pass.** A deterministic exchange (msk = 1234567890,
+    a = 987654321, y = 55555) was printed from near/mpc's own `ckd.rs` helpers with
+    `cargo test -p ckd-example-cli` at release 3.19.0, and the TypeScript recovers exactly that σ
+    (`a33980119e8f…a564`) and exactly their strong key (`7bafabb3ad7f…d42a`). That pins the app id,
+    the blinding, the hash-to-curve domain, the subgroup handling and the HKDF across two
+    implementations and two curve libraries (`blstrs` and `@noble/curves`).
+  - **Not verified: a live derivation**, the other half of the **Done:** line. No answer from the
+    real MPC network has been recovered, so nothing proves the live domain id, the response shape on
+    the wire or the latency.
   - **To close:** fund the testnet deployer ([P-3](#paid-and-account-gated-steps-jay)), call
     `request_app_private_key` on `v1.signer-prod.testnet` (domain 2) from a dev account with an app
     key from `appKey()`, and recover the key with `recoverSigma`.

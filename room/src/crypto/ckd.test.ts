@@ -189,3 +189,41 @@ test("a listing's keys are derived from σ, deterministically and by purpose", (
     /does not open with this key/,
   );
 });
+
+/**
+ * A golden vector produced by near/mpc's own code — `cargo test -p ckd-example-cli` at release
+ * 3.19.0, with a deterministic exchange (msk = 1234567890, a = 987654321, y = 55555) printed from
+ * `ckd.rs`'s own helpers. It pins the whole chain across two implementations and two curve
+ * libraries: the app id, the blinding, the hash-to-curve domain, σ, and near/mpc's own strong-key
+ * derivation. If any constant here drifted, every key release would fail against the live network.
+ */
+test("the ckd-example-cli vectors pass", () => {
+  const hex = (text: string): Uint8Array => new Uint8Array(Buffer.from(text, "hex"));
+  const id = appId("keypolicy.marginal-demo.testnet", "listing/alice.testnet/7/1");
+  assert.equal(
+    Buffer.from(id).toString("hex"),
+    "5efe8e12120c87734406dd82e5e745ec33a216e482310dc47c55a7f6cfc55e57",
+    "app_id",
+  );
+
+  const scalar = 987654321n;
+  const mpcPublicKey = hex(
+    "b8005357ad6d494e3987f01c9d83e13eedd78a0ac4e7b96c7141afedbe1be4930b40808437619555104b8c37158fa0a819f89e390a61ccda4aa3e4b1d83f85535056bd4239a33dadb9a1fc842971e6080706ad4ccd4c0c09120c322424823161",
+  );
+  const response = {
+    big_y: g1Key(hex("87c1eb5b0ed80bb4c511bdbbacab86c6c30e4efb96ce6356f87e5af95db834950f58236fb4bd1e213e8525ea3b62673a")),
+    big_c: g1Key(hex("923020600eeadc0085e2463fb3e6b35785b06d3486549dd3aff522a7eee135d5a0b47f444fe7772de80bc57755941bf5")),
+  };
+
+  const sigma = recoverSigma(response, scalar, id, mpcPublicKey);
+  assert.equal(
+    Buffer.from(sigma).toString("hex"),
+    "a33980119e8f7dc8252ae9a75a4e8b6407397ebf00f2afba5cde117c42e8f564b1dda96ea720ce6ea3258863fd37a564",
+    "sigma",
+  );
+  assert.equal(
+    Buffer.from(strongKey(sigma, NEAR_STRONG_KEY_INFO)).toString("hex"),
+    "7bafabb3ad7f98462147a05d1c65dc72f0bab909925037ac02064a55ba85d42a",
+    "the example CLI's strong key",
+  );
+});
