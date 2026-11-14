@@ -1,0 +1,28 @@
+[package]
+name = "cross-contract-tests"
+description = "Cross-contract near-workspaces suites (SDD §5.2): the real contracts, on a real local chain"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+# Nothing is compiled into a library or a contract here: the package exists only to hold the
+# `sandbox_*.rs` suites, which `make e2e` runs with `cargo test --workspace --test '*'`.
+autobins = false
+autoexamples = false
+autobenches = false
+
+[dev-dependencies]
+marginal-core = { path = "../../crates/marginal-core" }
+clearing = { path = "../clearing" }
+keypolicy = { path = "../keypolicy" }
+near-sdk = { workspace = true, features = ["unit-testing"] }
+borsh.workspace = true
+hex.workspace = true
+serde_json.workspace = true
+ed25519-dalek = "=2.2.0"
+# Signs a NEAR AI judge receipt the way the provider's TEE would, so `env::ecrecover` can recover it.
+secp256k1 = { version = "=0.27.0", features = ["recovery"] }
+near-workspaces = { version = "0.24", features = ["unstable"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"

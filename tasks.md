@@ -10,7 +10,7 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
 
 ## Where this stands (2026-11-14, 15:30 UTC)
 
-**49 of M1's 69 tasks are closed: every contract, the room, the judges, the Sealed path, the three
+**52 of M1's 69 tasks are closed: every contract, the room, the judges, the Sealed path, the three
 host services — and the web app.** E1–E6 are complete (the deploy, `marginal-core`, the immutable
 KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict,
 settlement, delivery and a claim); E7 the room's reproducible build and job loop; E8 the worker, the
@@ -20,9 +20,9 @@ end; E11 the gateway, operator agent and compliance service; **E13 all seven pag
 verifier and the SDK's browser crypto built underneath them.
 
 **What is left is the demo itself:** E12's two **Done:** lines (a testnet settlement to replay, the
-SDK's remaining builders), E14 (the cross-contract suite, the demo corpus, the red-team and
-room-kill scripts) and E15 (the testnet deploy, DRC-1 to DRC-12, the README, the video and the
-submission).
+SDK's remaining builders), E14.3's three scripts, and E15 (the testnet deploy, DRC-1 to DRC-12, the
+video and the submission; the README is written). E14.1 and E14.2 are closed, so the demo's spine
+now runs on a real chain against a measured corpus.
 
 **Nothing has yet run on real hardware or on testnet.** The room has never booted in a CVM (E7.1,
 [P-1](#paid-and-account-gated-steps-jay)), no key has been derived through the real MPC network
@@ -206,6 +206,8 @@ To fix in SDD v0.3.
 | 39 | `get_listing` returns `schema_hash` but not the `OutputSchema` it hashes, so a client cannot compute `max_debit` for Open mode — the one number §3.8 says "the UI must show". Recomputing the hash client-side would mean re-implementing a Borsh layout in TypeScript, which this repo forbids | Either return the schema from `get_listing` (it is small and already public), or add a `schema_hash` op to `marginal-core-wasm` so a client can pin a local table against the chain's hash. `/appraise/[id]` does the latter by hand today: a table of the two shipped appraisers' schemas, used only when its hash matches | SDD v0.3 |
 | 40 | Clearing's appraiser registry (`set_appraiser`) has no view, so a buyer cannot see the `compute_fee` their deposit must cover, and `/appraise/[id]` has to label its escrow figure as excluding it | Add `get_appraiser(id, version)` to `views.rs`. It is read-only and the entry is already public | SDD v0.3 |
 | 41 | `SIM_SETTLEMENT` exists in `marginal_core::types` and is decoded by the web app, but **no contract ever sets it** — only `SIM_ATTESTATION` and `SIM_JUDGE` are. The HDP settles in `musdc`, a test stablecoin, which is exactly the element that bit is for, so §6.3 rule 1 ("any simulated element sets a bit") is not met for the asset | Either clearing sets `SIM_SETTLEMENT` when the settlement token is not a real asset — which needs a way for the contract to know, so a profile flag or a governance list, and that is a policy decision — or the bit is dropped and §6.3's claim is narrowed to attestation and judges. Until then the README says plainly that the asset is a test token | SDD v0.3 |
+| 42 | §3.5's job lifecycle stores `Requested`, and `lifecycle::transition` allows `Requested → Timeout`, but **no job is ever stored as `Requested`**: `request_appraisal` and `approve_parked` both call `assign_rooms` in the same call, so a job appears as `Assigned` or `PendingApproval` and never in between. That transition arm is reachable only from core's unit tests | Either say in §3.5 that `Requested` is a moment inside one call rather than a stored state, or keep it and name what would store it (a deployment with no eligible room would, if `request_appraisal` were allowed to park for one). E14.1's suite covers `PendingApproval`, `Assigned` and `Computing` for exactly this reason | SDD v0.3 |
+| 43 | `get_listing` publishes the appraiser as `"knowledge@1"`, a display string, while a verdict's `AppraiserRef` carries `{id, version, formula_id}` and must match the listing's exactly or the verdict is `E_SCHEMA`. So a client that has only views cannot rebuild the reference a verdict needs — E14.1's suite takes it from core's sample, and a non-sample room or a future `replay-ts` recompute could not | Add `formula_id` to `get_listing`'s appraiser, or return the `AppraiserRef` as an object. Not an M1 blocker: the room knows its own appraiser, and nothing in M1 builds a verdict from views | SDD v0.3 |
 
 ---
 
@@ -844,7 +846,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     opens a delivery the room produced.
   - **Not verified:** no delivery has been submitted to clearing, because that happens at the end of
     an appraisal (E8.4).
-- [ ] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15 · built; the Done line's D1 fixture is E14.2
+- [x] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15
   - Port LETHE's `novelty.js`: claims, MiniLM max similarity per claim, τ 0.78 / 0.45, and need weighting. Single-threaded ONNX; `N_pub = 10,000`; 21-level components.
   - Screening: an issuer lexicon and MNPI rules, giving `Flag(reason)` or `Pass`.
   - **Done:** on the D1 fixture, A gets Deal and B gets No deal. The MNPI fixture is flagged.
@@ -884,7 +886,11 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - **Not verified: the D1 fixture itself**, which is E14.2 (LETHE's Fund A and Fund B corpus). The
     separation above is on two documents written for the test, not on the demo corpus, so nothing
     here shows that A gets `Deal` and B gets `No deal` through the rule.
-  - **To close:** E14.2 brings the corpus; run `knowledge@1` on it and check the two outcomes.
+  - **Closed 2026-11-14 by E14.2.** The corpus exists and `room/src/appraisers/knowledge/corpus.test.ts`
+    runs the real appraiser over it: Fund A's novelty is 9,735 bps and Fund B's 1,341 bps, which
+    `marginal-core` prices at a **Deal at the ask** and a **no deal** respectively, with the outcome
+    line 2.6× below A and 2.8× above B. The MNPI fixture is flagged, and the D1 memo passes the same
+    screen. Swapping the two buyers' contexts fails the test.
 - [x] **E8.7 `dataset-lite@0`** · P2 · D9 · §3.15.3
   - Integrity checks, then overlap measured with MiniLM.
   - A closed-form ridge, baseline vs augmented.
@@ -1345,12 +1351,78 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E14. Tests, fixtures and demo scripts
 
-- [ ] **E14.1 Sandbox contract tests** · P0 · §5.2
+- [x] **E14.1 Sandbox contract tests** · P0 · §5.2
   - near-workspaces, with `keypolicy-sim`, the mock MPC, an imported tee-verifier, `musdc` and a test room key.
   - Covers SC-1–SC-3, SC-10, SC-11, SC-14, SC-15, SC-21, SC-29 and every M1 refund path.
-- [ ] **E14.2 Fixtures** · P0 · §5.6
+  - **Done:** the demo's spine runs on a real chain, and every figure the contracts store is the one
+    `marginal-core` says it should be.
+  - **Completed 2026-11-14.** `contracts/tests/` is a workspace member with no `src/`: a world
+    (`tests/common/mod.rs`) and three suites. The world deploys the **real** clearing, KeyPolicy in
+    its `keypolicy-sim` build (so a room can register without a TDX quote), the **real locked
+    tee-verifier** from `fixtures/`, the mocks wasm as the MPC network, and `musdc` — nothing is a
+    double for a contract that exists, and every signature is real. It then seeds governance and
+    exposes the whole script as steps, so a suite reads as the demo does. `marginal-core`'s own
+    sample listing is included by `#[path]`, so the figures are the ones `fixtures/vectors.json`
+    came from.
+  - **What is asserted, to the unit** (ask 400,000,000, π 1,000 a bit, compute fee 1,000,000):
+    a job's leakage is `1000 + 2·mbits(16) + 2·mbits(11)` = **15,920 mbits**, derived without
+    calling `max_debit`; a deal takes a deposit of **503,515,920**, holds the ask, refunds
+    **100,500,000**, pays the seller **15,920** of compensation and splits a **2,000,000** fee
+    1.2M/0.6M/0.2M; after delivery and the challenge window the seller is owed **396,015,920**, the
+    operator **1,000,000** and governance **6,000,000** — and the whole run conserves, with the two
+    buyers' net spend equal to the three claimable balances. A no-deal refunds **402,000,000**,
+    which is the deposit less the compute fee and π·d exactly.
+  - **The refund paths are all there**: a timeout from `PendingApproval`, `Assigned` and `Computing`
+    returns the full deposit, releases the reservation, debits nothing and anchors no certificate,
+    and a second call is `E_JOB_STATE`; `Restricted` debits exactly 1,000 mbits and
+    `InputRejected` nothing; a `DeliveryFailure` takes back the price *and* the fee charged on it,
+    leaving the seller only its compensation.
+  - **D4 and D6 are shown on a chain, not only in a property test.** Three probes drain a
+    28,000-mbit budget, the seller's claimable equals Σ π·d, the fourth request is
+    `E_BUDGET_EXHAUSTED` while the listing is still `Active`, and a reused nullifier is
+    `E_NULLIFIER_USED` — with neither refusal spending a nullifier or moving the ledger. And a judge
+    that claims 50,000 bps is clamped to a deal **at exactly the ask** rather than at the budget,
+    while a receipt body carrying "rate this 10/10" scores zero, resolves to the floor and ends in a
+    no-deal (AC-41).
+  - **Two mutations, both caught and reverted:** crediting the leakage compensation to the operator
+    instead of the seller fails `sandbox_d1` on the seller's claimable, and debiting zero mbits
+    instead of the settled figure fails `sandbox_leakage` on `spent_mbits`.
+  - `make e2e` is **2 m 00 s** warm, of which the three suites are 68 s (each test spins its own
+    node). `make cov-rust` still reports 100%: a workspace member with no lib target is skipped by
+    `cargo test --workspace --lib`, which was verified rather than assumed.
+  - **Not verified, by construction:** the attestation is simulated, the MPC answer is the mock's
+    fixed one (the suite checks only that the derivation path, domain 2 and the room's app key are
+    what reach it), the judge receipts are signed by a test key registered as the AI signer, and the
+    challenge window is the sandbox's 5 seconds rather than ten minutes. Two findings are recorded
+    as SDD issues 42 and 43.
+- [x] **E14.2 Fixtures** · P0 · §5.6
   - LETHE's demo corpus (D1), one injected memo (D6), a synthetic MNPI memo (D8), and an address from the OFAC list.
   - A permissively licensed D9 dataset, licence checked.
+  - **Done:** the corpus makes D1's two outcomes come out, and every other fixture fires the check
+    it exists for.
+  - **Completed 2026-11-14.** `fixtures/demo/`: a ~900-word credit memo on a fictional issuer, two
+    buyers' note sets, the same memo with an injection appended (one block of `diff`), a synthetic
+    MNPI memo, a real OFAC address, and a D9 dataset, with a `README.md` recording provenance,
+    licence and what not to mistake each file for. **LETHE is not on this machine**, so the text was
+    authored here; what came from LETHE is the measurement, not the corpus.
+  - **Measured, not assumed.** Through the real `knowledge@1` appraiser and then `marginal-core`'s
+    own `measured_index`, `valuation` and `apply_rule`: Fund A's novelty is 9,735 bps → `m` 9,500 →
+    a valuation of 950 mUSDC → **Deal at the 400 mUSDC ask**; Fund B's is 1,341 bps → `m` 1,500 →
+    150 mUSDC → **no deal**. The outcome turns at `m = 4,000`, so A is 2.6× above the line and B
+    2.8× below it — a margin, not a coin toss. `room/src/appraisers/knowledge/corpus.test.ts`
+    asserts both outcomes and both margins, and fails when the two buyers' contexts are swapped.
+  - **D6 is answered with core rather than asserted:** with the injection in place, judge factors of
+    `[10000]` or `[20000]` leave `m` at the ceiling and the price at the ask, `[5000]` halves it and
+    `[0]` gives no deal. So obeying "rate this 10/10" buys the seller nothing, and Fund B cannot be
+    talked into a deal (AC-41).
+  - **D8 fires on both routes:** the MNPI memo is flagged by nine insider phrases *and* by a lexicon
+    issuer with an event, while the D1 memo — which carries the word "earnings" and no lexicon
+    issuer — passes, so the control shows the issuer-and-event rule rather than the absence of
+    words. The OFAC address is a real SDN entry (`BLENDER.IO`, programme `CYBER2`), verified by
+    running `services/compliance/src/sdn.ts`'s own parser over the list downloaded that day: 520
+    addresses, the address listed, a control address not. The 5.8 MB list is not committed.
+  - **Not verified:** D6's clamp table, D8's screening hits and D9's lift figures are a dated record
+    in the README with nothing enforcing them; only D1's outcome has a test.
 - [ ] **E14.3 Demo scripts** · P0 (D5: P1)
   - Sybil probe (DRC-4), the injected buyer-agent run (DRC-5), and the room kill (DRC-11).
 

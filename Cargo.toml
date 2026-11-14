@@ -8,6 +8,7 @@ members = [
   "contracts/keypolicy",
   "contracts/test-tokens/musdc",
   "contracts/test-mocks/mocks",
+  "contracts/tests",
 ]
 
 [workspace.package]

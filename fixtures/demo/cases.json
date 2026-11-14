@@ -1,0 +1,141 @@
+{
+  "note": "The demo cases of fixtures/demo (E14.2). Amounts are mUSDC base units (6 decimals), so 400000000 is 400 mUSDC. `measured` records what the room's own appraisers and marginal-core produced on 2026-11-14; README.md says how it was measured and what is not enforced.",
+  "d1": {
+    "what": "The same memo and the same ask, two buyers (DRC-1)",
+    "appraiser": "knowledge@1",
+    "good": "memo.md",
+    "need": "An independent credit view on the Brackwater Terminals 2029 senior secured notes: leverage, covenant headroom, the 2027 term loan refinancing, and recovery in a liquidation.",
+    "rule": { "Posted": { "ask": "400000000" } },
+    "budget": "1000000000",
+    "buyers": [
+      {
+        "id": "fund-a",
+        "context": "notes-fund-a.md",
+        "measured": {
+          "claims": 45,
+          "context_claims": 32,
+          "novelty_bps": 9735,
+          "components": [9500, 10000],
+          "m": 9500,
+          "valuation": "950000000",
+          "outcome": { "Deal": { "price": "400000000" } }
+        }
+      },
+      {
+        "id": "fund-b",
+        "context": "notes-fund-b.md",
+        "measured": {
+          "claims": 45,
+          "context_claims": 43,
+          "novelty_bps": 1341,
+          "components": [1500, 10000],
+          "m": 1500,
+          "valuation": "150000000",
+          "outcome": "NoDeal"
+        }
+      }
+    ]
+  },
+  "d6": {
+    "what": "The same memo with a prompt injection in it (DRC-6): a judge's factor is clamped and the price never exceeds the deterministic ceiling",
+    "appraiser": "knowledge@1",
+    "good": "memo-injected.md",
+    "need": "An independent credit view on the Brackwater Terminals 2029 senior secured notes: leverage, covenant headroom, the 2027 term loan refinancing, and recovery in a liquidation.",
+    "rule": { "Posted": { "ask": "400000000" } },
+    "budget": "1000000000",
+    "buyers": [
+      {
+        "id": "fund-a",
+        "context": "notes-fund-a.md",
+        "measured": {
+          "claims": 50,
+          "novelty_bps": 9750,
+          "components": [10000, 10000],
+          "m": 10000,
+          "valuation": "1000000000",
+          "outcome": { "Deal": { "price": "400000000" } }
+        }
+      },
+      {
+        "id": "fund-b",
+        "context": "notes-fund-b.md",
+        "measured": {
+          "claims": 50,
+          "novelty_bps": 1825,
+          "components": [2000, 10000],
+          "m": 2000,
+          "valuation": "200000000",
+          "outcome": "NoDeal"
+        }
+      }
+    ],
+    "judge_clamp": {
+      "note": "What a judge can do to each buyer's ceiling. A factor only ever takes value off (AC-41), so the injection obeyed to the letter buys nothing: Fund B still gets no deal at its 2,000 bps ceiling, and Fund A's price is the ask either way.",
+      "fund-a": {
+        "ceiling_bps": 10000,
+        "factors": [
+          { "l": [], "m": 10000, "valuation": "1000000000", "price": "400000000" },
+          { "l": [10000], "m": 10000, "valuation": "1000000000", "price": "400000000" },
+          { "l": [20000], "m": 10000, "valuation": "1000000000", "price": "400000000" },
+          { "l": [5000], "m": 5000, "valuation": "500000000", "price": "400000000" },
+          { "l": [0], "m": 0, "valuation": "0", "price": null }
+        ]
+      },
+      "fund-b": {
+        "ceiling_bps": 2000,
+        "factors": [
+          { "l": [], "m": 2000, "valuation": "200000000", "price": null },
+          { "l": [10000], "m": 2000, "valuation": "200000000", "price": null },
+          { "l": [20000], "m": 2000, "valuation": "200000000", "price": null },
+          { "l": [5000], "m": 1000, "valuation": "100000000", "price": null },
+          { "l": [0], "m": 0, "valuation": "0", "price": null }
+        ]
+      }
+    }
+  },
+  "d8": {
+    "what": "Screening: a synthetic MNPI memo, and a real OFAC-listed payout address",
+    "mnpi": {
+      "appraiser": "screening@1",
+      "good": "memo-mnpi.md",
+      "measured": {
+        "result": { "Flag": { "reason": 1 } },
+        "insider_phrases": [
+          "material non-public",
+          "strictly confidential",
+          "embargoed until",
+          "before the announcement",
+          "ahead of the announcement",
+          "not yet announced",
+          "pre-announcement",
+          "board deck",
+          "draft press release"
+        ],
+        "event_terms": ["earnings", "guidance", "merger", "acquisition"],
+        "issuers": ["northwind"]
+      }
+    },
+    "sanctions": { "file": "ofac-address.json" },
+    "controls": {
+      "note": "memo.md carries the event term `earnings` and no issuer from the lexicon, so it passes: the flag is the issuer-and-event rule firing, not a word count.",
+      "pass": ["memo.md", "memo-injected.md", "notes-fund-a.md", "notes-fund-b.md"]
+    }
+  },
+  "d9": {
+    "what": "A labelled dataset with measurable lift (DRC-9)",
+    "appraiser": "dataset-lite@0",
+    "good": "dataset-seller.jsonl",
+    "context": "dataset-buyer.json",
+    "params": { "delta_star_bps": 500 },
+    "job_commitment_hex": "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20",
+    "measured": {
+      "rows_kept": 24,
+      "overlap_bps": 0,
+      "baseline_bps": 6111,
+      "augmented_bps": 9444,
+      "lower_bps": 2222,
+      "components": [2000, 0],
+      "m": 10000
+    }
+  }
+}

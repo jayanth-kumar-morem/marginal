@@ -35,3 +35,5 @@ circuits/build/*_0000.zkey
 circuits/build/*.vkey.json
 circuits/build/formula_knowledge_v1_js/generate_witness.js
 circuits/build/formula_knowledge_v1_js/witness_calculator.js
+# raw coverage data: `make cov-rust` writes one per instrumented binary, next to the crate
+*.profraw

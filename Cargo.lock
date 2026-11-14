@@ -588,6 +588,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "cross-contract-tests"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "borsh",
+ "clearing",
+ "ed25519-dalek",
+ "hex",
+ "keypolicy",
+ "marginal-core",
+ "near-sdk",
+ "near-workspaces",
+ "secp256k1",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "crossbeam-utils"
 version = "0.8.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"

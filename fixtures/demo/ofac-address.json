@@ -1,0 +1,34 @@
+{
+  "note": "D8's sanctions case. The blocked address is REAL: it is on OFAC's SDN list, and it is the only thing in fixtures/demo/ that is not invented. It is here so that services/compliance can be shown blocking a payout against the list anyone can re-download. A match blocks a payout and keeps the money claimable; it is not a seizure, not a report and not a judgement about a person (SDD §3.20).",
+  "blocked": {
+    "address": "3K35dyL85fR9ht7UgzPfd1gLRRXQtNTqE3",
+    "currency": "XBT",
+    "expect_listed": true,
+    "sdn_entry": {
+      "ent_num": 37070,
+      "sdn_name": "BLENDER.IO",
+      "sdn_type": "entity",
+      "programs": ["CYBER2"],
+      "remarks_fragment": "Digital Currency Address - XBT 3K35dyL85fR9ht7UgzPfd1gLRRXQtNTqE3"
+    }
+  },
+  "control": {
+    "address": "not-on-the-sdn-list.demo",
+    "expect_listed": false,
+    "why": "A deliberately unlistable string, so the pass side of the demo cannot name anybody's wallet."
+  },
+  "list": {
+    "url": "https://www.treasury.gov/ofac/downloads/sdn.csv",
+    "redirects_to": "a signed wc2h-sls-prod-public-published.s3.us-gov-west-1.amazonaws.com URL, so the client has to follow redirects",
+    "published": "2026-11-12",
+    "retrieved": "2026-11-14",
+    "sha256": "850ef744932d60f960045c9a4cd37ebf6237f8c32c0b163801e14fbcba6d9ce3",
+    "bytes": 5834622,
+    "digital_currency_addresses": 520
+  },
+  "verified": {
+    "how": "services/compliance/src/sdn.ts parseSdn() over the retrieved file, then isListed() for each address above, on 2026-11-14",
+    "parsed_version": "850ef744932d60f960045c9a4cd37ebf6237f8c32c0b163801e14fbcba6d9ce3",
+    "caveat": "`sha256` and `digital_currency_addresses` are that day's file. Treasury republishes the list, so a later download has a different version hash and may hold more addresses; the designation itself is what the demo depends on, and it is checked against the live list at run time."
+  }
+}

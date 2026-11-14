@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -98,10 +98,14 @@ test("a worker that fails takes its job's slot with it, and says how it failed",
 });
 
 test("a worker that will not finish is killed", async () => {
-  // It counts into a file every few milliseconds, so the file says whether it is still alive.
+  // It counts into a file, so the file says whether it is still alive. The first beat is written
+  // before the interval starts, and the timeout is long enough for a fork to get that far on a
+  // loaded machine: otherwise the kill could win the race against the worker's own start, and the
+  // test would fail for a reason that has nothing to do with killing a worker.
   const beat = join(mkdtempSync(join(tmpdir(), "marginal-beat-")), "beats");
   const worker = workerFixture(`
     import { appendFileSync } from "node:fs";
+    appendFileSync(${JSON.stringify(beat)}, "x");
     setInterval(() => appendFileSync(${JSON.stringify(beat)}, "x"), 5);
   `);
   await assert.rejects(
@@ -110,11 +114,12 @@ test("a worker that will not finish is killed", async () => {
         workerPath: worker,
         keys: generateRoomKeys(),
         operator: fakeOperator(),
-        timeoutMs: 60,
+        timeoutMs: 300,
       }).run(job(4)),
     /worker for job 4 timed out/,
   );
-  const atDeath = readFileSync(beat, "utf8").length;
+  // An unwritten file means the worker never started, which is a different failure and says so.
+  const atDeath = existsSync(beat) ? readFileSync(beat, "utf8").length : 0;
   assert.ok(atDeath > 0, "it was running");
   await new Promise((resolve) => setTimeout(resolve, 60));
   assert.equal(readFileSync(beat, "utf8").length, atDeath, "and it is not running any more");
