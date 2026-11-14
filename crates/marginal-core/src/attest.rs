@@ -280,6 +280,20 @@ pub struct RegisterRoomRequest {
     pub sign_sig: [u8; 64],
 }
 
+/// A set of measurements that are the same program (SDD §3.11). A room is admitted when its own
+/// measurement is one of the members of an approved set.
+///
+/// It lives here rather than in clearing because three places build the same bytes: governance
+/// approving a set, the deploy script seeding a profile's policy, and the tests. `approve_measurement_set`
+/// takes it as opaque Borsh, so it is not in the contract's ABI surface.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct MeasurementSet {
+    pub id: String,
+    pub members: Vec<Measurement>,
+    /// Git tag and commit the members were built from (SDD §3.11), for the demo README.
+    pub source_tag: String,
+}
+
 /// A registration with no quote, for `keypolicy-sim` test builds only (SDD §6.1): a room that claims
 /// what a quote would have proved. The deployable KeyPolicy has no method that accepts it.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

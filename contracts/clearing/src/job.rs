@@ -9,11 +9,12 @@ use marginal_core::commit::{job_commitment, JobCore};
 use marginal_core::funding::{fund, total};
 use marginal_core::json::to_hex;
 use marginal_core::leakage::max_debit;
-use marginal_core::lifecycle::transition;
+use marginal_core::lifecycle::{room_ack_signing_bytes, transition, RoomAckV1};
 use marginal_core::pricing::min_price;
 use marginal_core::request::{validate_request, AppraisalRequest};
 use marginal_core::{
-    CoreError, FormulaParams, Job, JobKind, JobState, Listing, ListingStatus, Snapshot, JOB_V,
+    CoreError, FormulaParams, Job, JobKind, JobState, KeyReleaseMode, Listing, ListingStatus,
+    Snapshot, JOB_V,
 };
 use near_sdk::borsh::from_slice;
 use near_sdk::json_types::{Base64VecU8, U128, U64};
@@ -310,6 +311,69 @@ impl Clearing {
                 "path_hash": path_hash,
                 "value_class": listing.value_class,
                 "platform_hash": to_hex(&self.room(&room_key).map(|r| r.ppid_hash).unwrap_or([0; 32])),
+            }),
+        );
+    }
+
+    /// A room says it holds the key and has started work: `Assigned → Computing` for a listing
+    /// whose key release clearing never sees (SDD §3.5's `room ack (RoomSealed)`, §3.12.7).
+    ///
+    /// Under `Ckd` this transition is [`Self::authorize_release`], and KeyPolicy's own call is the
+    /// authorisation. A `RoomSealed` listing has no release to observe — the room opens the
+    /// seller's wrap with its own `box_sk` — so the room signs for itself, and the signature is the
+    /// authorisation. Without this a RoomSealed job could never leave `Assigned` and its verdict
+    /// would be refused with `E_JOB_STATE_INVALID`.
+    ///
+    /// `ack` is the Borsh of [`RoomAckV1`]. The operator agent relays it and pays the gas; it
+    /// cannot forge one, because the room's key signs the chain, the contract, the job and the
+    /// job's commitment together.
+    pub fn room_ack(&mut self, ack: Base64VecU8, room_sig: Base64VecU8) {
+        let ack: RoomAckV1 = from_slice(&ack.0).unwrap_or_else(|_| fail(CoreError::Decode));
+        if ack.domain != RoomAckV1::DOMAIN
+            || ack.chain_id != self.chain_id
+            || ack.clearing != env::current_account_id().as_str()
+        {
+            fail(CoreError::Binding)
+        }
+        let mut job: Job =
+            store::get(Table::Job, &num(ack.job_id)).unwrap_or_else(|| fail(CoreError::Ticket));
+        // Only a listing clearing cannot observe a release for may be acked: a Ckd job must go
+        // through KeyPolicy, or a room could start work it was never given a key for.
+        if self.listing(job.listing_id).key_mode == KeyReleaseMode::Ckd {
+            fail(CoreError::RuleDisabled)
+        }
+        if ack.job_commitment != job.job_commitment {
+            fail(CoreError::CommitmentMismatch)
+        }
+        if !job.assigned.contains(&ack.room_key) {
+            fail(CoreError::RoomNotAssigned)
+        }
+        if !self.current(&ack.room_key) {
+            fail(CoreError::RoomRevoked)
+        }
+        let signature: [u8; 64] = room_sig
+            .0
+            .as_slice()
+            .try_into()
+            .unwrap_or_else(|_| fail(CoreError::BadSignature));
+        if !env::ed25519_verify(
+            &signature,
+            room_ack_signing_bytes(&ack).as_slice(),
+            &ack.room_key,
+        ) {
+            fail(CoreError::BadSignature)
+        }
+        job.state = transition(job.state, JobState::Computing).unwrap_or_else(|e| fail(e));
+        store::put(Table::Job, &num(job.id), &job);
+        self.emit(
+            AuditKind::RoomAck,
+            "room_ack",
+            job.id,
+            json!({
+                "job_id": job.id,
+                "listing_id": job.listing_id,
+                "room_key": to_hex(&ack.room_key),
+                "key_mode": "RoomSealed",
             }),
         );
     }

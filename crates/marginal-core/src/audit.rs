@@ -49,6 +49,9 @@ pub enum AuditKind {
     PinsSet,
     TicketIssued,
     KeyDerived,
+    // Appended by E14.4. A room starting work on its own word is not the same event as KeyPolicy
+    // authorising a key release, and a replay has to be able to tell them apart (§3.5, §3.12.7).
+    RoomAck,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]

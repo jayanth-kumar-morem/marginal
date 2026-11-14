@@ -7,7 +7,9 @@
 //! If a case changed on purpose: `UPDATE_VECTORS=1 cargo test -p marginal-core-wasm --test vectors`,
 //! then review the diff. Cases with a `known` answer also assert a value worked out by hand.
 
-use marginal_core::attest::{evaluate_quote, room_report_data, RegisterRoomRequest};
+use marginal_core::attest::{
+    evaluate_quote, room_report_data, MeasurementSet, RegisterRoomRequest, SimRoom,
+};
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::json::to_hex;
 use marginal_core::listing::PublishSpec;
@@ -253,6 +255,31 @@ fn attestation_cases() -> Vec<Case> {
             "register_room_encode",
             to_value(&request).unwrap(),
         ),
+        // The registry's policy and a quoteless room: what governance approves, what the deploy
+        // script seeds, and what `keypolicy-sim` accepts (E14.4).
+        case(
+            "measurement set: the program a room must be running to be admitted",
+            "measurement_set_encode",
+            to_value(MeasurementSet {
+                id: "knowledge-room@1.0.0".into(),
+                members: vec![common::measurement(false)],
+                source_tag: "v0.1.0+abcdef1".into(),
+            })
+            .unwrap(),
+        ),
+        case(
+            "sim room: a registration with no quote, which only keypolicy-sim takes",
+            "sim_room_encode",
+            to_value(SimRoom {
+                sign_pk: h(1),
+                box_pk: h(2),
+                nonce: h(3),
+                class: RoomClass::K,
+                measurement: common::measurement(false),
+                ppid_hash: marginal_core::attest::ppid_hash(&ppid),
+            })
+            .unwrap(),
+        ),
         known(
             "key request: the bytes a room signs",
             "key_request_signing_bytes",
@@ -268,6 +295,24 @@ fn attestation_cases() -> Vec<Case> {
             "key request: back from Borsh",
             "key_request_decode",
             json!({"bytes": to_hex(&to_bytes(&key_request))}),
+        ),
+        // The room's ack (§3.5's `room ack (RoomSealed)`), which only a RoomSealed job needs.
+        known(
+            "room ack: the bytes a room signs to start work it was not given a key for",
+            "room_ack_signing_bytes",
+            to_value(common::room_ack()).unwrap(),
+            ok(json!(to_hex(
+                &[
+                    b"marginal/room-ack/v1".as_slice(),
+                    &to_bytes(&common::room_ack())
+                ]
+                .concat()
+            ))),
+        ),
+        case(
+            "room ack: the Borsh clearing's room_ack takes",
+            "room_ack_encode",
+            to_value(common::room_ack()).unwrap(),
         ),
         known(
             "listing path",

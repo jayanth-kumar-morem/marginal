@@ -11,7 +11,7 @@
 
 use marginal_core::attest::{ppid_hash, AdmitRoom, MAX_ATTESTATION_SECS};
 use marginal_core::audit::AuditKind;
-use marginal_core::certificate::{measurement_hash, Measurement};
+use marginal_core::certificate::measurement_hash;
 use marginal_core::json::{parse_hex, to_hex};
 use marginal_core::{AttestationMode, CoreError, RoomClass};
 use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
@@ -26,16 +26,9 @@ use crate::{fail, now_secs, Clearing, ClearingExt};
 /// The most rooms one class pool holds. It bounds what `eligible` and every assignment read.
 pub(crate) const MAX_POOL: usize = 32;
 
-/// A set of measurements that are the same program (SDD §3.11). A room is admitted when its own
-/// measurement is one of the members of an approved set.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
-#[borsh(crate = "near_sdk::borsh")]
-pub struct MeasurementSet {
-    pub id: String,
-    pub members: Vec<Measurement>,
-    /// Git tag and commit the members were built from (SDD §3.11), for the demo README.
-    pub source_tag: String,
-}
+/// The set type is `marginal_core`'s, so governance, the deploy script and the SDK all build the
+/// same bytes (it crosses the interface as opaque Borsh, so it is not in the ABI).
+pub use marginal_core::attest::MeasurementSet;
 
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
 #[borsh(crate = "near_sdk::borsh")]

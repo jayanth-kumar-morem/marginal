@@ -435,6 +435,18 @@ pub fn screening(result: ScreeningResult) -> ScreeningV1 {
     }
 }
 
+/// A room's ack that it holds the key and has started (RoomSealed only, §3.5).
+pub fn room_ack() -> marginal_core::lifecycle::RoomAckV1 {
+    marginal_core::lifecycle::RoomAckV1 {
+        domain: marginal_core::lifecycle::RoomAckV1::DOMAIN,
+        chain_id: "testnet".into(),
+        clearing: "clearing.marginal-demo.testnet".into(),
+        job_id: 11,
+        room_key: h(1),
+        job_commitment: h(4),
+    }
+}
+
 /// A listing a seller could create: knowledge, posted price, one copy.
 pub fn spec() -> ListingSpec {
     ListingSpec {

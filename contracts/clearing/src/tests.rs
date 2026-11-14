@@ -505,6 +505,7 @@ mod jobs;
 mod listings;
 mod payouts;
 mod registry;
+mod room_ack;
 mod sealed;
 mod verdicts;
 mod views;

@@ -369,7 +369,17 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
             )
         }),
         "register_room_encode" => encode::<RegisterRoomRequest>(input),
+        // The registry's policy, encoded for governance and for the deploy script's seed step (E14.4).
+        "measurement_set_encode" => encode::<marginal_core::attest::MeasurementSet>(input),
+        // A room with no quote, which only `keypolicy-sim` accepts (SDD §6.1).
+        "sim_room_encode" => encode::<marginal_core::attest::SimRoom>(input),
         "key_request_encode" => encode::<KeyRequest>(input),
+        // The room's `Assigned → Computing` ack, for a listing clearing sees no key release for
+        // (SDD §3.5, §3.12.7; E14.4).
+        "room_ack_signing_bytes" => run(input, |a: marginal_core::lifecycle::RoomAckV1| {
+            Ok(Hex(marginal_core::lifecycle::room_ack_signing_bytes(&a)))
+        }),
+        "room_ack_encode" => encode::<marginal_core::lifecycle::RoomAckV1>(input),
         "key_request_decode" => decode::<KeyRequest>(input),
         "provisioning_encode" => encode::<ProvisioningV1>(input),
         "screening_encode" => encode::<ScreeningV1>(input),
