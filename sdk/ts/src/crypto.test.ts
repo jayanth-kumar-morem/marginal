@@ -456,6 +456,32 @@ test("HKDF refuses an empty output, which would be a key that is not one", async
   assert.deepEqual(twice, once);
 });
 
+// The same vector under the RoomSealed fallback (§3.12.7): produced by the room's
+// `sealDeliveryWith` (`room/src/crypto/delivery.ts`) from an ephemeral key the room derived from
+// its own `box_sk` (`new Uint8Array(32).fill(13)`) rather than from `sk_L`, with the same job
+// commitment, buyer key and payload. The buyer's side cannot tell the two apart and must not have
+// to: the ikm never leaves the room, and only the ephemeral public key is on the wire.
+const ROOM_SEALED_DELIVERY = {
+  eph_pk: "880c8c904fcae792c9e50695f9f5154ea90ebbba0888a736a8e5a65ae5616200",
+  entries: [
+    {
+      recipient: "57db4b359f23ae5e146e4e2512056704722506348c150c14753d0c933d04d421",
+      ciphertext:
+        "a5dddd85dc69f1c4602fc839ee196d561c04220168e0adbfc1a5464d6aa6c478d076e06d927f84fcc195e493427b404e2547cfdf8d69fa19adae1661ef3da6f860c3b7d679c91d19dd3a311bbfa06f814a5dd019",
+    },
+  ],
+};
+
+test("a RoomSealed delivery opens with the same buyer code as a Ckd one (§3.12.7)", async () => {
+  const opened = await openDelivery(ROOM_SEALED_DELIVERY, VECTOR.buyerSk, VECTOR.jobCommitment);
+  assert.deepEqual(opened.dek, VECTOR.dek);
+  assert.deepEqual(opened.salt, VECTOR.salt);
+  assert.equal(opened.listingVersion, VECTOR.listingVersion);
+  // It is a different ephemeral key, so it is genuinely the other derivation and not the vector
+  // above under another name.
+  assert.notEqual(ROOM_SEALED_DELIVERY.eph_pk, VECTOR.delivery.eph_pk);
+});
+
 test("a compliance copy is just the second recipient of the same delivery (AC-55)", async () => {
   const opened = await openDelivery(VECTOR.delivery, VECTOR.complianceSk, VECTOR.jobCommitment);
   assert.deepEqual(opened.dek, VECTOR.dek, "the same key, sealed again to another recipient");

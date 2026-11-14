@@ -7,27 +7,44 @@
  * *descriptor* — contract, method, arguments, deposit, gas — and hands it here; no key, seed or
  * signature ever reaches the server, and the server never acts on a user's behalf.
  *
- * On a network no browser wallet knows (the local sandbox) `walletUrl` is null, the provider stays
- * unavailable, and the pages fall back to read-only with a line saying why.
+ * On a network no browser wallet knows (the local sandbox) `walletUrl` is null, so there is no
+ * wallet to connect. On that network, and only there, the sandbox dev signer (E14.4,
+ * `lib/devsigner.ts`) stands in: the operator pastes an account's key out of
+ * `deploy/.keys/<profile>.json`, it stays in that browser, and `send()` keeps the shape below so no
+ * page changes. It is a development aid — SDD §1.6's bar is a browser wallet on testnet — and
+ * `DevSignerPanel` says so wherever the connect state shows. Everywhere else this file is the
+ * wallet path, unchanged.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { FunctionCallAction, WalletSelector } from '@near-wallet-selector/core';
 import { setupWalletSelector } from '@near-wallet-selector/core';
 import { setupMyNearWallet } from '@near-wallet-selector/my-near-wallet';
 import { setupModal, type WalletSelectorModal } from '@near-wallet-selector/modal-ui';
 
+import { DevSignerPanel } from '@/components/dev-signer';
 import type { WebConfig } from '@/lib/config';
+import {
+  DEFAULT_GAS,
+  type DevIdentity,
+  type DevKeyStorage,
+  type TxDescriptor,
+  clearDevKey,
+  devKeyStorage,
+  devSignerAllowed,
+  loadDevKey,
+  sendWithDevKey,
+} from '@/lib/devsigner';
 
 /** A call the page wants signed. The SDK's builders return exactly this shape. */
-export interface TxRequest {
-  readonly contract: string;
-  readonly method: string;
-  readonly args: Record<string, unknown>;
-  /** Yocto-NEAR, as a decimal string. */
-  readonly deposit?: string;
-  /** Gas, as a decimal string of gas units. */
-  readonly gas?: string;
-}
+export type TxRequest = TxDescriptor;
 
 interface WalletState {
   /** The signed-in account, or null when nobody is connected. */
@@ -41,8 +58,6 @@ interface WalletState {
   send(request: TxRequest): Promise<string>;
 }
 
-const DEFAULT_GAS = '100000000000000';
-
 const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({
@@ -55,10 +70,26 @@ export function WalletProvider({
   const [selector, setSelector] = useState<WalletSelector | null>(null);
   const [modal, setModal] = useState<WalletSelectorModal | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
-  const available = config.walletUrl !== null;
+  const hasWallet = config.walletUrl !== null;
+  // The dev signer is permitted on a local sandbox only, and `devSignerAllowed` is what decides it.
+  const dev = devSignerAllowed(config);
+  const available = hasWallet || dev;
+  const [storage] = useState<DevKeyStorage | null>(() => devKeyStorage());
+  const [identity, setIdentity] = useState<DevIdentity | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  // The key this browser already holds, if any. It is read after mount, because `localStorage` does
+  // not exist while this renders on the server, and exactly once: `loadDevKey` returns a fresh
+  // object every time, so repeating it would be a render loop. `loadDevKey` refuses off a sandbox.
+  const read = useRef(false);
+  useEffect(() => {
+    if (read.current) return;
+    read.current = true;
+    setIdentity(loadDevKey(config, storage));
+  }, [config, storage]);
 
   useEffect(() => {
-    if (!available) return;
+    if (!hasWallet) return;
     let live = true;
     void setupWalletSelector({
       network: config.network === 'mainnet' ? 'mainnet' : 'testnet',
@@ -76,10 +107,14 @@ export function WalletProvider({
     return () => {
       live = false;
     };
-  }, [available, config.clearing, config.network, config.walletUrl]);
+  }, [hasWallet, config.clearing, config.network, config.walletUrl]);
 
   const send = useCallback(
     async (request: TxRequest): Promise<string> => {
+      if (dev) {
+        if (identity === null) throw new Error('no sandbox dev key is loaded');
+        return sendWithDevKey(config, identity, request);
+      }
       if (selector === null) throw new Error('no wallet is connected');
       const wallet = await selector.wallet();
       const action: FunctionCallAction = {
@@ -101,26 +136,54 @@ export function WalletProvider({
       });
       return outcome?.transaction_outcome?.id ?? '';
     },
-    [selector],
+    [config, dev, identity, selector],
   );
 
   const value = useMemo<WalletState>(
     () => ({
-      accountId,
+      accountId: dev ? (identity?.accountId ?? null) : accountId,
       available,
-      ready: selector !== null,
-      connect: () => modal?.show(),
+      ready: dev || selector !== null,
+      connect: () => (dev ? setAsking(true) : modal?.show()),
       disconnect: async () => {
+        if (dev) {
+          clearDevKey(storage);
+          setIdentity(null);
+          return;
+        }
         const wallet = await selector?.wallet();
         await wallet?.signOut();
         setAccountId(null);
       },
       send,
     }),
-    [accountId, available, modal, selector, send],
+    [accountId, available, dev, identity, modal, selector, send, storage],
   );
 
-  return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;
+  return (
+    <WalletContext.Provider value={value}>
+      {children}
+      {dev && (
+        <DevSignerPanel
+          config={config}
+          storage={storage}
+          identity={identity}
+          asking={asking}
+          onAsk={() => setAsking(true)}
+          onClose={() => setAsking(false)}
+          onUse={(next) => {
+            // `acceptDevKey` has already proved the key against the node and kept it here.
+            setIdentity(next);
+            setAsking(false);
+          }}
+          onForget={() => {
+            clearDevKey(storage);
+            setIdentity(null);
+          }}
+        />
+      )}
+    </WalletContext.Provider>
+  );
 }
 
 /** The wallet, from anywhere under the provider. */

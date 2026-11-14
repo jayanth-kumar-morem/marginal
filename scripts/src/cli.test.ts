@@ -3,12 +3,17 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { gitRevision, runUp, testnetDeployerKey, writeJson } from "./cli.js";
-import { keysPath } from "./paths.js";
+import { gitRevision, readEnv, runUp, testnetDeployerKey, writeEnv, writeJson } from "./cli.js";
+import { keysPath, servicesEnvPath } from "./paths.js";
 import { makeRoot, sandboxProfile, setPath, withEnv } from "./testing.js";
 
+/** The sandbox profile on a testnet network: the real KeyPolicy, since simulated rooms are refused there. */
 const testnetProfile = (extra: Record<string, unknown> = {}) => ({
-  ...setPath(setPath(setPath(sandboxProfile(), "profile", "e2e"), "network", "testnet"), "rpc", ["http://127.0.0.1:9"]),
+  ...setPath(
+    setPath(setPath(setPath(sandboxProfile(), "profile", "e2e"), "network", "testnet"), "rpc", ["http://127.0.0.1:9"]),
+    "keypolicy.simulated_rooms",
+    false,
+  ),
   ...extra,
 });
 
@@ -57,6 +62,28 @@ test("up needs a profile name", async () => {
 test("a profile file must declare its own name", async (t) => {
   const root = makeRoot(t, { alias: sandboxProfile() });
   await assert.rejects(runUp(["alias"], { root }), /alias\.toml declares profile = "sandbox"/);
+});
+
+test("a KEY=value file round-trips, is private, and a missing one reads as nothing", (t) => {
+  const root = makeRoot(t, {});
+  const file = servicesEnvPath(root, "sandbox");
+  // Nothing to read before there is a file: a first deploy generates its secrets.
+  assert.deepEqual(readEnv(file), {});
+  const env = {
+    MARGINAL_AGENT_KEY: "ed25519:2ZHs6b3Yk1",
+    MARGINAL_SIM_MEASUREMENT: '{"mrtd":"dead","gpu_policy_hash":null}',
+    MARGINAL_ALLOWED_IDENTITIES: "gov.sandbox,buyer.sandbox",
+    MARGINAL_NEARAI_KEY: "",
+  };
+  writeEnv(file, env, 0o600);
+  // It holds the agent's key and the compliance seeds, so only its owner may read it.
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  // A value with `=`, `{` or `"` in it survives: compose takes the rest of the line verbatim.
+  assert.deepEqual(readEnv(file), env);
+  // Writing again over an existing file keeps the mode, which `writeFileSync` alone would not.
+  writeEnv(file, { ...env, MARGINAL_NEARAI_KEY: "sk-x" }, 0o600);
+  assert.equal(statSync(file).mode & 0o777, 0o600);
+  assert.equal(readEnv(file)["MARGINAL_NEARAI_KEY"], "sk-x");
 });
 
 test("a non-sandbox deploy refuses a dirty git tree", async (t) => {

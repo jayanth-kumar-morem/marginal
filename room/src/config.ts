@@ -33,6 +33,17 @@ export interface RoomConfig {
   readonly pollMs: number;
   /** The most jobs to run at once. */
   readonly maxWorkers: number;
+  /**
+   * Register with no quote at all, through `keypolicy-sim`'s `register_room_simulated` (SDD §6.1,
+   * E14.4). A laptop has no TDX machine and no `/var/run/dstack.sock`, so without this the demo
+   * cannot be run locally at all.
+   *
+   * It is not a weaker attestation, it is none: the room claims nothing, the untrusted host claims
+   * the measurement, and the record KeyPolicy writes says `Simulated`. Only the `sandbox` profile
+   * deploys a contract that has the method, so a room that sets it against a real deployment simply
+   * fails to register.
+   */
+  readonly simulatedAttestation: boolean;
 }
 
 const ROOM_CLASSES = ["K", "Kcpu"] as const;
@@ -66,6 +77,15 @@ function blsKey(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
+/**
+ * A switch. `1` and `true` turn it on; absent, empty or anything else leaves it off, because a
+ * switch that turned on for `0` or `no` would be a trap in a deploy script.
+ */
+function flag(env: NodeJS.ProcessEnv, name: string): boolean {
+  const value = (env[name] ?? "").trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
 function positive(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -78,6 +98,35 @@ function positive(env: NodeJS.ProcessEnv, name: string, fallback: number): numbe
  * Reads the configuration, refusing anything missing or malformed: a room that starts with half a
  * configuration would register and then fail every job.
  */
+/**
+ * The room's configuration as the variables {@link loadConfig} reads, for the worker it forks.
+ *
+ * A worker is given **nothing of the host's environment** — `spawn.ts` forks it with `env: {}` so
+ * that no variable of the operator's can reach the process that touches a plaintext. But the worker
+ * still has to know which chain and which contracts it is working against, and it reads that the
+ * same way the supervisor does. With neither, it took its job and died in `loadConfig`, which is
+ * what a live run showed: jobs assigned, nothing done, `MARGINAL_RPC_URL is required` in the log.
+ *
+ * So the supervisor hands over exactly this and nothing else: values it already holds, derived
+ * from its own configuration, with no `PATH`, no `HOME` and nothing the host set.
+ * `loadConfig(configEnv(c))` is `c` — a round trip, and a test asserts it.
+ */
+export function configEnv(config: RoomConfig): NodeJS.ProcessEnv {
+  return {
+    MARGINAL_RPC_URL: config.rpcUrl,
+    MARGINAL_CHAIN_ID: config.chainId,
+    MARGINAL_CLEARING: config.clearing,
+    MARGINAL_KEYPOLICY: config.keypolicy,
+    MARGINAL_ROOM_CLASS: config.roomClass,
+    MARGINAL_DSTACK_SOCKET: config.dstackSocket,
+    MARGINAL_OPERATOR_URL: config.operatorUrl,
+    MARGINAL_MPC_PUBLIC_KEY: config.mpcPublicKey,
+    MARGINAL_POLL_MS: String(config.pollMs),
+    MARGINAL_MAX_WORKERS: String(config.maxWorkers),
+    MARGINAL_SIMULATED_ATTESTATION: config.simulatedAttestation ? "1" : "0",
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv): RoomConfig {
   const roomClass = (env.MARGINAL_ROOM_CLASS ?? DEFAULTS.roomClass).trim();
   if (!(ROOM_CLASSES as readonly string[]).includes(roomClass)) {
@@ -94,5 +143,6 @@ export function loadConfig(env: NodeJS.ProcessEnv): RoomConfig {
     mpcPublicKey: blsKey(env, "MARGINAL_MPC_PUBLIC_KEY"),
     pollMs: positive(env, "MARGINAL_POLL_MS", DEFAULTS.pollMs),
     maxWorkers: positive(env, "MARGINAL_MAX_WORKERS", DEFAULTS.maxWorkers),
+    simulatedAttestation: flag(env, "MARGINAL_SIMULATED_ATTESTATION"),
   };
 }

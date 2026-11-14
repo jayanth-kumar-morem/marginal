@@ -7,7 +7,7 @@ import type { TestContext } from "node:test";
 import type { KeyPairString } from "near-api-js";
 import { DEFAULT_PRIVATE_KEY, Sandbox } from "near-sandbox";
 import { parse, stringify } from "smol-toml";
-import { profilePath, repoRoot, wasmDir } from "./paths.js";
+import { circuitsDir, profilePath, repoRoot, wasmDir } from "./paths.js";
 
 export const SANDBOX_KEY = DEFAULT_PRIVATE_KEY as KeyPairString;
 
@@ -48,7 +48,11 @@ export function makeRoot(t: TestContext, profiles: Record<string, Record<string,
   for (const [name, profile] of Object.entries(profiles)) writeFileSync(profilePath(root, name), stringify(profile));
   mkdirSync(join(root, "target"));
   symlinkSync(wasmDir(repoRoot), wasmDir(root));
-  writeFileSync(join(root, ".gitignore"), "target\ndeploy/manifest.*\ndeploy/.keys/\n");
+  // The circuit's committed verifying key, which the deploy seeds for sealed verdicts.
+  symlinkSync(circuitsDir(repoRoot), circuitsDir(root));
+  // The same ignores as the real repository: a deploy writes a manifest, the created accounts' keys
+  // and the host services' environment, and none of the three is ever committed.
+  writeFileSync(join(root, ".gitignore"), "target\ndeploy/manifest.*\ndeploy/.keys/\n.env\n.env.*\n");
   const git = (...args: string[]) =>
     execFileSync("git", ["-c", "user.name=test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: root });
   git("init", "-q");

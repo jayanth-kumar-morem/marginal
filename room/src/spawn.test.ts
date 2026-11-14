@@ -4,8 +4,9 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { generateRoomKeys } from "./keys.js";
+import { boxSecretKey, generateRoomKeys } from "./keys.js";
 import { seal } from "./crypto/sodium.js";
+import { ephemeralKey } from "./crypto/delivery.js";
 import { forkSpawner, parseWorkerRequest, WORKER_TIMEOUT_MS } from "./spawn.js";
 import { fakeOperator, job, workerFixture } from "./testing.js";
 
@@ -194,6 +195,11 @@ test("only the two requests parse, and only in their own shape", () => {
     id: 6,
     bytes: "aa",
   });
+  assert.deepEqual(parseWorkerRequest({ kind: "delivery_key", id: 7, commitment: "ab" }), {
+    kind: "delivery_key",
+    id: 7,
+    commitment: "ab",
+  });
   assert.deepEqual(parseWorkerRequest({ kind: "blob", id: 4, op: "get", key: "certs/aa" }), {
     kind: "blob",
     id: 4,
@@ -244,6 +250,9 @@ test("only the two requests parse, and only in their own shape", () => {
     { kind: "unseal", id: 1 },
     { kind: "unseal", id: 1, bytes: "" },
     { kind: "unseal", id: 1 },
+    { kind: "delivery_key", id: 1 },
+    { kind: "delivery_key", id: 1, commitment: "" },
+    { kind: "delivery_key", id: 1, commitment: 7 },
   ]) {
     assert.equal(parseWorkerRequest(raw), undefined, JSON.stringify(raw));
   }
@@ -295,4 +304,85 @@ test("a worker opens a sealed box through the supervisor, never holding the box 
     });
   `);
   await forkSpawner({ workerPath: worker, keys, operator: fakeOperator() }).run(job(5));
+});
+
+test("the supervisor derives this job's delivery key, and only this job's", async () => {
+  const keys = generateRoomKeys();
+  const commitment = "ab".repeat(32);
+  const expected = ephemeralKey(boxSecretKey(keys), new Uint8Array(Buffer.from(commitment, "hex")));
+  const worker = workerFixture(`
+    process.on("message", (m) => {
+      if (m.kind === "job") {
+        process.send({ kind: "delivery_key", id: 1, commitment: m.job.job_commitment });
+        return;
+      }
+      if (m.id === 1) {
+        if (m.secret_key !== ${JSON.stringify(Buffer.from(expected.secretKey).toString("hex"))}) process.exit(50);
+        if (m.public_key !== ${JSON.stringify(Buffer.from(expected.publicKey).toString("hex"))}) process.exit(51);
+        // Another job's delivery key is not this worker's to ask for.
+        process.send({ kind: "delivery_key", id: 2, commitment: "cd".repeat(32) });
+        return;
+      }
+      process.exit(
+        typeof m.error === "string" && m.error.includes("may ask only for its own delivery key") ? 0 : 52,
+      );
+    });
+  `);
+  await forkSpawner({ workerPath: worker, keys, operator: fakeOperator() }).run(job(9));
+});
+
+test("a job commitment that is not 32 bytes gets an error, not a key from the wrong bytes", async () => {
+  const worker = workerFixture(`
+    process.on("message", (m) => {
+      if (m.kind === "job") {
+        process.send({ kind: "delivery_key", id: 1, commitment: m.job.job_commitment });
+        return;
+      }
+      process.exit(
+        typeof m.error === "string" && m.error.includes("a job commitment is 32 bytes") ? 0 : 53,
+      );
+    });
+  `);
+  await forkSpawner({
+    workerPath: worker,
+    keys: generateRoomKeys(),
+    operator: fakeOperator(),
+  }).run(job(10, { job_commitment: "abcd" }));
+});
+
+/**
+ * The failure that hid the worst bug in the room: a forked module that only *exports* its entry
+ * point runs nothing, exits 0, and the supervisor calls that success and forks another. Every job
+ * stayed at `Assigned` while the room logged not one line. A clean exit from a worker that never
+ * asked for anything is a failure, and it says so.
+ */
+test("a worker that exits without ever starting is a failure, not a success", async () => {
+  const silent = workerFixture(`process.exit(0);`);
+  await assert.rejects(
+    () =>
+      forkSpawner({
+        workerPath: silent,
+        keys: generateRoomKeys(),
+        operator: fakeOperator(),
+      }).run(job(21)),
+    /worker for job 21 exited without starting; it ran nothing/,
+  );
+
+  // A worker that asked the supervisor for something and then exited 0 is a success: the
+  // distinction is "did nothing", not "exited early". Receiving the job is not speaking — a worker
+  // that takes its job and exits in silence has still run nothing, which is the case above.
+  const spoke = workerFixture(`
+    process.on("message", (m) => {
+      if (m.kind === "job") {
+        process.send({ kind: "sign", id: 1, message: ${JSON.stringify(VERDICT)} });
+        return;
+      }
+      if (m.kind === "sign") process.exit(0);
+    });
+  `);
+  await forkSpawner({
+    workerPath: spoke,
+    keys: generateRoomKeys(),
+    operator: fakeOperator(),
+  }).run(job(22));
 });

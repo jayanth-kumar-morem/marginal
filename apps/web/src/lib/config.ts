@@ -7,6 +7,7 @@
  * for anything the manifest does not carry (the three service URLs). `configFrom` is pure so it can
  * be tested; reading the file is `config.server.ts`'s job.
  */
+import type { KeyMode } from "./records";
 
 /** Which contracts and services this deployment has, and where they are. */
 export interface WebConfig {
@@ -29,6 +30,8 @@ export interface WebConfig {
   readonly policyVersion: number;
   /** Whether anything in this deployment is simulated, from the on-chain profile (DRC-12). */
   readonly simulatedProfile: boolean;
+  /** How this deployment releases listing keys (SDD §2.7's profile table, §3.12.7). */
+  readonly keyMode: KeyMode;
 }
 
 /** The part of the deploy manifest the app reads (`scripts/src/deploy.ts`'s `Manifest`). */
@@ -60,6 +63,40 @@ function text(value: unknown, fallback: string): string {
 }
 
 /**
+ * Which key-release mode a profile's listings use, from SDD §2.7's profile table.
+ *
+ * `Ckd` is the real mode and the answer everywhere but two profiles: it needs the MPC signer
+ * contract, which exists on testnet and mainnet. `local` and `sandbox` have no MPC network to
+ * call, so the table gives them the `RoomSealed` fallback (§3.12.7) — the only mode a throwaway
+ * node can actually run end to end.
+ *
+ * An unknown profile, or a manifest that carries no profile at all, gets `Ckd`. The mode is a
+ * promise to the seller about who can ever open the good, and the weaker promise is never the safe
+ * guess: a Ckd listing on a deployment that cannot provision stalls in `Provisioning`, which is
+ * visible, whereas a RoomSealed listing nobody asked for is bound to one room forever.
+ */
+export function keyModeFor(profile: string): KeyMode {
+  return profile === "sandbox" || profile === "local" ? "RoomSealed" : "Ckd";
+}
+
+/**
+ * The mode, with `MARGINAL_KEY_MODE` as the override — the same shape as every other field here,
+ * so a stack can be pointed at a profile's opposite mode without regenerating a manifest. An
+ * override that names neither mode is refused rather than ignored: a typo there would otherwise
+ * silently publish under the mode the seller did not choose.
+ */
+function keyMode(value: unknown, profile: string): KeyMode {
+  const named = text(value, "");
+  if (named === "") return keyModeFor(profile);
+  if (named !== "Ckd" && named !== "RoomSealed") {
+    throw new Error(
+      `config: MARGINAL_KEY_MODE is "${named}", which is neither Ckd nor RoomSealed (SDD §3.12.7).`,
+    );
+  }
+  return named;
+}
+
+/**
  * The configuration, from a manifest and an environment. Every field has an environment override,
  * so a deployment can point the app at a running stack without regenerating anything.
  *
@@ -78,8 +115,12 @@ export function configFrom(env: Record<string, string | undefined>, manifest?: M
     );
   }
   const onChain = manifest?.config?.clearing?.profile;
+  const profile = text(
+    env.MARGINAL_PROFILE,
+    text(onChain?.profile, text(manifest?.profile, network)),
+  );
   return {
-    profile: text(env.MARGINAL_PROFILE, text(onChain?.profile, text(manifest?.profile, network))),
+    profile,
     network,
     chainId: text(env.MARGINAL_CHAIN_ID, text(manifest?.chain_id, network)),
     rpcUrl: text(env.MARGINAL_RPC_URL, text(manifest?.rpc?.[0], "https://test.rpc.fastnear.com")),
@@ -95,5 +136,6 @@ export function configFrom(env: Record<string, string | undefined>, manifest?: M
     // The profile is declared on-chain so a reader knows which one produced a record (§6.3 rule 2).
     // Anything but a production governance profile can contain simulated elements, and says so.
     simulatedProfile: text(onChain?.gov_profile, "demo") !== "production",
+    keyMode: keyMode(env.MARGINAL_KEY_MODE, profile),
   };
 }

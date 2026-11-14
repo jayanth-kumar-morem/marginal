@@ -9,7 +9,7 @@
 import type { Server } from "node:http";
 import type { KeyPairString } from "near-api-js";
 
-import { fromEnv, portFrom, reporter, stdout } from "@marginal/service-common";
+import { fromEnv, optionalEnv, portFrom, reporter, stdout, bindFrom } from "@marginal/service-common";
 
 import { nearRelay } from "./near.js";
 import { nearAiBaseFrom, serve } from "./index.js";
@@ -28,16 +28,23 @@ export async function main(
       clearing: fromEnv(env, "MARGINAL_CLEARING"),
       keypolicy: fromEnv(env, "MARGINAL_KEYPOLICY"),
       gatewayUrl: fromEnv(env, "MARGINAL_GATEWAY_URL"),
-      nearAiKey: env.MARGINAL_NEARAI_KEY,
+      nearAiKey: optionalEnv(env, "MARGINAL_NEARAI_KEY"),
+      // Sandbox only (SDD §6.1, E14.4). Both optional, both unvalidated here: they are only read
+      // when a room with no quote registers, and then they are refused by name if they are wrong.
+      simulated: {
+        measurement: optionalEnv(env, "MARGINAL_SIM_MEASUREMENT"),
+        ppid: optionalEnv(env, "MARGINAL_SIM_PPID"),
+      },
       nearAiBase: nearAiBaseFrom(env),
       fetchImpl: globalThis.fetch,
       onError: reporter(log),
     },
     portFrom(env, 8082),
+    bindFrom(env),
   );
   // Never the key, and never which key: an operator reading logs should not learn one.
   log(
-    `operator agent on ${started.port}, judges ${env.MARGINAL_NEARAI_KEY === undefined ? "simulated" : "live"}`,
+    `operator agent on ${started.port}, judges ${optionalEnv(env, "MARGINAL_NEARAI_KEY") === undefined ? "simulated" : "live"}`,
   );
   return started;
 }

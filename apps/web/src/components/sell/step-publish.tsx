@@ -15,6 +15,8 @@
  * showing a number.
  */
 import { Row, Rows } from '@/components/listings/detail-rows';
+import { IconCheck } from '@tabler/icons-react';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Done, Mono, Problem, TextField } from '@/components/sell/fields';
@@ -32,6 +34,7 @@ export interface PayoutChoice {
 
 export function StepPublish({
   clearing,
+  roomKey,
   payout,
   publishFee,
   publishBase64,
@@ -47,6 +50,8 @@ export function StepPublish({
   onPublish,
 }: {
   clearing: string;
+  /** Under RoomSealed, the one room this listing is bound to; null under CKD (SDD §3.12.7). */
+  roomKey: string | null;
   payout: PayoutChoice;
   publishFee: string;
   publishBase64: string | null;
@@ -64,19 +69,38 @@ export function StepPublish({
   const dry = payout.route === 'DryQuote';
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
+      {roomKey === null ? null : (
+        <p className="rounded-md border border-amber-600/40 bg-amber-600/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+          Signing this publishes a RoomSealed listing bound to room{' '}
+          <span className="break-all font-mono">{short(roomKey, 10)}</span>: if that room restarts
+          the good has to be sealed again, no other room can ever deliver it, and there is no
+          job-commitment proof behind a release. Step 6 has the whole of it.
+        </p>
+      )}
+      {/*
+        A segmented control, not two actions: one of the two is always already chosen, and clicking
+        that one does nothing. `aria-pressed` says which, and the tick makes it visible — without it
+        the selected option looks like a button that is simply ignoring you.
+      */}
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Payout route">
         <Button
           size="sm"
           variant={dry ? 'outline' : 'default'}
+          aria-pressed={!dry}
+          disabled={!dry}
           onClick={() => onPayout({ ...payout, route: 'NearAccount' })}
         >
+          {dry ? null : <IconCheck className="mr-1 size-3.5" />}
           Pay out on NEAR
         </Button>
         <Button
           size="sm"
           variant={dry ? 'default' : 'outline'}
+          aria-pressed={dry}
+          disabled={dry}
           onClick={() => onPayout({ ...payout, route: 'DryQuote' })}
         >
+          {dry ? <IconCheck className="mr-1 size-3.5" /> : null}
           Pay out to another chain
         </Button>
       </div>

@@ -97,6 +97,32 @@ test("a sealed box is opened by the supervisor, which holds the box key", async 
   await assert.rejects(() => empty, /the box did not open/);
 });
 
+test("the delivery key for a job comes from the supervisor, not from box_sk in the worker", async () => {
+  const h = host();
+  const channel = workerChannel(h.process);
+  const asking = channel.deliveryKey("ab".repeat(32));
+  assert.deepEqual(h.sent[0], { kind: "delivery_key", commitment: "ab".repeat(32), id: 1 });
+  h.answer({
+    kind: "delivery_key",
+    id: 1,
+    ok: true,
+    secret_key: "01".repeat(32),
+    public_key: "02".repeat(32),
+  });
+  assert.deepEqual(await asking, {
+    secretKey: new Uint8Array(32).fill(1),
+    publicKey: new Uint8Array(32).fill(2),
+  });
+
+  // Half an answer is no answer: a worker that sealed a delivery under a key it only half received
+  // would publish a delivery nobody could open.
+  for (const half of [{}, { secret_key: "01".repeat(32) }, { public_key: "02".repeat(32) }]) {
+    const pending = channel.deliveryKey("ab".repeat(32));
+    h.answer({ kind: "delivery_key", id: (h.sent.at(-1) ?? {}).id, ok: true, ...half });
+    await assert.rejects(() => pending, /no delivery key came back/, JSON.stringify(half));
+  }
+});
+
 test("a refusal is an error, and a reply that answers nothing is not mistaken for one", async () => {
   const h = host();
   const channel = workerChannel(h.process);

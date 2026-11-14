@@ -17,7 +17,8 @@ if [ "$profile" != "sandbox" ]; then
   # Real networks get exactly the committed source: a reproducible build, every time.
   echo "reproducible contract build for $profile (make wasm)"
   make wasm
-elif [ ! -f target/near/musdc/musdc.wasm ] || [ ! -f target/near/clearing/clearing.wasm ] || [ ! -f target/near/keypolicy/keypolicy.wasm ]; then
+elif [ ! -f target/near/musdc/musdc.wasm ] || [ ! -f target/near/clearing/clearing.wasm ] ||
+     [ ! -f target/near/keypolicy/keypolicy.wasm ] || [ ! -f target/near/keypolicy-sim/keypolicy.wasm ]; then
   echo "no contract wasm yet; dev build for the sandbox (make wasm-dev)"
   make wasm-dev
 fi

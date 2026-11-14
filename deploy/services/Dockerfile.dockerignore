@@ -1,0 +1,26 @@
+# Build context for `deploy/services/Dockerfile`, whose context is the repo root.
+#
+# BuildKit reads `<dockerfile>.dockerignore` in preference to the context root's `.dockerignore`, so
+# this file trims **only** this build. That matters: a root `.dockerignore` would be picked up by
+# `git archive` into the room image's staged context (`room/image/build.sh`) and change what the
+# **measured** image sees, which is the one thing in this repo that must not move by accident.
+#
+# Without this, the context was 20.6 GB and took nearly three minutes to transfer, because `target/`
+# alone is multi-gigabyte. The build runs `pnpm install --frozen-lockfile` itself, so none of the
+# installed or compiled output needs to be sent.
+.git
+node_modules
+**/node_modules
+target
+**/dist
+**/.next
+**/*.profraw
+# Keys, manifests and env files must never reach an image layer.
+deploy/.keys
+deploy/manifest.*.json
+**/.env
+**/.env.*
+# The embedder's weights are ~90 MB and belong to the room's own image, not to the host services.
+room/models
+# Circuit artefacts and the proving key are not used by these three services.
+circuits

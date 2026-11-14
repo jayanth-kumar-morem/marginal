@@ -21,6 +21,8 @@ export const WORKER_DOMAINS = [
   "marginal/provisioning/v1",
   "marginal/screening/v1",
   "marginal/keyreq/v1",
+  // The `Assigned → Computing` ack a RoomSealed job sends in place of a key release (§3.12.7).
+  "marginal/room-ack/v1",
 ] as const;
 
 export type WorkerDomain = (typeof WORKER_DOMAINS)[number];

@@ -14,6 +14,8 @@ import { judgesFor } from "../judges/index.js";
 import { runAppraisal } from "./appraisal.js";
 import { runProvisioning } from "./provisioning.js";
 import { runScreening } from "./screening.js";
+import { pathToFileURL } from "node:url";
+
 import { workerChannel, type ChannelProcess } from "./ipc.js";
 import type { WorkerContext } from "./context.js";
 
@@ -107,3 +109,39 @@ export async function main(
     appraiserVia(config),
   );
 }
+
+/**
+ * Whether this module is the process, rather than something a test imported.
+ *
+ * `fork(workerPath)` runs the file as the entry point and sends it a job over IPC. A module that
+ * only *exports* `main` does nothing then: the process exits 0 having read no message, and the
+ * supervisor sees a clean exit and starts another one. The room looked healthy and could not
+ * complete a single job — which is what a live run showed, with jobs sitting at `Assigned` and not
+ * one line in the log.
+ */
+export function isEntryPoint(moduleUrl: string, argv: readonly string[] = process.argv): boolean {
+  const entry = argv[1];
+  if (entry === undefined || entry === "") return false;
+  // No try/catch: `pathToFileURL` takes any non-empty string, and a `catch` here would be a branch
+  // nothing can reach — dead code dressed as caution.
+  return moduleUrl === pathToFileURL(entry).href;
+}
+
+/**
+ * Runs the worker when this module is the process. Separated from the `if` it replaces so both
+ * answers can be tested: an entry-point guard at the top level only ever takes its false branch
+ * under a test runner, and the true branch — the one that was missing entirely — would never be
+ * exercised again.
+ */
+export function startIfEntryPoint(
+  moduleUrl: string,
+  run: () => Promise<void> = main,
+  argv: readonly string[] = process.argv,
+): boolean {
+  if (!isEntryPoint(moduleUrl, argv)) return false;
+  // Nothing catches this: a worker that cannot run its job must die so the supervisor sees it.
+  void run();
+  return true;
+}
+
+startIfEntryPoint(import.meta.url);

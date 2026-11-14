@@ -209,8 +209,9 @@ export function compliance(options: ComplianceOptions): Compliance {
 export async function serve(
   options: ComplianceOptions,
   port: number,
+  host?: string,
 ): Promise<Compliance & { port: number }> {
   const service = compliance(options);
   await service.refresh();
-  return { ...service, port: await listen(service.server, port) };
+  return { ...service, port: await listen(service.server, port, host) };
 }

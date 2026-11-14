@@ -19,17 +19,7 @@
  */
 import { useEffect, useState } from 'react';
 
-import {
-  aeadSeal,
-  canonicalise,
-  claims as splitClaims,
-  dek,
-  fromHex,
-  goodCommitment,
-  salt,
-  toHex,
-  wrapKey,
-} from '@marginal/sdk';
+import { canonicalise, claims as splitClaims, goodCommitment, salt, toHex } from '@marginal/sdk';
 
 import { StepCanonical } from '@/components/sell/step-canonical';
 import { StepCreate } from '@/components/sell/step-create';
@@ -37,7 +27,8 @@ import { StepFile } from '@/components/sell/step-file';
 import { StepParameters } from '@/components/sell/step-parameters';
 import { StepPins } from '@/components/sell/step-pins';
 import { StepPublish, type PayoutChoice } from '@/components/sell/step-publish';
-import { StepSeal, type SealedObject } from '@/components/sell/step-seal';
+import { StepRoomSealed } from '@/components/sell/step-room-sealed';
+import { StepSeal } from '@/components/sell/step-seal';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Stepper,
@@ -52,27 +43,31 @@ import {
 } from '@/components/ui/stepper';
 import { useWallet } from '@/components/wallet';
 import { errorCode } from '@/lib/chain';
-import type { Listing } from '@/lib/records';
+import type { KeyMode, Listing } from '@/lib/records';
 import {
   DEFAULT_FORM,
   baseUnits,
-  blobRefJson,
+  beginProvisioningTx,
+  createListingTx,
   encode,
   encodeArg,
-  goodKey,
   listingSpecJson,
-  provisioned,
+  publishListingTx,
   publishSpecJson,
+  sealAndUpload,
+  sealPublicKey,
+  sellSteps,
+  sendSellCall,
+  setPinsTx,
   uploadBlob,
-  wrappedKeyKey,
   type BlobRefJson,
   type Payout,
   type PayoutQuoteInput,
+  type SealTarget,
+  type Sealed,
   type SellForm,
+  settled,
 } from '@/lib/sell';
-
-/** 100 TGas, as the other pages use: enough for a listing write and the jobs it opens. */
-const GAS = '100000000000000';
 
 /** What a server action answers: the value, or the reason it could not be had. */
 export type ActionResult<T> = { readonly ok: T } | { readonly error: string };
@@ -92,36 +87,34 @@ export interface SellFees {
   readonly pins: string | null;
 }
 
-const STEPS = [
-  { step: 1, title: 'File' },
-  { step: 2, title: 'Canonicalise' },
-  { step: 3, title: 'Parameters' },
-  { step: 4, title: 'Create' },
-  { step: 5, title: 'Seal' },
-  { step: 6, title: 'Pins' },
-  { step: 7, title: 'Publish' },
-] as const;
-
 export function SellWizard({
   clearing,
   keypolicy,
+  keyMode,
   token,
   fees,
   measurements,
   readListing,
   findListing,
+  findSealTarget,
   askQuote,
 }: {
   clearing: string;
   keypolicy: string;
+  /** This deployment's key release (SDD §2.7, §3.12.7), from the manifest — never the seller's. */
+  keyMode: KeyMode;
   token: string;
   fees: SellFees;
   measurements: readonly string[];
   readListing: (id: number) => Promise<ActionResult<Listing | null>>;
   findListing: (seller: string) => Promise<ActionResult<Listing | null>>;
+  /** The one attested room a RoomSealed listing binds to, or why there is none. */
+  findSealTarget: () => Promise<ActionResult<SealTarget>>;
   askQuote: (input: PayoutQuoteInput) => Promise<ActionResult<string | null>>;
 }) {
   const wallet = useWallet();
+  const steps = sellSteps(keyMode);
+  const roomSealed = keyMode === 'RoomSealed';
   const [step, setStep] = useState(1);
 
   const [doc, setDoc] = useState<CanonicalDocument | null>(null);
@@ -137,14 +130,19 @@ export function SellWizard({
   const [chainProblem, setChainProblem] = useState<string | null>(null);
 
   const [sealing, setSealing] = useState(false);
-  const [sealed, setSealed] = useState<SealedObject | null>(null);
+  const [sealed, setSealed] = useState<Sealed | null>(null);
   const [ciphertext, setCiphertext] = useState<BlobRefJson | null>(null);
   const [sealProblem, setSealProblem] = useState<string | null>(null);
+
+  // RoomSealed only: the room this listing would bind to, resolved before anything is created.
+  const [target, setTarget] = useState<SealTarget | null>(null);
+  const [targetProblem, setTargetProblem] = useState<string | null>(null);
 
   const [follow, setFollow] = useState(true);
   const [hashes, setHashes] = useState('');
   const [pinsBusy, setPinsBusy] = useState(false);
-  const [pinsDone, setPinsDone] = useState(false);
+  /** Step 6 is done: the pins are stored (CKD), or the disclosure is acknowledged (RoomSealed). */
+  const [keysDone, setKeysDone] = useState(false);
   const [pinsProblem, setPinsProblem] = useState<string | null>(null);
 
   const [payout, setPayout] = useState<PayoutChoice>({
@@ -164,6 +162,33 @@ export function SellWizard({
   const [quoteProblem, setQuoteProblem] = useState<string | null>(null);
 
   const signable = wallet.accountId !== null;
+  const sealTo = sealPublicKey(keyMode, listing, target);
+
+  /**
+   * The room check, before anything is created or uploaded. RoomSealed binds a listing to one room
+   * (SDD line 1955), so a deployment with none or several has no listing to offer — and the seller
+   * learns that here rather than after paying for a listing nothing can open.
+   */
+  useEffect(() => {
+    if (!roomSealed) return;
+    let live = true;
+    findSealTarget()
+      .then((result) => {
+        if (!live) return;
+        if ('error' in result) {
+          setTargetProblem(result.error);
+          return;
+        }
+        setTarget(result.ok);
+        setTargetProblem(null);
+      })
+      .catch((error: unknown) => {
+        if (live) setTargetProblem(errorCode(error));
+      });
+    return () => {
+      live = false;
+    };
+  }, [roomSealed, findSealTarget]);
 
   // The seller's own account is the obvious NEAR payout, and it is only a default: the field stays
   // editable, because proceeds may be meant for a treasury rather than the signing key.
@@ -224,7 +249,7 @@ export function SellWizard({
     setVerdict(null);
     const spec = (() => {
       try {
-        return listingSpecJson(form, token);
+        return listingSpecJson(form, token, keyMode);
       } catch (error: unknown) {
         setVerdict({ ok: false, message: errorCode(error) });
         return null;
@@ -263,19 +288,22 @@ export function SellWizard({
 
   const onCreate = (): void => {
     if (specBase64 === null || wallet.accountId === null) return;
+    // Under RoomSealed there is nothing to create until the room is known: the good is sealed to
+    // that one room, so a listing created without one could never be opened by anybody.
+    if (roomSealed && target === null) {
+      setChainProblem(targetProblem ?? 'the one room this listing would bind to is not known yet');
+      return;
+    }
     const seller = wallet.accountId;
     setChainBusy('create');
     setChainProblem(null);
-    wallet
-      .send({
-        contract: clearing,
-        method: 'create_listing',
-        args: { spec: specBase64 },
-        deposit: fees.listing,
-        gas: GAS,
-      })
+    sendSellCall(
+      wallet,
+      keyMode,
+      createListingTx(clearing, specBase64, fees.listing, keyMode, target),
+    )
       // A wallet answers with a transaction hash, not a return value, so the id is read back.
-      .then(() => findListing(seller))
+      .then(() => settled(() => findListing(seller)))
       .then(afterAction)
       .catch((error: unknown) => setChainProblem(errorCode(error)))
       .finally(() => setChainBusy(null));
@@ -285,14 +313,8 @@ export function SellWizard({
     if (listing === null) return;
     setChainBusy('provision');
     setChainProblem(null);
-    wallet
-      .send({
-        contract: clearing,
-        method: 'begin_provisioning',
-        args: { listing_id: String(listing.id) },
-        gas: GAS,
-      })
-      .then(() => readListing(listing.id))
+    sendSellCall(wallet, keyMode, beginProvisioningTx(clearing, listing.id))
+      .then(() => settled(() => readListing(listing.id)))
       .then(afterAction)
       .catch((error: unknown) => setChainProblem(errorCode(error)))
       .finally(() => setChainBusy(null));
@@ -308,39 +330,26 @@ export function SellWizard({
   };
 
   const onSeal = (): void => {
-    const pk = listing?.pk_l;
-    if (doc === null || listing === null || pk === null || pk === undefined) return;
+    if (doc === null || listing === null || sealTo === null) return;
     setSealing(true);
     setSealProblem(null);
-    void (async () => {
-      try {
-        const key = await dek();
-        const object = await aeadSeal(
-          key,
-          new TextEncoder().encode(doc.canonical),
-          new Uint8Array(0),
-        );
-        const wrapped = await wrapKey(fromHex(pk), key, fromHex(doc.saltHex));
-        const good = goodKey(listing.id, listing.version);
-        const wrappedAt = wrappedKeyKey(listing.id, listing.version);
-        const uploaded = await uploadBlob(good, toHex(object));
-        await uploadBlob(wrappedAt, toHex(wrapped));
-        const reference = await blobRefJson(good, uploaded.sha256, object.length);
-        setCiphertext(reference);
-        setSealed({
-          goodKey: good,
-          dekKey: wrappedAt,
-          sha256: uploaded.sha256,
-          bytes: object.length,
-          sizeClass: reference.size_class,
-        });
+    sealAndUpload(
+      {
+        canonical: doc.canonical,
+        saltHex: doc.saltHex,
+        sealTo,
+        listingId: listing.id,
+        version: listing.version,
+      },
+      uploadBlob,
+    )
+      .then((object) => {
+        setCiphertext(object.ciphertext);
+        setSealed(object);
         setStep(6);
-      } catch (error: unknown) {
-        setSealProblem(errorCode(error));
-      } finally {
-        setSealing(false);
-      }
-    })();
+      })
+      .catch((error: unknown) => setSealProblem(errorCode(error)))
+      .finally(() => setSealing(false));
   };
 
   const onSetPins = (): void => {
@@ -351,20 +360,13 @@ export function SellWizard({
       .filter((line) => line !== '');
     setPinsBusy(true);
     setPinsProblem(null);
-    wallet
-      .send({
-        contract: keypolicy,
-        method: 'set_pins',
-        args: {
-          listing_id: String(listing.id),
-          version: listing.version,
-          pins: follow ? null : explicit,
-        },
-        deposit: fees.pins,
-        gas: GAS,
-      })
+    sendSellCall(
+      wallet,
+      keyMode,
+      setPinsTx(keypolicy, listing.id, listing.version, follow ? null : explicit, fees.pins),
+    )
       .then(() => {
-        setPinsDone(true);
+        setKeysDone(true);
         setStep(7);
       })
       .catch((error: unknown) => setPinsProblem(errorCode(error)))
@@ -409,14 +411,11 @@ export function SellWizard({
     if (listing === null || publishBase64 === null) return;
     setPublishBusy(true);
     setPublishProblem(null);
-    wallet
-      .send({
-        contract: clearing,
-        method: 'publish_listing',
-        args: { listing_id: String(listing.id), publish: publishBase64 },
-        deposit: fees.publish,
-        gas: GAS,
-      })
+    sendSellCall(
+      wallet,
+      keyMode,
+      publishListingTx(clearing, listing.id, publishBase64, fees.publish),
+    )
       .then(() => {
         setPublished(true);
         return readListing(listing.id);
@@ -431,13 +430,13 @@ export function SellWizard({
    * the validated spec, the listing, the ciphertext, the pins. Offering a step whose input does not
    * exist yet is how a seller ends up with a listing that cannot be opened or released.
    */
-  const reached = (target: number): boolean => {
-    if (target === 1) return true;
-    if (target <= 3) return doc !== null;
-    if (target === 4) return specBase64 !== null;
-    if (target === 5) return listing !== null;
-    if (target === 6) return sealed !== null;
-    return sealed !== null && pinsDone;
+  const reached = (want: number): boolean => {
+    if (want === 1) return true;
+    if (want <= 3) return doc !== null;
+    if (want === 4) return specBase64 !== null;
+    if (want === 5) return listing !== null;
+    if (want === 6) return sealed !== null;
+    return sealed !== null && keysDone;
   };
 
   return (
@@ -446,20 +445,22 @@ export function SellWizard({
         <CardTitle className="text-base">List a knowledge good</CardTitle>
         <CardDescription>
           The document is canonicalised, committed to and sealed in this browser. What reaches the
-          chain is a commitment and a ciphertext hash; what reaches the gateway is ciphertext. Only
-          an attested room, holding the key this listing is provisioned with, can open it.
+          chain is a commitment and a ciphertext hash; what reaches the gateway is ciphertext.{' '}
+          {roomSealed
+            ? 'This deployment releases keys under the RoomSealed fallback, so the good is sealed to one attested room and only that room can ever open it (SDD §3.12.7). Step 6 says what that costs.'
+            : 'Only an attested room, holding the key this listing is provisioned with, can open it.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-8">
         <Stepper value={step} onValueChange={setStep} className="w-full">
           <StepperNav className="gap-2">
-            {STEPS.map((one) => (
+            {steps.map((one) => (
               <StepperItem key={one.step} step={one.step} className="not-last:flex-1">
                 <StepperTrigger className="gap-2" disabled={!reached(one.step)}>
                   <StepperIndicator>{one.step}</StepperIndicator>
                   <StepperTitle className="hidden sm:block">{one.title}</StepperTitle>
                 </StepperTrigger>
-                {one.step < STEPS.length ? <StepperSeparator /> : null}
+                {one.step < steps.length ? <StepperSeparator /> : null}
               </StepperItem>
             ))}
           </StepperNav>
@@ -492,10 +493,12 @@ export function SellWizard({
             <StepperContent value={4}>
               <StepCreate
                 clearing={clearing}
+                keyMode={keyMode}
+                roomKey={target?.roomKey ?? null}
                 specBase64={specBase64}
                 listing={listing}
                 busy={chainBusy}
-                problem={chainProblem}
+                problem={chainProblem ?? targetProblem}
                 signable={signable}
                 listingFee={fees.listing}
                 onCreate={onCreate}
@@ -505,7 +508,8 @@ export function SellWizard({
             </StepperContent>
             <StepperContent value={5}>
               <StepSeal
-                provisioned={provisioned(listing)}
+                keyMode={keyMode}
+                sealTo={sealTo}
                 sealed={sealed}
                 busy={sealing}
                 problem={sealProblem}
@@ -513,24 +517,38 @@ export function SellWizard({
               />
             </StepperContent>
             <StepperContent value={6}>
-              <StepPins
-                keypolicy={keypolicy}
-                follow={follow}
-                hashes={hashes}
-                measured={measurements}
-                fee={fees.pins}
-                busy={pinsBusy}
-                problem={pinsProblem}
-                done={pinsDone}
-                signable={signable}
-                onFollow={setFollow}
-                onHashes={setHashes}
-                onSet={onSetPins}
-              />
+              {roomSealed ? (
+                <StepRoomSealed
+                  keypolicy={keypolicy}
+                  target={target}
+                  problem={targetProblem}
+                  acknowledged={keysDone}
+                  onAcknowledge={() => {
+                    setKeysDone(true);
+                    setStep(7);
+                  }}
+                />
+              ) : (
+                <StepPins
+                  keypolicy={keypolicy}
+                  follow={follow}
+                  hashes={hashes}
+                  measured={measurements}
+                  fee={fees.pins}
+                  busy={pinsBusy}
+                  problem={pinsProblem}
+                  done={keysDone}
+                  signable={signable}
+                  onFollow={setFollow}
+                  onHashes={setHashes}
+                  onSet={onSetPins}
+                />
+              )}
             </StepperContent>
             <StepperContent value={7}>
               <StepPublish
                 clearing={clearing}
+                roomKey={roomSealed ? (target?.roomKey ?? null) : null}
                 payout={payout}
                 publishFee={fees.publish}
                 publishBase64={publishBase64}
@@ -551,9 +569,13 @@ export function SellWizard({
 
         {wallet.available ? null : (
           <p className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-            No browser wallet knows this network, so steps 4, 6 and 7 cannot be signed from this
-            page. Everything before them — canonicalisation, the commitment, the core&rsquo;s own
-            validation, the seal and the upload — runs here regardless.
+            No browser wallet knows this network, so the steps that sign —{' '}
+            {steps
+              .filter((one) => one.methods.length > 0)
+              .map((one) => one.step)
+              .join(', ')}{' '}
+            — cannot be sent from this page. Everything else — canonicalisation, the commitment, the
+            core&rsquo;s own validation, the seal and the upload — runs here regardless.
           </p>
         )}
       </CardContent>

@@ -18,7 +18,8 @@ import type { OperatorPort } from "./operator.js";
 import type { WorkerSpawner } from "./scheduler.js";
 import { signForWorker } from "./signer.js";
 import { boxSecretKey } from "./keys.js";
-import { unseal } from "./crypto/sodium.js";
+import { memzero, unseal } from "./crypto/sodium.js";
+import { ephemeralKey } from "./crypto/delivery.js";
 
 /**
  * The longest a worker may run before it is killed. A job's own on-chain deadline is what decides
@@ -51,6 +52,17 @@ export type WorkerRequest =
       readonly kind: "unseal";
       readonly id: number;
       readonly bytes: string;
+    }
+  | {
+      /**
+       * Derive this job's ephemeral delivery key from the room's `box_sk` (§3.19, RoomSealed only).
+       * `box_sk` itself never crosses: the supervisor derives the one key the job needs, and only
+       * for the commitment of the job this worker was forked for, so a worker cannot ask for the
+       * delivery key of a job that is not its own.
+       */
+      readonly kind: "delivery_key";
+      readonly id: number;
+      readonly commitment: string;
     }
   | {
       readonly kind: "blob";
@@ -93,6 +105,13 @@ export function parseWorkerRequest(raw: unknown): WorkerRequest | undefined {
     return { kind: "unseal", id: message.id, bytes: message.bytes };
   }
   if (
+    message.kind === "delivery_key" &&
+    typeof message.commitment === "string" &&
+    message.commitment !== ""
+  ) {
+    return { kind: "delivery_key", id: message.id, commitment: message.commitment };
+  }
+  if (
     message.kind === "blob" &&
     typeof message.key === "string" &&
     message.key !== "" &&
@@ -115,6 +134,12 @@ export interface ForkOptions {
   readonly keys: RoomKeys;
   readonly operator: OperatorPort;
   readonly timeoutMs?: number;
+  /**
+   * The environment the worker is forked with: the room's own configuration and nothing else
+   * (`configEnv`). Left out, a worker gets no environment at all, which is what every test fixture
+   * wants and what the real worker cannot run with.
+   */
+  readonly env?: NodeJS.ProcessEnv;
   /** Which node runs the worker. Overridable so a test can make the fork itself fail. */
   readonly execPath?: string;
   readonly onError?: (error: Error) => void;
@@ -134,12 +159,15 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
     run(job: RoomJob): Promise<void> {
       return new Promise<void>((resolve, reject) => {
         const child = fork(options.workerPath, [], {
-          // Nothing of the host's environment reaches a worker: its only input is this job.
-          env: {},
+          // Nothing of the **host's** environment reaches a worker. What it does get is the room's
+          // own configuration (`configEnv`), because it has to know which chain and contracts it is
+          // working against — without it the worker dies in `loadConfig` the moment it has a job.
+          env: options.env ?? {},
           execPath: options.execPath,
           execArgv: [`--max-old-space-size=${WORKER_MAX_OLD_SPACE_MB}`],
         });
         let settled = false;
+        let spoke = false;
         const finish = (error?: Error): void => {
           if (settled) return;
           settled = true;
@@ -153,6 +181,7 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
         }, timeoutMs);
 
         child.on("message", (raw: unknown) => {
+          spoke = true;
           const request = parseWorkerRequest(raw);
           if (request === undefined) {
             onError(new Error(`worker for job ${job.id} sent a message the supervisor does not take`));
@@ -179,6 +208,37 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
             }
             return;
           }
+          if (request.kind === "delivery_key") {
+            // The binding is the authorisation: this worker was forked for this job, so this is
+            // the only delivery key it may have. Asking for another job's is refused outright.
+            if (request.commitment !== job.job_commitment) {
+              reply(child, {
+                kind: "delivery_key",
+                id: request.id,
+                error: `job ${job.id} may ask only for its own delivery key`,
+              });
+              return;
+            }
+            const secret = boxSecretKey(options.keys);
+            try {
+              const eph = ephemeralKey(
+                secret,
+                new Uint8Array(Buffer.from(request.commitment, "hex")),
+              );
+              reply(child, {
+                kind: "delivery_key",
+                id: request.id,
+                ok: true,
+                secret_key: Buffer.from(eph.secretKey).toString("hex"),
+                public_key: Buffer.from(eph.publicKey).toString("hex"),
+              });
+            } catch (error) {
+              reply(child, { kind: "delivery_key", id: request.id, error: (error as Error).message });
+            } finally {
+              memzero(secret);
+            }
+            return;
+          }
           if (request.kind === "blob") {
             const work =
               request.op === "get"
@@ -200,8 +260,18 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
         });
         child.on("error", (error) => finish(error));
         child.on("exit", (code, signal) => {
-          if (code === 0) finish();
-          else finish(new Error(`worker for job ${job.id} exited with ${signal ?? code}`));
+          if (code !== 0) {
+            finish(new Error(`worker for job ${job.id} exited with ${signal ?? code}`));
+            return;
+          }
+          // A clean exit from a worker that never asked for its job did nothing at all, and saying
+          // "done" to that is how a room that completes no work looks healthy: the supervisor just
+          // forks another one, for ever, in silence. It is a failure and it is reported as one.
+          finish(
+            spoke
+              ? undefined
+              : new Error(`worker for job ${job.id} exited without starting; it ran nothing`),
+          );
         });
         // The worker holds no key of its own, so the room's public key comes with the job.
         child.send({

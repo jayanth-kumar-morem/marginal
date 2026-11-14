@@ -6,13 +6,14 @@ rpc = ["https://test.rpc.fastnear.com"]
 
 [accounts]                            # created as <name>.<deployer>
 # The user's testnet account; its key is in ~/.near-credentials/testnet/<deployer>.json
-# (or $NEAR_DEPLOYER_KEY). It needs 18 NEAR: up.sh checks before creating anything.
+# (or $NEAR_DEPLOYER_KEY). It needs 19 NEAR: up.sh checks before creating anything.
 deployer = "marginal-demo.testnet"
 gov = "gov"
 faucet = "faucet"
 token = "musdc"
 clearing = "clearing"
 keypolicy = "keypolicy"
+agent = "agent"                       # the operator agent signs with this one
 
 [hdp]
 gov_profile = "demo"
@@ -21,11 +22,45 @@ challenge_window_secs = 600
 rules_enabled = ["R1"]
 asset_classes_enabled = ["Knowledge", "Dataset"]
 
+# What gov sets on clearing right after init (E14.4). The same values as the sandbox: they are what
+# the appraiser and the fee split are, not a local convenience.
+[clearing]
+appraisers = [{ id = "knowledge", version = 1, formula = "KnowledgeV1", compute_fee = "1000000", enabled = true }]
+# Basis points. The first two are the fee (of the price, and of the proceeds); the last three are
+# shares of that fee and clearing requires them to add up to 10000.
+fees = { clearing_fee_buyer_bps = 50, clearing_fee_seller_bps = 100, treasury_bps = 6000, operator_pool_bps = 3000, assurance_pool_bps = 1000 }
+# Seed the committed circuit's verifying key (circuits/formula_knowledge_v1.vkey.json, pinned by
+# circuits/SHA256SUMS), so a sealed verdict can be proved on chain. Off refuses every sealed verdict
+# with E_PROOF_DISABLED.
+sealed_verdicts = true
+# The compliance service's own public keys. The seeds that produce exactly these two live in
+# `deploy/services/.env.testnet-demo` (mode 0600, gitignored), and the host services serving this
+# deployment must run with that file: **changing a seed invalidates every credential issued under
+# it**. A different operator running this profile replaces both the seeds and these two lines.
+issuer_key = "034b9b188af43255bdcdfe58ca6e413ad7f5fb2a244ce57770e4ef92a570e5b1"
+compliance_key = "ee49d06f12eeaadfefb9605bb07d10a01cd2aebedd34b37d23b95a5a08301eb3"
+# Paste the NEAR AI signer's 20-byte address and the model it signs for, once there is a NEAR AI key
+# ([P-2]). Without it every judge factor is simulated and flagged on chain.
+# ai_signer = { address = "<40 hex>", model = "<model id>", ttl_secs = 3600 }
+
+# What the host services run with (see the sandbox profile). The deploy writes the rest of the
+# environment, including the agent's key and the compliance seeds, into
+# `deploy/services/.env.testnet-demo` (mode 0600, gitignored).
+[services]
+# Paste the testnet accounts that may be issued an identity credential; anything else gets a 403.
+allowed_identities = []
+
 [keypolicy]
 mpc = "v1.signer-prod.testnet"
 ckd_domain_id = 2
 dcap_verifier = "tee-verifier-2026-11-02.testnet"
+# No `simulated_rooms` here, ever: the validator and deploy.ts both refuse it off the sandbox.
 
 [room_policy]
-platforms = []                        # E4.3 seeds the Phala PPIDs here
-measurement_sets = []                 # E7.3 seeds knowledge-room@1.0.0 here
+# Paste the real platforms here, one per machine: `ppid` is the 16-byte PPID (32 lower-case hex) from
+# Phala's published platform list for the machine the CVM runs on, `operator` is agent.<deployer>.
+platforms = []
+# Paste `knowledge-room@1.0.0` here: the mrtd, rtmr0-2, compose hash and key-provider digest that
+# only a real CVM boot of `room/image/` produces (`room/image/MEASUREMENTS.md` says how to read them
+# off a running CVM's quote). Do not invent them: a wrong member admits no room.
+measurement_sets = []

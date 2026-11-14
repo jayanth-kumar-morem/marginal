@@ -20,7 +20,7 @@ import {
   viewMethod,
   viewReply,
 } from "../testing.js";
-import { appraiserVia, judgeFetch, main } from "./main.js";
+import { appraiserVia, judgeFetch, main, isEntryPoint, startIfEntryPoint} from "./main.js";
 import type { ChannelProcess } from "./ipc.js";
 
 const env = {
@@ -238,4 +238,47 @@ test("a judge is reached through the operator agent, never directly", async () =
   } finally {
     globalThis.fetch = real;
   }
+});
+
+/**
+ * `fork()` runs a module as the entry point, so the module has to run itself — exporting `main`
+ * and nothing else made every forked worker exit 0 having done nothing. Importing it (as this test
+ * does) must not start it, which is the distinction the guard draws.
+ */
+test("the worker runs itself when it is the process, and not when it is imported", () => {
+  const url = "file:///app/dist/worker/main.js";
+
+  assert.equal(isEntryPoint(url, ["node", "/app/dist/worker/main.js"]), true);
+  assert.equal(
+    isEntryPoint(url, ["node", "/app/dist/worker/other.js"]),
+    false,
+    "another module being the entry point is not this one",
+  );
+  // A test runner, which is how this file is loaded: argv[1] is the runner, not the worker.
+  assert.equal(isEntryPoint(url, ["node", "/usr/lib/node_modules/.bin/test"]), false);
+  // `node --eval` and an embedder leave argv[1] missing or empty; neither is this module.
+  assert.equal(isEntryPoint(url, ["node"]), false);
+  assert.equal(isEntryPoint(url, ["node", ""]), false);
+});
+
+test("the module starts the worker when it is the process, and not otherwise", () => {
+  const url = "file:///app/dist/worker/main.js";
+  let ran = 0;
+  const run = (): Promise<void> => {
+    ran += 1;
+    return Promise.resolve();
+  };
+
+  assert.equal(startIfEntryPoint(url, run, ["node", "/app/dist/worker/main.js"]), true);
+  assert.equal(ran, 1, "forked: it runs");
+
+  assert.equal(startIfEntryPoint(url, run, ["node", "/usr/bin/test-runner"]), false);
+  assert.equal(ran, 1, "imported: it does not");
+
+  // With no arguments but the url it reads the real `process.argv` and would run the real `main`.
+  // Under the test runner argv[1] is the runner, so this is the false answer — which is the only
+  // one that can be asserted here without starting a worker, and it covers both defaults.
+  assert.equal(startIfEntryPoint("file:///not-this-module.js"), false);
+  assert.equal(isEntryPoint("file:///not-this-module.js"), false);
+  assert.equal(ran, 1);
 });

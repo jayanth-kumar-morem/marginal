@@ -18,8 +18,7 @@ import type {
 } from "../chain.js";
 import { attestationRecord, clearingConfig, jobRecord, listingRecord } from "../chain.js";
 import type { RoomConfig } from "../config.js";
-import { unseal } from "../crypto/sodium.js";
-import type { AppKey, ListingKeys } from "../crypto/ckd.js";
+import type { AppKey } from "../crypto/ckd.js";
 import type { WorkerChannel } from "./ipc.js";
 
 export interface WorkerContext {
@@ -34,6 +33,11 @@ export interface WorkerContext {
    * pins it, so it can play the MPC network's side of the exchange.
    */
   readonly appKeySource?: () => AppKey;
+  /**
+   * Where a job's disclosures go (§3.12.7's RoomSealed limitations). The supervisor's stderr unless
+   * something else is listening, which is what a test uses to read them.
+   */
+  readonly log?: (line: string) => void;
 }
 
 /** Everything a job is about, read once and checked. */
@@ -89,23 +93,23 @@ export interface Good {
 /**
  * Fetches and opens the good.
  *
- * The seller's wrap is a sealed box to `pk_L` holding `DEK_g ‖ salt`; the ciphertext object is the
- * 24-byte nonce followed by XChaCha20-Poly1305 of the good (§3.19's layout for the delivery, used
- * the same way for the listing). Two checks have to pass before the plaintext counts: the
- * ciphertext's SHA-256 is the one the listing published, and `SHA-256(salt ‖ good)` is the
- * listing's `good_commitment` — so the room can tell it appraised what was sold.
+ * The seller's wrap is a sealed box holding `DEK_g ‖ salt`, addressed to `pk_L` under Ckd and to the
+ * room's own `box_pk` under the RoomSealed fallback (§3.12.7); the ciphertext object is the 24-byte
+ * nonce followed by XChaCha20-Poly1305 of the good (§3.19's layout for the delivery, used the same
+ * way for the listing). Which key opens the wrap is the caller's business — `unwrap` is a derived
+ * keypair under Ckd and supervisor IPC under RoomSealed, and neither changes what is checked here.
+ *
+ * Two checks have to pass before the plaintext counts: the ciphertext's SHA-256 is the one the
+ * listing published, and `SHA-256(salt ‖ good)` is the listing's `good_commitment` — so the room
+ * can tell it appraised what was sold.
  */
 export async function openGood(
   ctx: WorkerContext,
   listing: ListingRecord,
-  keys: ListingKeys,
+  unwrap: (sealedHex: string) => Promise<Uint8Array>,
   aeadOpen: (key: Uint8Array, nonce: Uint8Array, ct: Uint8Array, aad: Uint8Array) => Uint8Array,
 ): Promise<Good> {
-  const wrapped = Buffer.from(await ctx.channel.getBlob(wrappedKeyKey(listing)), "hex");
-  const opened = unseal(new Uint8Array(wrapped), {
-    publicKey: keys.publicKey,
-    secretKey: keys.secretKey,
-  });
+  const opened = await unwrap(await ctx.channel.getBlob(wrappedKeyKey(listing)));
   if (opened.length !== 64) throw new Error("the wrapped key is not DEK_g and a salt");
   const dek = opened.subarray(0, 32);
   const salt = opened.subarray(32);

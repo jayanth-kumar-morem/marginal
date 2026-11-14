@@ -19,6 +19,7 @@ import {
 } from "../testing.js";
 import { loadJob, openGood, type WorkerContext } from "./context.js";
 import { aeadOpen } from "../crypto/sodium.js";
+import { localUnwrap } from "./keys.js";
 import { runProvisioning } from "./provisioning.js";
 import { runScreening } from "./screening.js";
 import { runJob } from "./main.js";
@@ -38,7 +39,11 @@ const measurement = {
 };
 
 /** A world: a chain with canned views, an operator that plays KeyPolicy and the MPC network. */
-function world(options: { kind: string; good?: string; listingVersion?: number } = { kind: "Provisioning" }) {
+function world(
+  options: { kind: string; good?: string; listingVersion?: number; keyMode?: string } = {
+    kind: "Provisioning",
+  },
+) {
   const keys = generateRoomKeys();
   const roomKeyHex = Buffer.from(keys.signPk).toString("hex");
   const network = ckdNetwork();
@@ -49,12 +54,23 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
   const appKey = appKeyFromScalar(SCALAR);
   const derived = listingKeys(network.sigma(id));
 
-  const sealed = sealGood(options.good ?? "A quarterly market commentary, already published.", derived.publicKey);
+  // Under the RoomSealed fallback the seller seals the wrap to the room's own `box_pk` instead,
+  // and the listing has no `pk_L` at all (§3.12.7).
+  const keyMode = options.keyMode ?? "Ckd";
+  const sealed = sealGood(
+    options.good ?? "A quarterly market commentary, already published.",
+    keyMode === "RoomSealed" ? keys.boxPk : derived.publicKey,
+  );
   const operator = fakeOperator();
   const base = operator.submit.bind(operator);
   const submitted = operator.submitted;
   operator.submit = (method, args, contract) => {
     void base(method, args, contract);
+    // A RoomSealed job has no business calling KeyPolicy: if it ever does, the call fails loudly
+    // rather than being answered, so a test cannot pass by accident.
+    if (keyMode !== "Ckd" && (method === "authorize" || method === "derive")) {
+      return Promise.reject(new Error(`a RoomSealed job asked KeyPolicy for ${method}`));
+    }
     if (method === "authorize") return Promise.resolve("7");
     if (method === "derive") return Promise.resolve(network.answer(id, appKey.pk1));
     return Promise.resolve(null);
@@ -86,7 +102,7 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
       status: "Draft",
       good_commitment: sealed.good_commitment,
       ciphertext: { uri_hash: "0a".repeat(32), sha256: sealed.sha256, size_class: 12 },
-      key_mode: "Ckd",
+      key_mode: keyMode,
       pk_l: null,
       appraiser: "knowledge@1",
       value_class: "M",
@@ -96,6 +112,7 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
     },
   });
   const channel = localChannel(keys, operator, record);
+  const logs: string[] = [];
   const ctx: WorkerContext = {
     channel,
     chain,
@@ -103,8 +120,9 @@ function world(options: { kind: string; good?: string; listingVersion?: number }
     roomKeyHex,
     now: () => NOW,
     appKeySource: () => appKey,
+    log: (line) => logs.push(line),
   };
-  return { ctx, operator, submitted, derived, channel, chain, sealed, path, id };
+  return { ctx, operator, submitted, derived, channel, chain, sealed, path, id, keys, logs };
 }
 
 test("a provisioning job derives the listing key and reports pk_L with its certificate", async () => {
@@ -245,16 +263,16 @@ test("a job is refused before any key is asked for when the chain says something
 test("the good is accepted only when it is the one the listing published", async () => {
   const w = world({ kind: "Screening" });
   const data = await loadJob(w.ctx, 11);
-  const good = await openGood(w.ctx, data.listing, w.derived, aeadOpen);
+  const good = await openGood(w.ctx, data.listing, localUnwrap(w.derived), aeadOpen);
   assert.equal(Buffer.from(good.plaintext).toString("utf8").startsWith("A quarterly"), true);
 
   // A ciphertext that is not the published one, a wrap that is not DEK_g ‖ salt, a truncated
   // object, and a good that does not match its commitment: each is refused on its own terms.
   const tampered = { ...data.listing, ciphertext: { ...data.listing.ciphertext, sha256: "ff".repeat(32) } };
-  await assert.rejects(() => openGood(w.ctx, tampered, w.derived, aeadOpen), /not the one the listing published/);
+  await assert.rejects(() => openGood(w.ctx, tampered, localUnwrap(w.derived), aeadOpen), /not the one the listing published/);
 
   w.operator.blobs.set("listings/3/v1/dek", w.sealed.wrapped.slice(0, 64));
-  await assert.rejects(() => openGood(w.ctx, data.listing, w.derived, aeadOpen), /sealed box/);
+  await assert.rejects(() => openGood(w.ctx, data.listing, localUnwrap(w.derived), aeadOpen), /sealed box/);
 
   const short = world({ kind: "Screening" });
   short.operator.blobs.set("listings/3/v1/good", "00".repeat(10));
@@ -266,7 +284,7 @@ test("the good is accepted only when it is the one the listing published", async
     },
   };
   await assert.rejects(
-    () => openGood(short.ctx, shortListing, short.derived, aeadOpen),
+    () => openGood(short.ctx, shortListing, localUnwrap(short.derived), aeadOpen),
     /too short to hold a nonce/,
   );
 
@@ -277,7 +295,7 @@ test("the good is accepted only when it is the one the listing published", async
       openGood(
         other.ctx,
         { ...otherData.listing, good_commitment: "ee".repeat(32) },
-        other.derived,
+        localUnwrap(other.derived),
         aeadOpen,
       ),
     /does not match its commitment/,
@@ -329,7 +347,94 @@ test("a wrap that opens but is not DEK_g and a salt is refused", async () => {
     Buffer.from(seal(new Uint8Array(31), w.derived.publicKey)).toString("hex"),
   );
   await assert.rejects(
-    () => openGood(w.ctx, data.listing, w.derived, aeadOpen),
+    () => openGood(w.ctx, data.listing, localUnwrap(w.derived), aeadOpen),
     /not DEK_g and a salt/,
   );
+});
+
+test("a RoomSealed screening job opens the good through the supervisor, never through CKD", async () => {
+  const w = world({ kind: "Screening", keyMode: "RoomSealed" });
+  const screening = await runScreening(w.ctx, 11);
+  assert.equal(screening.result, "Pass");
+
+  // No authorize, no derive: under RoomSealed there is no listing key to ask KeyPolicy for, and
+  // the world's operator would have rejected the call if it had been made (§3.12.7).
+  assert.deepEqual(
+    w.submitted.map((s) => `${s.contract}.${s.method}`),
+    ["clearing.submit_screening"],
+  );
+
+  // The certificate says what it honestly can: the room held the good's plaintext, and it names no
+  // key as destroyed, because `box_sk` is the room's and outlives the job.
+  const certKey = [...w.operator.blobs.keys()].find((k) => k.startsWith("certs/"));
+  const certificate = call("certificate_decode", {
+    bytes: w.operator.blobs.get(certKey ?? "") ?? "",
+  }) as Record<string, unknown>;
+  assert.deepEqual(certificate.scope, ["GoodPlaintext"]);
+  assert.deepEqual(certificate.key_ids_destroyed, []);
+  assert.equal(certificate.non_persistence_basis, 15, "the mode does not weaken this claim");
+
+  // And the limitations were disclosed, once, naming the listing they apply to.
+  assert.equal(w.logs.length, 1);
+  assert.match(w.logs[0] ?? "", /^listing 3 v1: RoomSealed key release \(SDD §3\.12\.7/);
+  assert.match(w.logs[0] ?? "", /only this room can re-deliver/);
+});
+
+test("a RoomSealed wrap that is not DEK_g and a salt, or a good that does not match, is refused", async () => {
+  const { seal } = await import("../crypto/sodium.js");
+
+  // A well-formed sealed box to the room's own `box_pk`, holding the wrong number of bytes.
+  const short = world({ kind: "Screening", keyMode: "RoomSealed" });
+  short.operator.blobs.set(
+    "listings/3/v1/dek",
+    Buffer.from(seal(new Uint8Array(31), short.keys.boxPk)).toString("hex"),
+  );
+  await assert.rejects(() => runScreening(short.ctx, 11), /not DEK_g and a salt/);
+
+  // A box the room cannot open at all is refused where it is opened — in the supervisor — and the
+  // refusal reaches the worker rather than being guessed at.
+  const stranger = world({ kind: "Screening", keyMode: "RoomSealed" });
+  stranger.operator.blobs.set("listings/3/v1/dek", "00".repeat(64));
+  await assert.rejects(
+    () => runScreening(stranger.ctx, 11),
+    /crypto: the sealed box does not open with this key/,
+  );
+
+  // The commitment check is the same one the Ckd path makes: the wrap opened, the ciphertext was
+  // the published one, and the good still does not hash to what the listing committed to.
+  const w = world({ kind: "Screening", keyMode: "RoomSealed" });
+  const data = await loadJob(w.ctx, 11);
+  await assert.rejects(
+    () =>
+      openGood(
+        w.ctx,
+        { ...data.listing, good_commitment: "ee".repeat(32) },
+        (sealedHex) => w.ctx.channel.unseal(sealedHex).then((hex) => new Uint8Array(Buffer.from(hex, "hex"))),
+        aeadOpen,
+      ),
+    /does not match its commitment/,
+  );
+});
+
+test("a provisioning job is refused for a RoomSealed listing, before any key is asked for", async () => {
+  const w = world({ kind: "Provisioning", keyMode: "RoomSealed" });
+  await assert.rejects(
+    () => runProvisioning(w.ctx, 11),
+    /job 11: listing 3 is RoomSealed, so it has no key to provision/,
+  );
+  assert.deepEqual(w.submitted, [], "nothing was asked of KeyPolicy or of clearing");
+});
+
+test("a key release mode this room does not implement is refused by name", async () => {
+  for (const mode of ["Threshold", "", "ckd"]) {
+    const w = world({ kind: "Screening", keyMode: mode });
+    await assert.rejects(
+      () => runScreening(w.ctx, 11),
+      new RegExp(`listing 3: this room does not implement key release mode ${mode}$`),
+      mode,
+    );
+    const p = world({ kind: "Provisioning", keyMode: mode });
+    await assert.rejects(() => runProvisioning(p.ctx, 11), /does not implement key release mode/);
+    assert.deepEqual(w.submitted, [], "no key was asked for");
+  }
 });

@@ -8,6 +8,13 @@ export const repoRoot = resolve(fileURLToPath(new URL("../../", import.meta.url)
 export const profilePath = (root: string, name: string) => join(root, "deploy", "profiles", `${name}.toml`);
 /** Where `cargo near build` puts `<crate>/<crate>.wasm`. */
 export const wasmDir = (root: string) => join(root, "target", "near");
+/** The circuit's committed artefacts: the verifying key sealed verdicts are checked against, and its SHA256SUMS. */
+export const circuitsDir = (root: string) => join(root, "circuits");
 export const manifestPath = (root: string, profile: string) => join(root, "deploy", `manifest.${profile}.json`);
+/**
+ * The environment the host services' compose interpolates. It holds the agent's secret key and the
+ * compliance seeds, so it is written 0600 and is gitignored (`.env.*`).
+ */
+export const servicesEnvPath = (root: string, profile: string) => join(root, "deploy", "services", `.env.${profile}`);
 /** Secret keys of the accounts a deploy created. Gitignored. */
 export const keysPath = (root: string, profile: string) => join(root, "deploy", ".keys", `${profile}.json`);

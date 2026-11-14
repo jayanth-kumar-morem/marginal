@@ -18,23 +18,46 @@ import { HttpError, jsonServer, listen, required, type Routes } from "@marginal/
 
 import { fetchCollateral, type Collateral, type CollateralOptions } from "./collateral.js";
 import { DEFAULT_GAS, REGISTER_GAS, type Relay } from "./near.js";
+import { isSimulated, simRoomRequest, type SimulatedSource } from "./sim.js";
 
 export const PACKAGE = "@marginal/operator-agent";
 
 export { nearRelay, transactionValue, DEFAULT_GAS, REGISTER_GAS, type Relay } from "./near.js";
 export { fetchCollateral, PCCS_URL, type Collateral, type CollateralOptions } from "./collateral.js";
+export { isSimulated, simRoomRequest, type SimulatedSource } from "./sim.js";
 
-/** Storage for a registration record, paid by the caller (KeyPolicy has no owner to top it up). */
-export const REGISTER_DEPOSIT = 10_000_000_000_000_000_000_000n;
-/** A ticket's storage, the same way. */
-export const TICKET_DEPOSIT = 1_000_000_000_000_000_000_000n;
+/**
+ * KeyPolicy's fees, which the caller pays because KeyPolicy has no owner to top it up
+ * (`contracts/keypolicy/src/fees.rs`). `charge` takes a **minimum** and **keeps** what it is given,
+ * so each of these is exactly its fee: attaching more is a donation, attaching less is `E_DEPOSIT`
+ * and the room never registers or never gets its key.
+ *
+ * One constant per fee, deliberately: they were one, and at 1 millinear it was under both the 2 of
+ * `NONCE_FEE` and the 5 of `TICKET_FEE`, so `issue_nonce` and `authorize` would both have failed on
+ * a real chain while every mocked test passed.
+ */
+const MILLINEAR = 1_000_000_000_000_000_000_000n;
+/** `ATTESTATION_FEE`: a registration record's storage. */
+export const REGISTER_DEPOSIT = 10n * MILLINEAR;
+/** `NONCE_FEE`: a registration nonce's storage. */
+export const NONCE_DEPOSIT = 2n * MILLINEAR;
+/** `TICKET_FEE`: a key-release ticket's storage. */
+export const TICKET_DEPOSIT = 5n * MILLINEAR;
 
 /** The two contracts a room may ask the agent to call, and nothing else. */
 type Contract = "clearing" | "keypolicy";
 /** The methods a room may ask for, per contract. An allow-list, not a filter. */
 const ALLOWED: Record<Contract, readonly string[]> = {
   keypolicy: ["authorize", "derive"],
-  clearing: ["submit_verdict", "submit_delivery_receipt", "submit_provisioning", "submit_screening"],
+  clearing: [
+    "submit_verdict",
+    "submit_delivery_receipt",
+    "submit_provisioning",
+    "submit_screening",
+    // A RoomSealed job's `Assigned → Computing`: clearing sees no key release for one, so the room
+    // says so itself and signs for it (§3.5, §3.12.7). Not payable, so it relays with no deposit.
+    "room_ack",
+  ],
 };
 
 export interface AgentOptions {
@@ -48,6 +71,11 @@ export interface AgentOptions {
   /** NEAR AI's API. Explicit, so a deployment or a test says where it is going. */
   readonly nearAiBase: string;
   readonly collateral?: CollateralOptions;
+  /**
+   * Sandbox only (SDD §6.1, E14.4): what the host claims for a room that has no quote. Absent on
+   * any real deployment, where a simulated bundle is refused for want of these values anyway.
+   */
+  readonly simulated?: SimulatedSource;
   /** How the agent reaches the gateway and NEAR AI. Explicit for the same reason. */
   readonly fetchImpl: typeof globalThis.fetch;
   readonly onError?: (error: Error) => void;
@@ -124,14 +152,33 @@ export function agent(options: AgentOptions): Server {
     /** A nonce for a registration. It is bound to this account, so the same key must spend it. */
     "POST /v1/nonce": () =>
       options.relay
-        .call(options.keypolicy, "issue_nonce", {}, DEFAULT_GAS, TICKET_DEPOSIT)
+        .call(options.keypolicy, "issue_nonce", {}, DEFAULT_GAS, NONCE_DEPOSIT)
         .then((nonce) => ({ json: { nonce: asNonce(nonce) } })),
 
     /**
      * Relays a registration. The agent adds the collateral and the deposit; everything the
      * verifier checks is in the room's own bytes.
+     *
+     * A bundle marked `simulated: true` goes to `keypolicy-sim` instead, with the measurement the
+     * host claims (E14.4). The room does not get to choose the real path's checks: anything other
+     * than that one literal is a real registration, quote and all.
      */
     "POST /v1/register": async (request) => {
+      if (isSimulated(request.body)) {
+        const encoded = simRoomRequest(
+          request.body as Record<string, unknown>,
+          options.simulated ?? {},
+        );
+        return options.relay
+          .call(
+            options.keypolicy,
+            "register_room_simulated",
+            { request: encoded },
+            REGISTER_GAS,
+            REGISTER_DEPOSIT,
+          )
+          .then((registered) => ({ json: { registered } }));
+      }
       const bundle = request.body as { quote?: unknown } | null;
       const quote = required(bundle, "quote");
       return fetchCollateral(quote, options.collateral).then((collateral: Collateral) =>
@@ -219,7 +266,11 @@ export function agent(options: AgentOptions): Server {
   return jsonServer(routes, options.onError);
 }
 
-export async function serve(options: AgentOptions, port: number): Promise<{ server: Server; port: number }> {
+export async function serve(
+  options: AgentOptions,
+  port: number,
+  host?: string,
+): Promise<{ server: Server; port: number }> {
   const server = agent(options);
-  return { server, port: await listen(server, port) };
+  return { server, port: await listen(server, port, host) };
 }

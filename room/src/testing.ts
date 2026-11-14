@@ -17,7 +17,8 @@ import type { DstackPort, Quote, RawEvent } from "./dstack.js";
 import type { OperatorPort } from "./operator.js";
 import { boxSecretKey, type RoomKeys } from "./keys.js";
 import { signForWorker } from "./signer.js";
-import { AEAD_KEY_BYTES, AEAD_NONCE_BYTES, aeadSeal, randomBytes, seal, unseal as unsealBox } from "./crypto/sodium.js";
+import { AEAD_KEY_BYTES, AEAD_NONCE_BYTES, aeadSeal, randomBytes, seal, unseal as unsealBox, type BoxKeys } from "./crypto/sodium.js";
+import { ephemeralKey } from "./crypto/delivery.js";
 import type { WorkerChannel } from "./worker/ipc.js";
 
 export const CHAIN_ID = "sandbox";
@@ -39,6 +40,7 @@ export function testConfig(overrides: Partial<RoomConfig> = {}): RoomConfig {
     mpcPublicKey: MPC_PUBLIC_KEY,
     pollMs: 10,
     maxWorkers: 2,
+    simulatedAttestation: false,
     ...overrides,
   };
 }
@@ -339,6 +341,15 @@ export function localChannel(
       });
       return Promise.resolve(Buffer.from(opened).toString("hex"));
     },
+    // The same binding the real supervisor enforces: a worker gets its own job's key and no other.
+    deliveryKey(jobCommitment: string): Promise<BoxKeys> {
+      if (jobCommitment !== job.job_commitment) {
+        return Promise.reject(new Error(`job ${job.id} may ask only for its own delivery key`));
+      }
+      return Promise.resolve(
+        ephemeralKey(boxSecretKey(keys), new Uint8Array(Buffer.from(jobCommitment, "hex"))),
+      );
+    },
   };
 }
 
@@ -373,6 +384,7 @@ export function supervisorHost(
   give(job: RoomJob): void;
 } {
   const listeners: ((message: unknown) => void)[] = [];
+  let given: RoomJob | undefined;
   const toWorker = (message: unknown): void => {
     for (const listener of listeners) listener(message);
   };
@@ -401,6 +413,24 @@ export function supervisorHost(
           }
           return true;
         }
+        if (message.kind === "delivery_key") {
+          if (message.commitment !== given?.job_commitment) {
+            toWorker({ kind: "delivery_key", id, error: "not this worker's job" });
+            return true;
+          }
+          const eph = ephemeralKey(
+            boxSecretKey(keys),
+            new Uint8Array(Buffer.from(message.commitment as string, "hex")),
+          );
+          toWorker({
+            kind: "delivery_key",
+            id,
+            ok: true,
+            secret_key: Buffer.from(eph.secretKey).toString("hex"),
+            public_key: Buffer.from(eph.publicKey).toString("hex"),
+          });
+          return true;
+        }
         if (message.kind === "submit") {
           void operator
             .submit(
@@ -423,6 +453,7 @@ export function supervisorHost(
       },
     },
     give(job: RoomJob): void {
+      given = job;
       toWorker({ kind: "job", job, room_key: Buffer.from(keys.signPk).toString("hex") });
     },
   };

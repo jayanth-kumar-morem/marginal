@@ -26,8 +26,9 @@ import { hexToBase64, type CoreCall, type OutputSchema, type Privacy } from "./a
 import { errorCode, type ChainPort, type Fetch } from "./chain";
 import { BPS, MBITS_PER_BIT, TOKEN_DECIMALS } from "./format";
 import { listingIds, loadListing } from "./listings";
-import type { ClearingConfig, Listing } from "./records";
-import { fromHex, sha256Hex } from "@marginal/sdk";
+import type { ClearingConfig, KeyMode, Listing } from "./records";
+import { knowledgeRoomKeys, loadRoom, modeNote } from "./rooms";
+import { aeadSeal, dek, fromHex, sha256Hex, toHex, wrapKey } from "@marginal/sdk";
 
 // -----------------------------------------------------------------------------------------------
 // The core, through `POST /api/encode`
@@ -372,7 +373,7 @@ export interface ListingSpecJson {
   readonly asset_class: "Knowledge";
   readonly category: number;
   readonly licence_class: number;
-  readonly key_mode: "Ckd";
+  readonly key_mode: KeyMode;
   readonly appraiser: { readonly id: string; readonly version: number; readonly formula_id: "KnowledgeV1" };
   readonly schema: OutputSchema;
   readonly rule: { readonly Posted: { readonly ask: string } };
@@ -405,21 +406,27 @@ export interface ListingSpecJson {
 /**
  * The spec `create_listing` takes, from the form.
  *
- * What is **not** on the form is as deliberate as what is. The asset class is Knowledge and the key
- * mode is CKD, because that is the only pair M1 runs (§1.5). The appraiser and its schema are
+ * What is **not** on the form is as deliberate as what is. The asset class is Knowledge, because
+ * that is the only one M1 appraises (§1.5), and the key mode is the **deployment's**, never a
+ * seller's choice: it decides who can ever open the good, and a seller cannot pick a mode the
+ * deployment has no keys for. The appraiser and its schema are
  * `knowledge@1`'s. The identity sub-budget and the verified reserve are zero: both exist to ration
  * a budget between identity tiers (DR-17), and the demo has no tiers to ration between, so
  * claiming otherwise on a published listing would be a fiction. `min_tier` is `Id1` because `Id0`
  * cannot appraise at all. Every field a seller can get wrong is parsed here, with its own message,
  * before `validate_spec` is asked and long before gas is paid.
  */
-export function listingSpecJson(form: SellForm, token: string): ListingSpecJson {
+export function listingSpecJson(
+  form: SellForm,
+  token: string,
+  keyMode: KeyMode,
+): ListingSpecJson {
   if (token === "") throw new Error("this deployment has no settlement token configured");
   return {
     asset_class: "Knowledge",
     category: whole(form.category, "the category", 1, 65_535),
     licence_class: whole(form.licenceClass, "the licence class", 0, 65_535),
-    key_mode: "Ckd",
+    key_mode: keyMode,
     appraiser: { id: "knowledge", version: 1, formula_id: "KnowledgeV1" },
     schema: KNOWLEDGE_SCHEMA,
     rule: { Posted: { ask: baseUnits(form.ask, "the ask") } },
@@ -547,15 +554,417 @@ export async function newestListing(
   return null;
 }
 
+/**
+ * Reads back what a signed call just created, asking again while the answer is still empty.
+ *
+ * A write and a read do not see the same chain at the same moment. The signer broadcasts with
+ * `broadcast_tx_commit`, which returns once the transaction has **executed**; a view call asks for
+ * **final** state, which trails execution by a block or two. So a single read-back misses what was
+ * just made, and the page says it is not there — observed on a live sandbox, where the wizard
+ * reported "the chain has no listing for this account yet" about a listing that was already on
+ * chain and about to be screened.
+ *
+ * Retrying is the honest fix: nothing is assumed about what the write did, the chain is simply
+ * asked again until it agrees or the attempts run out. An error is returned at once — only
+ * emptiness is worth waiting through.
+ */
+export async function settled<T>(
+  read: () => Promise<{ ok: T | null } | { error: string }>,
+  attempts = 8,
+  waitMs = 750,
+  sleep: (ms: number) => Promise<void> = (ms) =>
+    new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<{ ok: T | null } | { error: string }> {
+  let last: { ok: T | null } | { error: string } = { ok: null };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await sleep(waitMs);
+    last = await read();
+    if ("error" in last || last.ok !== null) return last;
+  }
+  return last;
+}
+
 /** What KeyPolicy charges to store a listing version's pins (`contracts/keypolicy/src/fees.rs`). */
 export async function pinsFee(chain: ChainPort, keypolicy: string): Promise<string> {
   const config = await chain.view<{ pins_fee: string }>(keypolicy, "config");
   return config.pins_fee;
 }
 
-/** Whether this listing can be sealed to yet: `pk_L` exists only once a room has provisioned it. */
-export function provisioned(listing: Listing | null): boolean {
-  return listing?.pk_l !== null && listing?.pk_l !== undefined;
+// -----------------------------------------------------------------------------------------------
+// The two key-release modes (SDD §3.12.7)
+
+/**
+ * One wizard step: its number, its title, and the contract methods it signs.
+ *
+ * This is the **plan**, and it is the one place that knows which calls a key mode takes. The page
+ * reads it for the stepper's titles and {@link sendSellCall} reads it to refuse a call the mode
+ * does not have, so a mis-wired button cannot send `begin_provisioning` for a listing the contract
+ * would refuse it for (`listing.rs`: a RoomSealed listing fails with `E_RULE_DISABLED`).
+ */
+export interface SellStep {
+  readonly step: number;
+  readonly title: string;
+  /** In the order they are sent. Empty for the steps that run in the browser alone. */
+  readonly methods: readonly string[];
+}
+
+/**
+ * The steps, for one mode. The numbering is the same either way, so the two flows differ only in
+ * what they actually do:
+ *
+ * - **Ckd** derives the listing key in a room (`begin_provisioning`), seals `DEK_g` to the `pk_L`
+ *   the room reports, and pins the measurements KeyPolicy will release that key to.
+ * - **RoomSealed** has no listing key: the good is sealed to one attested room's own `box_pk`, so
+ *   there is nothing to provision — the contract refuses it — and nothing to pin. Step 6 is the
+ *   disclosure §3.12.7 requires instead, and `publish_listing` goes straight from `Draft`.
+ */
+export function sellSteps(mode: KeyMode): readonly SellStep[] {
+  const ckd = mode === "Ckd";
+  return [
+    { step: 1, title: "File", methods: [] },
+    { step: 2, title: "Canonicalise", methods: [] },
+    { step: 3, title: "Parameters", methods: [] },
+    {
+      step: 4,
+      title: "Create",
+      methods: ckd ? ["create_listing", "begin_provisioning"] : ["create_listing"],
+    },
+    { step: 5, title: "Seal", methods: [] },
+    { step: 6, title: ckd ? "Pins" : "Key release", methods: ckd ? ["set_pins"] : [] },
+    { step: 7, title: "Publish", methods: ["publish_listing"] },
+  ];
+}
+
+/** Every call a listing takes in this mode, in order. Ckd has four; RoomSealed has two. */
+export function sellMethods(mode: KeyMode): readonly string[] {
+  return sellSteps(mode).flatMap((step) => step.methods);
+}
+
+/**
+ * One call a page wants signed. It is `components/wallet`'s `TxRequest`, which is what `useWallet`
+ * takes; the compiler checks the two agree where the wizard hands one to the other.
+ */
+export interface SellTx {
+  readonly contract: string;
+  readonly method: string;
+  readonly args: Record<string, unknown>;
+  /** Yocto-NEAR, as a decimal string. */
+  readonly deposit?: string;
+  /** Gas, as a decimal string of gas units. */
+  readonly gas?: string;
+}
+
+/** What the seller's wallet offers of itself: one signed call, answering with a transaction hash. */
+export interface Signer {
+  send(tx: SellTx): Promise<string>;
+}
+
+/** 100 TGas, as the other pages use: enough for a listing write and the jobs it opens. */
+export const SELL_GAS = "100000000000000";
+
+/**
+ * `create_listing`.
+ *
+ * Under RoomSealed it refuses without a resolved {@link SealTarget}: the good will be sealed to
+ * that one room's `box_pk`, so a listing created before the room is known is a listing nobody may
+ * be able to open — and it has already cost its storage deposit. The page checks this too, with the
+ * chain's own reason; this is the backstop that makes "nothing is created first" structural.
+ */
+export function createListingTx(
+  clearing: string,
+  specBase64: string,
+  fee: string,
+  mode: KeyMode,
+  target: SealTarget | null,
+): SellTx {
+  if (mode === "RoomSealed" && target === null) {
+    throw new Error(
+      "a RoomSealed listing cannot be created before the one room it binds to is known (§3.12.7)",
+    );
+  }
+  return {
+    contract: clearing,
+    method: "create_listing",
+    args: { spec: specBase64 },
+    deposit: fee,
+    gas: SELL_GAS,
+  };
+}
+
+export function beginProvisioningTx(clearing: string, listingId: number): SellTx {
+  return {
+    contract: clearing,
+    method: "begin_provisioning",
+    args: { listing_id: String(listingId) },
+    gas: SELL_GAS,
+  };
+}
+
+export function setPinsTx(
+  keypolicy: string,
+  listingId: number,
+  version: number,
+  pins: readonly string[] | null,
+  fee: string,
+): SellTx {
+  return {
+    contract: keypolicy,
+    method: "set_pins",
+    args: { listing_id: String(listingId), version, pins },
+    deposit: fee,
+    gas: SELL_GAS,
+  };
+}
+
+export function publishListingTx(
+  clearing: string,
+  listingId: number,
+  publishBase64: string,
+  fee: string,
+): SellTx {
+  return {
+    contract: clearing,
+    method: "publish_listing",
+    args: { listing_id: String(listingId), publish: publishBase64 },
+    deposit: fee,
+    gas: SELL_GAS,
+  };
+}
+
+/**
+ * Signs one call, if this key mode's plan has it.
+ *
+ * The guard is not decoration. A RoomSealed listing that is sent `begin_provisioning` is refused on
+ * chain (`E_RULE_DISABLED`) after the seller has paid gas, and `set_pins` would charge a storage
+ * deposit for pins no release path reads. Refusing here costs nothing and names the reason.
+ */
+export async function sendSellCall(signer: Signer, mode: KeyMode, tx: SellTx): Promise<string> {
+  if (!sellMethods(mode).includes(tx.method)) {
+    throw new Error(`a ${mode} listing never calls ${tx.method} (SDD §3.12.7)`);
+  }
+  return signer.send(tx);
+}
+
+// -----------------------------------------------------------------------------------------------
+// What the good is sealed to
+
+/** The key `DEK_g ‖ salt` is sealed to, and everything the seller is owed about it. */
+export interface SealTarget {
+  /** The X25519 public key, hex: the room's attested `box_pk`. */
+  readonly publicKey: string;
+  /** The room this listing binds to (SDD line 1955), hex. */
+  readonly roomKey: string;
+  /** The attestation record's quote hash — shown, not verified here; see {@link quoteNote}. */
+  readonly quoteHash: string;
+  /** The measurement set hash the same record carries, which `/rooms` shows in full. */
+  readonly measurementHash: string;
+  /** `OnChainDcap`, `AttesterQuorum` or `Simulated`, as KeyPolicy recorded it. */
+  readonly attestationMode: string;
+  /** Unix seconds, from KeyPolicy's record: after this the room gets no key and no work. */
+  readonly expiresAt: number;
+}
+
+const HEX32 = /^[0-9a-f]{64}$/;
+
+/**
+ * The one room a RoomSealed listing may be sealed to, with its attestation checked as far as a
+ * browser honestly can.
+ *
+ * **Exactly one.** RoomSealed binds a listing to one room: only that room holds the `box_sk` that
+ * opens the wrap. With a second eligible room the very next job is a coin flip — `pick_room` picks
+ * the screening room at random, `runScreening` opens the good, and a room that cannot open it
+ * leaves the listing stuck in `Screening` — so this refuses with none or several, before
+ * `create_listing` is signed and before any object is uploaded. A refusal costs the seller nothing.
+ *
+ * **What "check the quote hash" can mean from here** (§3.12.7 asks clients to check it before
+ * sealing). A browser has views, not quotes: it cannot re-verify a TDX quote, which is what
+ * KeyPolicy's locked verifier did at registration. So this checks everything that *is* checkable
+ * and shows the rest:
+ *
+ * - KeyPolicy holds an attestation record for this room, and its `box_pk` is well formed;
+ * - clearing's own registry record for the same room agrees on that `box_pk`. The two contracts
+ *   store it separately — KeyPolicy wrote clearing's copy through `admit_room` after verifying the
+ *   quote — so agreement is real evidence, while the record's own `room_key` is not: the view
+ *   echoes the argument it was given;
+ * - `check_room` says clearing would still give this room work (not unknown, not expired, platform
+ *   still admitted), which is the chain's own clock rather than the browser's;
+ * - KeyPolicy's record has not expired either, against the time the caller passes in;
+ * - the quote hash is a 32-byte hash and is handed to the seller, labelled with the mode that
+ *   produced it. `OnChainDcap` means the chain verified the quote behind that hash; `Simulated`
+ *   means nobody did, and {@link quoteNote} says so in those words.
+ */
+export async function roomSealTarget(
+  chain: ChainPort,
+  clearing: string,
+  keypolicy: string,
+  nowSecs: number,
+): Promise<SealTarget> {
+  const keys = await knowledgeRoomKeys(chain, clearing);
+  const roomKey = keys.length === 1 ? keys[0] : undefined;
+  if (roomKey === undefined) {
+    throw new Error(
+      `RoomSealed binds a listing to one room, and ${clearing} has ${keys.length} eligible: ` +
+        `${keys.length === 0 ? "nothing can open a good sealed now" : keys.join(", ")}. ` +
+        "Register exactly one room for this mode, or deploy a profile that uses CKD.",
+    );
+  }
+  const row = await loadRoom(chain, clearing, keypolicy, roomKey);
+  const attestation = row.attestation;
+  if (attestation === null) {
+    throw new Error(`${keypolicy} has no attestation record for room ${roomKey}`);
+  }
+  if (row.room === null || row.room.box_pk !== attestation.box_pk) {
+    throw new Error(
+      `${clearing} and ${keypolicy} do not agree on room ${roomKey}'s box_pk, so there is no ` +
+        "attested key to seal to",
+    );
+  }
+  if (row.denyReasons.length > 0) {
+    throw new Error(
+      `${clearing} would give room ${roomKey} no work: ${row.denyReasons.join(", ")}`,
+    );
+  }
+  if (attestation.expires_at <= nowSecs) {
+    throw new Error(
+      `room ${roomKey}'s attestation expired at ${attestation.expires_at} (it is now ${nowSecs})`,
+    );
+  }
+  if (!HEX32.test(attestation.box_pk) || /^0+$/.test(attestation.box_pk)) {
+    throw new Error(`room ${roomKey}'s box_pk is not a 32-byte key: "${attestation.box_pk}"`);
+  }
+  if (!HEX32.test(attestation.quote_hash)) {
+    throw new Error(`room ${roomKey}'s record carries no quote hash: "${attestation.quote_hash}"`);
+  }
+  return {
+    publicKey: attestation.box_pk,
+    roomKey,
+    quoteHash: attestation.quote_hash,
+    measurementHash: attestation.measurement_hash,
+    attestationMode: attestation.mode,
+    expiresAt: attestation.expires_at,
+  };
+}
+
+/**
+ * What the quote hash the seller is about to seal against is worth. `modeNote` is `/rooms`' own
+ * wording, so the same room reads the same way on both pages.
+ */
+export function quoteNote(target: SealTarget): string {
+  const mode = modeNote(target.attestationMode);
+  return mode.real
+    ? `${mode.note} This page did not re-verify it: it shows the hash of the quote the chain ` +
+        "verified, so it can be compared with the room's record on /rooms."
+    : `${mode.note} The quote hash below identifies a quote nothing on this chain checked, so the ` +
+        "box_pk you are sealing to is attested in name only.";
+}
+
+/**
+ * The key this listing's `DEK_g` is sealed to, or null while there is none.
+ *
+ * Under Ckd that is the listing's own `pk_L`, which exists only once a room has reported it; under
+ * RoomSealed it is the attested room's `box_pk`. A good sealed to anything else can never be
+ * opened, which is why this is one function rather than a condition at each call site.
+ */
+export function sealPublicKey(
+  mode: KeyMode,
+  listing: Listing | null,
+  target: SealTarget | null,
+): string | null {
+  if (mode === "Ckd") return listing?.pk_l ?? null;
+  return target?.publicKey ?? null;
+}
+
+/** Where an object was uploaded, for the step that shows it. */
+export interface Sealed {
+  readonly goodKey: string;
+  readonly dekKey: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly ciphertext: BlobRefJson;
+}
+
+/**
+ * Seals the good and uploads both objects (SDD §3.19, §3.12.4). This is the whole of what the
+ * browser does with the plaintext: a fresh `DEK_g`, XChaCha20-Poly1305 over the canonical text,
+ * `DEK_g ‖ salt` in a sealed box to `sealTo`, and the two objects at the keys the room reads.
+ *
+ * It is the same code for both modes, because the only thing that differs is which public key is
+ * passed in — and the room opens either one the same way.
+ */
+export async function sealAndUpload(
+  input: {
+    readonly canonical: string;
+    readonly saltHex: string;
+    readonly sealTo: string;
+    readonly listingId: number;
+    readonly version: number;
+  },
+  upload: (key: string, bytesHex: string) => Promise<Uploaded>,
+): Promise<Sealed> {
+  const key = await dek();
+  const object = await aeadSeal(key, new TextEncoder().encode(input.canonical), new Uint8Array(0));
+  const wrapped = await wrapKey(fromHex(input.sealTo), key, fromHex(input.saltHex));
+  const good = goodKey(input.listingId, input.version);
+  const dekAt = wrappedKeyKey(input.listingId, input.version);
+  const uploaded = await upload(good, toHex(object));
+  await upload(dekAt, toHex(wrapped));
+  return {
+    goodKey: good,
+    dekKey: dekAt,
+    sha256: uploaded.sha256,
+    bytes: object.length,
+    ciphertext: await blobRefJson(good, uploaded.sha256, object.length),
+  };
+}
+
+// -----------------------------------------------------------------------------------------------
+// The disclosure RoomSealed is not allowed to be used without (SDD §3.12.7)
+
+/** One thing the seller is told before signing. */
+export interface Limitation {
+  readonly title: string;
+  readonly detail: string;
+}
+
+/**
+ * The limitations §3.12.7 says are "disclosed whenever the mode is used", as the seller's own
+ * listing rather than as a footnote: the key is lost on a restart, one room is the only one that
+ * can ever deliver, and DR-5's job-commitment proof is absent. The fourth item is what this room's
+ * attestation is actually worth, which decides how much the other three cost.
+ *
+ * The wording is bound by AC-29: nothing here claims deletion or unlearning. A room forgets a
+ * plaintext **under attestation** — a claim about the room's code and hardware, not a proof — and
+ * that is how it is said.
+ */
+export function roomSealedDisclosure(target: SealTarget): readonly Limitation[] {
+  return [
+    {
+      title: "A room restart loses the key",
+      detail:
+        "DEK_g is sealed to box_pk, which the room generates in memory at boot and never writes " +
+        "down. A restarted room has a different one, and this listing has to be sealed and " +
+        "published again before any buyer can appraise it.",
+    },
+    {
+      title: `Only room ${target.roomKey.slice(0, 10)}… can ever deliver`,
+      detail:
+        "No other room holds the secret half of this key, however well it is attested, so a " +
+        "re-delivery, a re-appraisal or a re-assignment after an expiry is impossible while this " +
+        "listing is RoomSealed. Under CKD any eligible room can do all three.",
+    },
+    {
+      title: "There is no job-commitment proof",
+      detail:
+        "Under CKD the room gets the listing key only with KeyPolicy's signature over the " +
+        "commitment of the job the buyer paid for, so the release is itself the proof (DR-5). " +
+        "RoomSealed has no such ticket: the room already holds the key, and all that stands " +
+        "between a job and the good is the room recomputing that commitment from what one RPC " +
+        "endpoint told it. SDD §3.12.7's answer is a cross-check on two independent providers; " +
+        "M1's room reads one. The good's working plaintext is still forgotten under attestation, " +
+        "which rests on the room's code and hardware rather than on any proof.",
+    },
+    { title: "What this room's attestation is worth", detail: quoteNote(target) },
+  ];
 }
 
 // -----------------------------------------------------------------------------------------------

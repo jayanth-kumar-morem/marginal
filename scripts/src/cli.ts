@@ -7,8 +7,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_PRIVATE_KEY, Sandbox } from "near-sandbox";
 import type { KeyPairString } from "near-api-js";
-import { deployAll } from "./deploy.js";
-import { keysPath, manifestPath, profilePath, repoRoot, wasmDir } from "./paths.js";
+import { complianceKeyWarnings, deployAll, servicesEnv } from "./deploy.js";
+import { circuitsDir, keysPath, manifestPath, profilePath, repoRoot, servicesEnvPath, wasmDir } from "./paths.js";
 import { loadProfile } from "./profile.js";
 
 /** The deployer's secret key: `$NEAR_DEPLOYER_KEY`, else the near-cli credentials file. */
@@ -25,6 +25,24 @@ export function testnetDeployerKey(account: string): KeyPairString {
 export function gitRevision(root: string): { commit: string; dirty: boolean } {
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
   return { commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain") !== "" };
+}
+
+/**
+ * A `KEY=value` file, as the compose reads it. Values are written raw: the only ones that are not
+ * hex or an account id are the simulated measurement (compact JSON, no newline) and the agent's
+ * key, and docker compose takes an unquoted value to the end of the line.
+ */
+export function writeEnv(path: string, env: Record<string, string>, mode: number): void {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, Object.entries(env).map(([key, value]) => `${key}=${value}`).join("\n") + "\n");
+  chmodSync(path, mode);
+}
+
+/** What a `KEY=value` file already holds, or nothing when there is no file to read. */
+export function readEnv(path: string): Record<string, string> {
+  if (!existsSync(path)) return {};
+  const lines = readFileSync(path, "utf8").split("\n").filter((line) => line.includes("="));
+  return Object.fromEntries(lines.map((line) => [line.slice(0, line.indexOf("=")).trim(), line.slice(line.indexOf("=") + 1)]));
 }
 
 /** Writes JSON and sets the file's mode, which `writeFileSync` applies only when it creates the file. */
@@ -57,10 +75,11 @@ export async function runUp(argv: string[], opts: { root?: string; log?: (line: 
     const deployerKey = sandbox ? (DEFAULT_PRIVATE_KEY as KeyPairString) : testnetDeployerKey(p.accounts.deployer);
     if (sandbox) log(`sandbox node at ${rpcUrl}`);
 
-    const { manifest } = await deployAll(p, {
+    const { manifest, keys } = await deployAll(p, {
       rpcUrl,
       deployerKey,
       wasmDir: wasmDir(root),
+      circuitsDir: circuitsDir(root),
       log,
       git,
       saveKeys: (keys) => writeJson(keysFile, keys, 0o600),
@@ -69,6 +88,19 @@ export async function runUp(argv: string[], opts: { root?: string; log?: (line: 
     writeJson(manifestFile, manifest, 0o644);
     log(`manifest written: ${manifestFile}`);
     log(`keys for the accounts we created: deploy/.keys/${p.profile}.json (gitignored)`);
+
+    // The host services' whole environment, so the command below is true and the compose warns
+    // about nothing. It holds the agent's key and the compliance seeds, so it is 0600 and nothing
+    // here is printed; `.env.*` is gitignored and the pre-commit hook refuses a staged .env.
+    const envFile = servicesEnvPath(root, p.profile);
+    const { env, generated } = servicesEnv(p, manifest, keys, readEnv(envFile));
+    writeEnv(envFile, env, 0o600);
+    log(`host services environment: ${envFile} (mode 0600, holds secrets)`);
+    log(`  start them with: cd deploy/services && docker compose --env-file .env.${p.profile} up --build`);
+    if (generated.length > 0) log(`      generated a fresh ${generated.join(" and ")}`);
+    // The seeds are gitignored and the public keys are committed, so they can drift apart with no
+    // error anywhere. Say so here, where someone is still looking.
+    for (const line of complianceKeyWarnings(p, env, `deploy/profiles/${p.profile}.toml`)) log(line);
 
     if (sandbox && !argv.includes("--once")) {
       log(`sandbox is running at ${rpcUrl}. Ctrl-C to stop.`);

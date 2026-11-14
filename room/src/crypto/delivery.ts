@@ -20,6 +20,7 @@ import {
   boxPublicKey,
   hkdf,
   sharedSecret,
+  type BoxKeys,
 } from "./sodium.js";
 
 const EPH_INFO = Buffer.from("marginal/delivery/v1", "utf8");
@@ -52,11 +53,14 @@ export function deliveryPayload(
   return concat(dek, salt, version);
 }
 
-/** The ephemeral key for a job: derived from `sk_L`, so it is the same in every room. */
-export function ephemeralKey(secretKey: Uint8Array, jobCommitment: Uint8Array): {
-  secretKey: Uint8Array;
-  publicKey: Uint8Array;
-} {
+/**
+ * The ephemeral key for a job: derived from the ikm, so it is the same every time it is derived.
+ *
+ * The ikm is `sk_L` under Ckd, which any room holding `K_L` can re-derive, and the room's own
+ * `box_sk` under the RoomSealed fallback, which only that room has — so a RoomSealed delivery can
+ * be reproduced only by the room that made it (§3.19, §3.12.7).
+ */
+export function ephemeralKey(secretKey: Uint8Array, jobCommitment: Uint8Array): BoxKeys {
   if (jobCommitment.length !== 32) throw new Error("delivery: a job commitment is 32 bytes");
   const ephSk = hkdf(secretKey, jobCommitment, EPH_INFO, 32);
   return { secretKey: ephSk, publicKey: boxPublicKey(ephSk) };
@@ -85,17 +89,21 @@ export interface Delivery {
 }
 
 /**
- * Seals the key to each recipient in turn. The order is the caller's and it is part of `h_D`, so
- * the buyer comes first and the compliance copy, when there is one, second (§3.19, AC-55).
+ * Seals the key to each recipient in turn, under an ephemeral key that was already derived. The
+ * order is the caller's and it is part of `h_D`, so the buyer comes first and the compliance copy,
+ * when there is one, second (§3.19, AC-55).
+ *
+ * This is the whole of the sealing. It takes the ephemeral key rather than the ikm it came from,
+ * because under the RoomSealed fallback the ikm is the room's `box_sk`, which a worker never holds:
+ * the supervisor derives this job's key and hands it over (§3.12.7, `worker/ipc.ts`).
  */
-export function sealDelivery(
-  listingSecretKey: Uint8Array,
+export function sealDeliveryWith(
+  eph: BoxKeys,
   jobCommitment: Uint8Array,
   payload: Uint8Array,
   recipients: readonly Uint8Array[],
 ): Delivery {
   if (recipients.length === 0) throw new Error("delivery: there is nobody to deliver to");
-  const eph = ephemeralKey(listingSecretKey, jobCommitment);
   return {
     eph_pk: Buffer.from(eph.publicKey).toString("hex"),
     entries: recipients.map((recipient) => {
@@ -108,6 +116,24 @@ export function sealDelivery(
       };
     }),
   };
+}
+
+/**
+ * The Ckd path: the ephemeral key comes from `sk_L` and the job commitment, so any room holding
+ * `K_L` reproduces the same delivery (AC-31).
+ */
+export function sealDelivery(
+  listingSecretKey: Uint8Array,
+  jobCommitment: Uint8Array,
+  payload: Uint8Array,
+  recipients: readonly Uint8Array[],
+): Delivery {
+  return sealDeliveryWith(
+    ephemeralKey(listingSecretKey, jobCommitment),
+    jobCommitment,
+    payload,
+    recipients,
+  );
 }
 
 /**

@@ -18,6 +18,8 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
+    "@marginal/compliance": "workspace:*",
+    "@marginal/core-wasm": "workspace:*",
     "near-api-js": "7.5.3",
     "near-sandbox": "0.3.5",
     "smol-toml": "1.9.1"

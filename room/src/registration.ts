@@ -79,6 +79,29 @@ export interface RegistrationBundle {
   readonly class: string;
   /** The room's proof that it holds `sign_pk` (E3.2). */
   readonly sign_sig: string;
+  /**
+   * Never set on a real registration, so the bytes the agent relays are exactly what E3.2's
+   * verifier checks; the simulated bundle below sets it to `true`.
+   */
+  readonly simulated?: false;
+}
+
+/**
+ * A registration with nothing proved (SDD §6.1, E14.4): no quote, no event log and no
+ * proof-of-possession, because a room with no TDX machine has nothing to make them from.
+ *
+ * The room deliberately claims **no measurement**. In a real run the measurement comes out of the
+ * quote's event log, which the room does not have here, so the agent's own configuration supplies
+ * it — the untrusted host claiming what a quote would have proved, which is what `SimRoom` is for.
+ * Only `keypolicy-sim` has a method that accepts it, and the record it writes says `Simulated`.
+ */
+export interface SimulatedBundle {
+  readonly sign_pk: string;
+  readonly box_pk: string;
+  readonly nonce: string;
+  readonly class: string;
+  /** The discriminant the agent switches on. Literally `true`, and nothing else counts. */
+  readonly simulated: true;
 }
 
 /**
@@ -86,6 +109,11 @@ export interface RegistrationBundle {
  * by the TD report, whose `report_data` sits at offset 520.
  */
 const REPORT_DATA_OFFSET = 48 + 520;
+
+/** A nonce KeyPolicy issued, or nothing: it goes into the report data, so it is checked first. */
+function checkNonce(nonceHex: string): void {
+  if (!/^[0-9a-f]{64}$/.test(nonceHex)) throw new Error("the nonce is not 32 bytes of hex");
+}
 
 /**
  * Builds a registration and **checks it the way KeyPolicy will** before anyone pays for it. The
@@ -104,7 +132,7 @@ export async function buildRegistration(
   dstack: DstackPort,
   nonceHex: string,
 ): Promise<RegistrationBundle> {
-  if (!/^[0-9a-f]{64}$/.test(nonceHex)) throw new Error("the nonce is not 32 bytes of hex");
+  checkNonce(nonceHex);
   const binding = roomBinding(config, keys, nonceHex);
   const expected = reportData(binding);
   const { quote, eventLog } = await dstack.getQuote(expected);
@@ -130,15 +158,46 @@ export async function buildRegistration(
   };
 }
 
-/** Registers the room: a nonce from the agent, a quote from dstack, and the agent relays it. */
+/**
+ * What a room registers with when there is no TDX machine to ask (SDD §6.1, E14.4).
+ *
+ * There is nothing to build: the room's two public keys, the nonce it was issued, and the class it
+ * runs as. No quote, so no report data and no proof of possession — `register_room_simulated` checks
+ * neither, because a simulated record proves nothing anyway and pretending otherwise would be worse
+ * than being plain about it.
+ */
+export function simulatedBundle(
+  config: RoomConfig,
+  keys: RoomKeys,
+  nonceHex: string,
+): SimulatedBundle {
+  checkNonce(nonceHex);
+  return {
+    sign_pk: toHex(keys.signPk),
+    box_pk: toHex(keys.boxPk),
+    nonce: nonceHex,
+    class: config.roomClass,
+    simulated: true,
+  };
+}
+
+/**
+ * Registers the room: a nonce from the agent, a quote from dstack, and the agent relays it.
+ *
+ * A simulated run never reaches dstack. That is the point of it — on a laptop
+ * `/var/run/dstack.sock` does not exist, so asking for a quote is not a degraded path but a
+ * guaranteed failure.
+ */
 export async function register(
   config: RoomConfig,
   keys: RoomKeys,
   dstack: DstackPort,
   operator: OperatorPort,
-): Promise<RegistrationBundle> {
+): Promise<RegistrationBundle | SimulatedBundle> {
   const nonce = await operator.issueNonce();
-  const bundle = await buildRegistration(config, keys, dstack, nonce);
+  const bundle = config.simulatedAttestation
+    ? simulatedBundle(config, keys, nonce)
+    : await buildRegistration(config, keys, dstack, nonce);
   await operator.register(bundle);
   return bundle;
 }

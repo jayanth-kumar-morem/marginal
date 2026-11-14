@@ -71,7 +71,11 @@ export function gateway(options: GatewayOptions): Server {
 }
 
 /** Starts the gateway. Returns the port, so a test can ask for a free one. */
-export async function serve(options: GatewayOptions, port: number): Promise<{ server: Server; port: number }> {
+export async function serve(
+  options: GatewayOptions,
+  port: number,
+  host?: string,
+): Promise<{ server: Server; port: number }> {
   const server = gateway(options);
-  return { server, port: await listen(server, port) };
+  return { server, port: await listen(server, port, host) };
 }

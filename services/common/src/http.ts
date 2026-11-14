@@ -193,11 +193,38 @@ export function portFrom(env: NodeJS.ProcessEnv, fallback: number): number {
   return port;
 }
 
+/**
+ * The address to bind to. **The default is loopback on purpose**: a service started on a laptop
+ * should not appear on the network. A container is the exception — inside one, `127.0.0.1` is the
+ * *container's* loopback, so a published port has nothing to forward to and the service is
+ * unreachable from the host while logging that it started. `deploy/services/docker-compose.yaml`
+ * therefore sets `MARGINAL_BIND=0.0.0.0`, where "all interfaces" means the container's.
+ */
+export function bindFrom(env: NodeJS.ProcessEnv, fallback = "127.0.0.1"): string {
+  const given = env.MARGINAL_BIND;
+  if (given === undefined || given.trim() === "") return fallback;
+  return given.trim();
+}
+
 /** A value a service cannot start without. */
 export function fromEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
   if (value === undefined || value.trim() === "") throw new Error(`${name} is required`);
   return value.trim();
+}
+
+/**
+ * An optional value, where **blank means absent**.
+ *
+ * `env[name] !== undefined` is the wrong question. An `.env` file writes an unset variable as
+ * `NAME=`, and docker compose substitutes a missing one as the empty string, so a service that
+ * tests for `undefined` reads "set" where the operator set nothing. That is not hypothetical: the
+ * operator agent reported `judges live` and would have called NEAR AI with an empty key, because
+ * `MARGINAL_NEARAI_KEY=` is in the generated env file. Blank is absent, everywhere.
+ */
+export function optionalEnv(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  const value = env[name];
+  return value === undefined || value.trim() === "" ? undefined : value.trim();
 }
 
 /** A comma-separated list from the environment, with no empty entries. */

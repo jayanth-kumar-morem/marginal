@@ -23,7 +23,9 @@ import {
   pinsFee,
   quoteAmount,
   quoteRequest,
+  roomSealTarget,
   type PayoutQuoteInput,
+  type SealTarget,
 } from '@/lib/sell';
 import Link from 'next/link';
 
@@ -56,6 +58,31 @@ async function findListingAction(seller: string): Promise<ActionResult<Listing |
   const config = loadConfig();
   try {
     return { ok: await newestListing(chainClient(config.rpcUrl), config.clearing, seller) };
+  } catch (error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * The one attested room a RoomSealed listing may be sealed to (SDD §3.12.7).
+ *
+ * It is a server action for the same reason the chain reads are: the page's CSP lets a tab holding
+ * a seller's plaintext open connections back here and nowhere else. The clock is this server's,
+ * because KeyPolicy's `expires_at` is in unix seconds — clearing's own `check_room` is asked too,
+ * and that one uses the chain's clock.
+ */
+async function sealTargetAction(): Promise<ActionResult<SealTarget>> {
+  'use server';
+  const config = loadConfig();
+  try {
+    return {
+      ok: await roomSealTarget(
+        chainClient(config.rpcUrl),
+        config.clearing,
+        config.keypolicy,
+        Math.floor(Date.now() / 1000),
+      ),
+    };
   } catch (error: unknown) {
     return { error: error instanceof Error ? error.message : String(error) };
   }
@@ -118,11 +145,13 @@ export default async function SellPage() {
       <SellWizard
         clearing={config.clearing}
         keypolicy={config.keypolicy}
+        keyMode={config.keyMode}
         token={config.token}
         fees={fees}
         measurements={measurements}
         readListing={readListingAction}
         findListing={findListingAction}
+        findSealTarget={sealTargetAction}
         askQuote={quoteAction}
       />
     </main>

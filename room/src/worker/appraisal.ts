@@ -13,20 +13,57 @@
  */
 import { call } from "@marginal/core-wasm";
 
-import { snapshotRecord, type ListingRecord } from "../chain.js";
+import {
+  snapshotRecord,
+  type ClearingConfig,
+  type JobRecord,
+  type ListingRecord,
+} from "../chain.js";
 import { signCertificate } from "../cert/forget.js";
-import { sealDelivery, deliveryPayload } from "../crypto/delivery.js";
+import { deliveryPayload } from "../crypto/delivery.js";
 import { aeadOpen, memzero, randomBytes } from "../crypto/sodium.js";
 import { MIN_CONTEXT_CLAIMS } from "../appraisers/knowledge/index.js";
 import { SEALED_FORMULA, postedAsk, proveSealed, type SealedBody } from "../prove.js";
 import { claims } from "../appraisers/knowledge/novelty.js";
 import type { Appraiser, JudgeFactor } from "../appraisers/types.js";
 import { loadJob, openGood, type JobData, type WorkerContext } from "./context.js";
-import { listingKeyFor, type DerivedKey } from "./keys.js";
-import { base64, certificateKey, commitmentOf, hashOf } from "./report.js";
+import { jobKeyFor, type JobKey } from "./keys.js";
+import { base64, certificateKey, commitmentOf } from "./report.js";
 
 /** `"marginal/verdict"`, the verdict's 16-byte domain tag. */
 export const VERDICT_DOMAIN = Buffer.from("marginal/verdict", "utf8").toString("hex");
+
+/** `"marginal/ack"`, the ack's 16-byte domain tag. */
+export const ACK_DOMAIN = Buffer.from("marginal/ack\0\0\0\0", "utf8").toString("hex");
+
+/**
+ * The room's own `Assigned → Computing` ack (SDD §3.5, §3.12.7; `clearing.room_ack`).
+ *
+ * Under Ckd the key release is the signal: KeyPolicy calls `authorize_release` and that call moves
+ * the job. A RoomSealed listing has no key release for clearing to observe — the room opens the
+ * seller's wrap with its own `box_sk` — so the room says so itself, over a message that binds this
+ * chain, this contract, this job and this job's commitment. The operator agent relays it and pays
+ * the gas; it cannot forge one, because the room's key signs all four together.
+ */
+async function ackJob(
+  ctx: WorkerContext,
+  job: JobRecord,
+  clearing: ClearingConfig,
+): Promise<void> {
+  const ack = {
+    domain: ACK_DOMAIN,
+    chain_id: clearing.chain_id,
+    clearing: ctx.config.clearing,
+    job_id: job.id,
+    room_key: ctx.roomKeyHex,
+    job_commitment: job.job_commitment,
+  };
+  const signature = await ctx.channel.sign(call("room_ack_signing_bytes", ack) as string);
+  await ctx.channel.submit("room_ack", {
+    ack: base64(call("room_ack_encode", ack) as string),
+    room_sig: base64(signature),
+  });
+}
 
 /** Where a job's sealed context bundle lives. The buyer's SDK writes it (E12.1). */
 export function contextKey(jobId: number): string {
@@ -133,13 +170,19 @@ export async function runAppraisal(
   await checkCommitment(ctx, data);
 
   const appraiser = await make(listing);
-  const keys = await listingKeyFor({ ...ctx }, job, listing, ctx.appKeySource);
-  const decided = await decide(ctx, data, keys, appraiser);
+  const key = await jobKeyFor(ctx, job, listing, ctx.appKeySource);
+  // A RoomSealed job acks before anything is computed, and a Ckd job never acks at all: clearing
+  // refuses an ack for a Ckd listing, because KeyPolicy's `authorize_release` is what moves one.
+  // It cannot wait until the good is open: a job refused at its context never opens the good, and
+  // its verdict still has to be accepted, which needs the job in `Computing` (§3.5). A screening or
+  // provisioning report is the other way round — it is accepted only while the job is `Assigned` —
+  // so neither of those kinds acks.
+  if (key.mode === "RoomSealed") await ackJob(ctx, job, data.clearing);
+  const decided = await decide(ctx, data, key, appraiser);
   try {
-    return await submit(ctx, data, keys, appraiser, decided, started);
+    return await submit(ctx, data, key, appraiser, decided, started);
   } finally {
-    memzero(keys.root);
-    memzero(keys.secretKey);
+    key.destroy();
   }
 }
 
@@ -151,7 +194,7 @@ export async function runAppraisal(
 async function decide(
   ctx: WorkerContext,
   data: JobData,
-  keys: DerivedKey,
+  key: JobKey,
   appraiser: Appraiser,
 ): Promise<Verdict> {
   const { job, listing } = data;
@@ -177,7 +220,7 @@ async function decide(
     return { status: "InputRejected", components: [0, 0], factors: [], delivery: null };
   }
 
-  const good = await openGood(ctx, listing, keys, aeadOpen);
+  const good = await openGood(ctx, listing, key.unwrap, aeadOpen);
   try {
     // Step 4: the buyer said they would not take this, so nothing else is computed.
     if (restrictedMatch(Buffer.from(good.plaintext).toString("utf8"), bundle.restricted) !== undefined) {
@@ -189,10 +232,10 @@ async function decide(
       need: bundle.need,
       requestId: `${ctx.config.clearing}/${job.id}`,
     });
-    // On a deal the buyer needs the key, and the delivery is derived, so it can be built now and
-    // reproduced by any room later (§3.19).
-    const delivery = sealDelivery(
-      keys.secretKey,
+    // On a deal the buyer needs the key, and the delivery is derived rather than drawn, so it can
+    // be built now and re-derived later: by any room holding `K_L` under Ckd, and by this room
+    // alone under the RoomSealed fallback (§3.19, §3.12.7).
+    const delivery = await key.seal(
       new Uint8Array(Buffer.from(job.job_commitment, "hex")),
       deliveryPayload(good.dek, good.salt, listing.version),
       [
@@ -237,7 +280,7 @@ function sealedBody(data: JobData, appraiser: Appraiser, decided: Verdict): Prom
 async function submit(
   ctx: WorkerContext,
   data: JobData,
-  keys: DerivedKey,
+  key: JobKey,
   appraiser: Appraiser,
   decided: Verdict,
   started: number,
@@ -260,7 +303,7 @@ async function submit(
     clearing: ctx.config.clearing,
     roomKeyHex: ctx.roomKeyHex,
     inputCommitments: [commitmentOf(new Uint8Array(Buffer.from(job.job_commitment, "hex"))).commitment],
-    keyIdsDestroyed: [hashOf(keys.publicKey)],
+    keyIdsDestroyed: key.keyIds,
     egress: deliveryHash === null ? [] : [deliveryHash],
     tStart: started,
     tEnd: ctx.now(),

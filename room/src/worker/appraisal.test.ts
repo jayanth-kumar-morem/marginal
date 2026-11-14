@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { call } from "@marginal/core-wasm";
 
 import { appId, appKeyFromScalar, listingKeys } from "../crypto/ckd.js";
-import { openDelivery } from "../crypto/delivery.js";
-import { boxKeys } from "../crypto/sodium.js";
-import { generateRoomKeys } from "../keys.js";
+import { ephemeralKey, openDelivery } from "../crypto/delivery.js";
+import { aeadOpen, boxKeys } from "../crypto/sodium.js";
+import { boxSecretKey, generateRoomKeys } from "../keys.js";
 import type { Appraisal, Appraiser } from "../appraisers/types.js";
 import {
   CLEARING,
@@ -22,7 +22,15 @@ import {
   testConfig,
 } from "../testing.js";
 import { closeProver } from "../prove.js";
-import { checkCommitment, parseBundle, restrictedMatch, runAppraisal, contextKey } from "./appraisal.js";
+import { createPublicKey, verify } from "node:crypto";
+import {
+  ACK_DOMAIN,
+  checkCommitment,
+  parseBundle,
+  restrictedMatch,
+  runAppraisal,
+  contextKey,
+} from "./appraisal.js";
 import { loadJob, type WorkerContext } from "./context.js";
 import { runJob } from "./main.js";
 
@@ -32,7 +40,11 @@ const NOW = 1_794_000_000;
 const GOOD = "The fund has begun unwinding its position in Brazilian utilities this quarter.";
 
 /** An appraiser that reports a fixed measurement: the pipeline does not care which one ran. */
-function stubAppraiser(components = [8_000, 10_000]): Appraiser & { seen: string[] } {
+function stubAppraiser(
+  components = [8_000, 10_000],
+  /** What had been submitted by the time it ran, so a test can prove the order of two steps. */
+  onAppraise: () => void = () => {},
+): Appraiser & { seen: string[] } {
   const seen: string[] = [];
   return {
     seen,
@@ -41,6 +53,7 @@ function stubAppraiser(components = [8_000, 10_000]): Appraiser & { seen: string
     formulaId: "KnowledgeV1",
     componentAlphabets: [21, 21],
     appraise(input): Promise<Appraisal> {
+      onAppraise();
       seen.push(input.good);
       return Promise.resolve({ components, factors: [], shown: [], datasheet: { claims: 1 } });
     },
@@ -66,6 +79,7 @@ function world(
     compliance?: boolean;
     rule?: unknown;
     privacy?: string;
+    keyMode?: string;
   } = {},
 ) {
   const keys = generateRoomKeys();
@@ -79,7 +93,11 @@ function world(
   const buyer = boxKeys();
   const compliance = boxKeys();
 
-  const sealed = sealGood(options.good ?? GOOD, derived.publicKey);
+  // Under the RoomSealed fallback the seller seals the wrap to the room's own `box_pk`, and the
+  // listing pins no `pk_L`: there is no listing key (§3.12.7).
+  const keyMode = options.keyMode ?? "Ckd";
+  const roomSealed = keyMode === "RoomSealed";
+  const sealed = sealGood(options.good ?? GOOD, roomSealed ? keys.boxPk : derived.publicKey);
   const bundle = sealBundle(
     {
       context: options.context ?? longContext(),
@@ -97,8 +115,8 @@ function world(
     status: "Active",
     good_commitment: sealed.good_commitment,
     ciphertext: { uri_hash: "0a".repeat(32), sha256: sealed.sha256, size_class: 12 },
-    key_mode: "Ckd",
-    pk_l: Buffer.from(derived.publicKey).toString("hex"),
+    key_mode: keyMode,
+    pk_l: roomSealed ? null : Buffer.from(derived.publicKey).toString("hex"),
     appraiser: "knowledge@1",
     value_class: "M",
     l_floor_bps: 1_000,
@@ -146,6 +164,11 @@ function world(
   const base = operator.submit.bind(operator);
   operator.submit = (method, args, contract) => {
     void base(method, args, contract);
+    // A RoomSealed job must not call KeyPolicy at all: if it does, the call fails loudly rather
+    // than being answered, so no test of this can pass by accident.
+    if (roomSealed && (method === "authorize" || method === "derive")) {
+      return Promise.reject(new Error(`a RoomSealed job asked KeyPolicy for ${method}`));
+    }
     if (method === "authorize") return Promise.resolve("7");
     if (method === "derive") return Promise.resolve(network.answer(id, appKey.pk1));
     if (method === "submit_verdict") return Promise.resolve({ status: "Settled", price: "400000000" });
@@ -166,15 +189,24 @@ function world(
     get_listing: listing,
     get_context_key: bundle.sealedKey,
   });
+  // The supervisor's side of the channel is forked for *this* job, so the `RoomJob` it holds
+  // carries the same commitment the job record does — which is what binds the delivery key to it.
+  const channel = localChannel(
+    keys,
+    operator,
+    jobFixture(11, { kind: "Appraisal", job_commitment: commitment }),
+  );
+  const logs: string[] = [];
   const ctx: WorkerContext = {
-    channel: localChannel(keys, operator, jobFixture(11, { kind: "Appraisal" })),
+    channel,
     chain,
     config,
     roomKeyHex,
     now: () => NOW,
     appKeySource: () => appKey,
+    log: (line) => logs.push(line),
   };
-  return { ctx, operator, chain, derived, buyer, compliance, committed, listing, sealed };
+  return { ctx, operator, chain, derived, buyer, compliance, committed, listing, sealed, keys, logs, channel };
 }
 
 test("an appraisal runs end to end: components published, delivery sealed, receipt submitted", async () => {
@@ -453,5 +485,159 @@ test("a sealed job this room cannot prove is refused rather than answered", asyn
   await assert.rejects(
     () => runAppraisal(indexed.ctx, 11, () => Promise.resolve(stubAppraiser())),
     /sealed mode is built for R1/,
+  );
+});
+
+test("a RoomSealed appraisal seals the delivery under the room's own box key (§3.19, §3.12.7)", async () => {
+  const w = world({ keyMode: "RoomSealed" });
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
+  assert.equal(appraised.status, "Ok");
+  assert.equal(appraised.price, "400000000");
+
+  // No authorize and no derive: there is no listing key to ask KeyPolicy for, and the world would
+  // have failed the call if the pipeline had made one anyway. The ack in front of them is the room
+  // saying it has the key, which is what moves a RoomSealed job to `Computing` (§3.5).
+  assert.deepEqual(
+    w.operator.submitted.map((s) => `${s.contract}.${s.method}`),
+    ["clearing.room_ack", "clearing.submit_verdict", "clearing.submit_delivery_receipt"],
+  );
+  assert.equal(w.logs.length, 1, "the limitations were disclosed, once");
+
+  // The ephemeral key is §3.19's derivation with the room's `box_sk` as the ikm — not something
+  // else of the same shape — and the worker got it without ever holding `box_sk`.
+  const stored = w.operator.blobs.get("deliveries/11");
+  assert.ok(stored);
+  const delivery = call("delivery_decode", { bytes: stored }) as Parameters<typeof openDelivery>[0];
+  const commitment = new Uint8Array(Buffer.from(w.committed.job_commitment, "hex"));
+  assert.equal(
+    delivery.eph_pk,
+    Buffer.from(ephemeralKey(boxSecretKey(w.keys), commitment).publicKey).toString("hex"),
+  );
+
+  // The buyer's own SDK code opens it, and what comes out is the key that opens the good.
+  const payload = openDelivery(delivery, w.buyer.secretKey, commitment);
+  assert.equal(payload.length, 68);
+  const object = new Uint8Array(Buffer.from(w.sealed.object, "hex"));
+  assert.equal(
+    Buffer.from(
+      aeadOpen(payload.subarray(0, 32), object.subarray(0, 24), object.subarray(24), new Uint8Array(0)),
+    ).toString("utf8"),
+    GOOD,
+    "the delivery carries DEK_g itself",
+  );
+  assert.equal(call("delivery_hash", delivery), appraised.deliveryHash);
+
+  // And it is deterministic: the same room, the same job and the same good give the same bytes,
+  // which is what makes a re-delivery by this room possible at all (AC-31, limited to this room).
+  const again = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
+  assert.equal(w.operator.blobs.get("deliveries/11"), stored, "no randomness in the delivery");
+  assert.equal(again.deliveryHash, appraised.deliveryHash);
+});
+
+test("a Ckd appraisal never asks the supervisor for a delivery key", async () => {
+  const w = world();
+  // The IPC operation RoomSealed needs is the room's `box_sk` in another dress: a Ckd job that
+  // reached for it would be a job sealing a delivery nobody but this room could reproduce.
+  w.channel.deliveryKey = (): Promise<never> =>
+    Promise.reject(new Error("a Ckd job asked for the room's delivery key"));
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
+  assert.equal(appraised.status, "Ok");
+  assert.ok(appraised.deliveryHash, "it sealed a delivery from sk_L instead");
+  assert.deepEqual(w.logs, [], "and nothing was disclosed, because no fallback was used");
+  assert.deepEqual(
+    w.operator.submitted.map((s) => s.method),
+    ["authorize", "derive", "submit_verdict", "submit_delivery_receipt"],
+  );
+});
+
+/** The room's ed25519 public key, in the form `verify` takes (`signer.test.ts` does the same). */
+function publicKeyOf(raw: Uint8Array): ReturnType<typeof createPublicKey> {
+  return createPublicKey({
+    key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(raw)]),
+    format: "der",
+    type: "spki",
+  });
+}
+
+test("a RoomSealed appraisal acks the job to clearing before it computes (§3.5, §3.12.7)", async () => {
+  const w = world({ keyMode: "RoomSealed" });
+  // What had been sent by the time the appraiser ran: the ack has to be in it already, because a
+  // verdict is only accepted for a job clearing has moved to `Computing`.
+  let whenAppraised: string[] = [];
+  const appraiser = stubAppraiser([8_000, 10_000], () => {
+    whenAppraised = w.operator.submitted.map((s) => s.method);
+  });
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(appraiser));
+  assert.equal(appraised.status, "Ok");
+  assert.deepEqual(whenAppraised, ["room_ack"], "acked first, and nothing else sent yet");
+  assert.deepEqual(
+    w.operator.submitted.map((s) => `${s.contract}.${s.method}`),
+    ["clearing.room_ack", "clearing.submit_verdict", "clearing.submit_delivery_receipt"],
+    "exactly one ack, to clearing, and no CKD call",
+  );
+
+  // It is the ack for the job this worker was forked for, byte for byte what core encodes, signed
+  // by this room over `"marginal/room-ack/v1" ‖ borsh(ack)`.
+  const sent = w.operator.submitted[0]?.args as { ack: string; room_sig: string };
+  const ack = {
+    domain: ACK_DOMAIN,
+    chain_id: "sandbox",
+    clearing: CLEARING,
+    job_id: 11,
+    room_key: w.ctx.roomKeyHex,
+    job_commitment: w.committed.job_commitment,
+  };
+  assert.equal(ACK_DOMAIN, Buffer.from("marginal/ack\0\0\0\0", "utf8").toString("hex"));
+  assert.equal(
+    Buffer.from(sent.ack, "base64").toString("hex"),
+    call("room_ack_encode", ack),
+    "the bytes clearing decodes are the ones core encodes",
+  );
+  // Every field is pinned by that comparison, because the expected `ack` above is built from this
+  // job's own values; an ack for a neighbouring job encodes to something else.
+  assert.notEqual(
+    call("room_ack_encode", { ...ack, job_commitment: "ff".repeat(32) }),
+    Buffer.from(sent.ack, "base64").toString("hex"),
+    "it is this job's commitment the room signed, not another's",
+  );
+  assert.equal(
+    verify(
+      null,
+      Buffer.from(call("room_ack_signing_bytes", ack) as string, "hex"),
+      publicKeyOf(w.keys.signPk),
+      Buffer.from(sent.room_sig, "base64"),
+    ),
+    true,
+    "signed by the room whose key the ack names",
+  );
+});
+
+test("a RoomSealed job acks even when it rejects its input, so its verdict is still accepted", async () => {
+  // The path that motivates the ordering: nothing is decrypted, nothing is appraised, and a
+  // verdict still goes in — which clearing takes only from a job it has moved to `Computing`.
+  const w = world({
+    keyMode: "RoomSealed",
+    context: "One short sentence of context, which is not enough.",
+  });
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
+  assert.equal(appraised.status, "InputRejected");
+  assert.deepEqual(
+    w.operator.submitted.map((s) => s.method),
+    ["room_ack", "submit_verdict"],
+  );
+});
+
+test("a Ckd appraisal sends no ack: KeyPolicy's key release is what moves one", async () => {
+  const w = world();
+  const appraised = await runAppraisal(w.ctx, 11, () => Promise.resolve(stubAppraiser()));
+  assert.equal(appraised.status, "Ok");
+  assert.equal(
+    w.operator.submitted.some((s) => s.method === "room_ack"),
+    false,
+    "clearing would refuse it with E_RULE_DISABLED",
+  );
+  assert.deepEqual(
+    w.operator.submitted.map((s) => s.method),
+    ["authorize", "derive", "submit_verdict", "submit_delivery_receipt"],
   );
 });

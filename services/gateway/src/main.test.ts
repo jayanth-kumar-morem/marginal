@@ -31,6 +31,27 @@ test("the gateway starts from the environment and serves", async () => {
   const generated = await main({ MARGINAL_BLOB_DIR: directory, PORT: "0" }, () => {});
   await new Promise<void>((resolve) => generated.server.close(() => resolve()));
 
+  // **Blank is absent**, for all three. `docker compose` substitutes an unset variable as "", so a
+  // `.env` line of `MARGINAL_RPC_URL=` must leave the replayer unconfigured rather than build one
+  // against the empty string, and an empty secret must generate one rather than sign grants with
+  // nothing. A live run showed exactly this: the gateway logged `replay not configured` because the
+  // compose file never passed it the chain at all.
+  const blank: string[] = [];
+  const empty = await main(
+    {
+      MARGINAL_BLOB_DIR: directory,
+      PORT: "0",
+      MARGINAL_UPLOAD_SECRET: "",
+      MARGINAL_RPC_URL: "",
+      MARGINAL_CLEARING: "",
+    },
+    (line) => blank.push(line),
+  );
+  assert.match(blank[0] ?? "", /replay not configured/);
+  const stillRefused = await fetch(`http://127.0.0.1:${empty.port}/v1/replay/1`);
+  assert.equal(stillRefused.status, 503, "an empty RPC is not an RPC");
+  await new Promise<void>((resolve) => empty.server.close(() => resolve()));
+
   // Told where the chain is, it serves the real verifier (E12.2) — here against an RPC that is
   // not there, which the report has to say rather than crash on.
   const configured = await main(

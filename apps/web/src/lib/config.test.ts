@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { configFrom, walletFor, type Manifest } from "./config";
+import { configFrom, keyModeFor, walletFor, type Manifest } from "./config";
 import { loadConfig, readManifest } from "./config.server";
 
 /** A manifest shaped like the one `up.sh testnet-demo` writes. */
@@ -93,6 +93,37 @@ test("a production profile carries no banner", () => {
   });
   assert.equal(config.simulatedProfile, false);
   assert.equal(walletFor("mainnet"), "https://app.mynearwallet.com");
+});
+
+test("the key-release mode is the profile's, with one environment override", () => {
+  // SDD §2.7's profile table: CKD everywhere a signer contract exists, which is every profile the
+  // app will ever see but the two local ones.
+  assert.equal(keyModeFor("testnet-demo"), "Ckd");
+  assert.equal(keyModeFor("hdp"), "Ckd");
+  assert.equal(keyModeFor("mainnet-canary"), "Ckd");
+  assert.equal(keyModeFor("sandbox"), "RoomSealed");
+  assert.equal(keyModeFor("local"), "RoomSealed");
+
+  // A manifest that says nothing about a mode — every manifest today — still works, and a
+  // deployment nobody named is CKD rather than the weaker fallback.
+  assert.equal(configFrom({}, manifest).keyMode, "Ckd");
+  assert.equal(
+    configFrom({ MARGINAL_CLEARING: "c.near", MARGINAL_KEYPOLICY: "k.near" }).keyMode,
+    "Ckd",
+  );
+  assert.equal(configFrom({ MARGINAL_PROFILE: "sandbox" }, manifest).keyMode, "RoomSealed");
+
+  // The override, and a typo in it, which is refused rather than quietly ignored.
+  assert.equal(configFrom({ MARGINAL_KEY_MODE: "RoomSealed" }, manifest).keyMode, "RoomSealed");
+  assert.equal(
+    configFrom({ MARGINAL_KEY_MODE: "Ckd", MARGINAL_PROFILE: "sandbox" }, manifest).keyMode,
+    "Ckd",
+  );
+  assert.equal(configFrom({ MARGINAL_KEY_MODE: "" }, manifest).keyMode, "Ckd");
+  assert.throws(
+    () => configFrom({ MARGINAL_KEY_MODE: "roomsealed" }, manifest),
+    /neither Ckd nor RoomSealed/,
+  );
 });
 
 test("the manifest is read from disk, and a missing one is not fatal", () => {

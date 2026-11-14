@@ -39,6 +39,7 @@ export {
 } from "./crypto/ckd.js";
 export {
   sealDelivery,
+  sealDeliveryWith,
   openDelivery,
   deliveryPayload,
   ephemeralKey,
@@ -73,8 +74,10 @@ export {
   roomBinding,
   rtmr3Events,
   proofOfPossession,
+  simulatedBundle,
   toHex,
   type RegistrationBundle,
+  type SimulatedBundle,
   type Rtmr3Event,
 } from "./registration.js";
 export {
@@ -100,7 +103,19 @@ export { main, WORKER_PATH } from "./main.js";
 // The worker side (E8): the channel it reaches the supervisor through, the keys it derives, the
 // certificate it signs, and the two jobs it can run.
 export { workerChannel, type WorkerChannel, type Assignment, type ChannelProcess } from "./worker/ipc.js";
-export { listingKeyFor, listingPath, type KeyContext, type DerivedKey } from "./worker/keys.js";
+export {
+  listingKeyFor,
+  listingPath,
+  jobKeyFor,
+  keyMode,
+  localUnwrap,
+  workerLog,
+  ROOM_SEALED_DISCLOSURE,
+  type KeyContext,
+  type DerivedKey,
+  type JobKey,
+  type KeyMode,
+} from "./worker/keys.js";
 export {
   loadJob,
   openGood,

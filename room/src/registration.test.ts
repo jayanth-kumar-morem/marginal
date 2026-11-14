@@ -11,6 +11,7 @@ import {
   reportData,
   roomBinding,
   rtmr3Events,
+  simulatedBundle,
   toHex,
 } from "./registration.js";
 import { fakeDstack, fakeOperator, goodEventLog, testConfig } from "./testing.js";
@@ -142,4 +143,45 @@ test("registering asks the agent for a nonce and hands it the bundle", async () 
   const bundle = await register(testConfig(), keys, fakeDstack(), operator);
   assert.equal(operator.registered.length, 1);
   assert.deepEqual(operator.registered[0], bundle);
+  // A real bundle says nothing about being simulated, so the agent's check cannot be fooled by it.
+  assert.equal("simulated" in bundle, false);
+});
+
+test("a simulated registration claims nothing a quote would have proved", () => {
+  const config = testConfig({ simulatedAttestation: true });
+  const keys = generateRoomKeys();
+  const bundle = simulatedBundle(config, keys, NONCE);
+  assert.deepEqual(bundle, {
+    sign_pk: toHex(keys.signPk),
+    box_pk: toHex(keys.boxPk),
+    nonce: NONCE,
+    class: "Kcpu",
+    simulated: true,
+  });
+  // The measurement is the host's claim, not the room's: the room has no event log to read it from.
+  for (const field of ["quote", "events", "sign_sig", "measurement", "ppid_hash"]) {
+    assert.equal(field in bundle, false, field);
+  }
+  // The nonce still has to be one KeyPolicy issued, because the contract spends it either way.
+  assert.throws(() => simulatedBundle(config, keys, "nope"), /32 bytes of hex/);
+});
+
+test("a simulated run never asks dstack for a quote", async () => {
+  // There is no /var/run/dstack.sock on a laptop, so this is not a degraded path but the only one.
+  const noDstack = {
+    getQuote(): Promise<never> {
+      throw new Error("there is no dstack socket here");
+    },
+  };
+  const keys = generateRoomKeys();
+  const operator = fakeOperator();
+  const bundle = await register(testConfig({ simulatedAttestation: true }), keys, noDstack, operator);
+  assert.deepEqual(bundle, simulatedBundle(testConfig({ simulatedAttestation: true }), keys, NONCE));
+  assert.deepEqual(operator.registered[0], bundle);
+
+  // And the same room with the flag off does reach dstack, which is what breaks here.
+  await assert.rejects(
+    () => register(testConfig(), keys, noDstack, fakeOperator()),
+    /no dstack socket/,
+  );
 });

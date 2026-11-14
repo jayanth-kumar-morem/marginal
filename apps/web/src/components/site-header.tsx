@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation';
 
 import { pageTitleForPath } from '@/components/app-sidebar';
-import { ThemeToggle } from '@/components/ui/theme-toggle';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';

@@ -4,7 +4,7 @@
  * Its own deploy and its own container, because it holds the two keys that can grant something.
  * Both seeds come from the environment and neither is ever logged.
  */
-import { fromEnv, listFrom, portFrom, reporter, stdout } from "@marginal/service-common";
+import { fromEnv, listFrom, portFrom, reporter, stdout, bindFrom } from "@marginal/service-common";
 
 import { serve, sdnUrlFrom, type Compliance } from "./index.js";
 
@@ -29,6 +29,7 @@ export async function main(
       onError: reporter(log),
     },
     portFrom(env, 8083),
+    bindFrom(env),
   );
   log(`compliance on ${service.port}, list ${service.list().entries} addresses`);
   return service;

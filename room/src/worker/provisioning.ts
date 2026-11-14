@@ -11,7 +11,7 @@ import { call } from "@marginal/core-wasm";
 import { signCertificate } from "../cert/forget.js";
 import { memzero } from "../crypto/sodium.js";
 import { loadJob, type WorkerContext } from "./context.js";
-import { listingKeyFor } from "./keys.js";
+import { keyMode, listingKeyFor } from "./keys.js";
 import { base64, certificateKey, hashOf } from "./report.js";
 
 /** `"marginal/provis\0"`, the report's 16-byte domain tag. */
@@ -22,8 +22,16 @@ export async function runProvisioning(ctx: WorkerContext, jobId: number): Promis
   const started = ctx.now();
   const { job, listing, attestation, clearing } = await loadJob(ctx, jobId);
   if (job.kind !== "Provisioning") throw new Error(`job ${jobId} is a ${job.kind} job`);
+  // There is nothing to provision under the RoomSealed fallback: the seller seals `DEK_g` to the
+  // room's own `box_pk`, so no listing key exists to derive. Clearing refuses `begin_provisioning`
+  // for such a listing (`clearing/src/listing.rs`), so this job cannot legitimately exist — and a
+  // room that was handed one anyway says so rather than deriving a key nothing will ever use.
+  const mode = keyMode(listing);
+  if (mode !== "Ckd") {
+    throw new Error(`job ${jobId}: listing ${listing.id} is ${mode}, so it has no key to provision`);
+  }
 
-  const keys = await listingKeyFor({ ...ctx }, job, listing, ctx.appKeySource);
+  const keys = await listingKeyFor(ctx, job, listing, ctx.appKeySource);
   const pkL = Buffer.from(keys.publicKey).toString("hex");
   try {
     const certificate = await signCertificate(ctx.channel.sign.bind(ctx.channel), {

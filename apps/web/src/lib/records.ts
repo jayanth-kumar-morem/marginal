@@ -25,6 +25,16 @@ export interface ClearingConfig {
   };
 }
 
+/**
+ * How a listing's key reaches the room (`marginal_core::types::KeyReleaseMode`).
+ *
+ * `Ckd` is the real mode: the listing key is derived by MPC chain key derivation and released
+ * against a job commitment. `RoomSealed` is the fallback of SDD §3.12.7, where the good is sealed
+ * straight to one attested room's `box_pk` — which is all a deployment with no MPC network can do.
+ * `Listing.key_mode` stays a `string`, because a view that grows a variant must not break the app.
+ */
+export type KeyMode = "Ckd" | "RoomSealed";
+
 /** `clearing.get_listing(listing_id)`. */
 export interface Listing {
   readonly id: number;

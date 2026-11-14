@@ -5,6 +5,8 @@ import {
   HttpError,
   MAX_BODY_BYTES,
   fromEnv,
+  optionalEnv,
+  bindFrom,
   jsonServer,
   listFrom,
   listen,
@@ -213,6 +215,24 @@ test("the small helpers every service shares", () => {
   assert.equal(fromEnv({ A: " x " }, "A"), "x");
   assert.throws(() => fromEnv({}, "A"), /A is required/);
   assert.throws(() => fromEnv({ A: "  " }, "A"), /A is required/);
+
+  // Blank is absent. A `.env` file writes an unset variable as `NAME=` and compose substitutes a
+  // missing one as "", so a service that tests for `undefined` reads "set" where nothing was set —
+  // which is how the operator agent came to report live judges with an empty NEAR AI key.
+  assert.equal(optionalEnv({}, "A"), undefined);
+  assert.equal(optionalEnv({ A: "" }, "A"), undefined);
+  assert.equal(optionalEnv({ A: "   " }, "A"), undefined);
+  assert.equal(optionalEnv({ A: " x " }, "A"), "x");
+
+  // The bind address. Loopback by default, because a service on a laptop should not be on the
+  // network; `0.0.0.0` inside a container, because there `127.0.0.1` is the container's own
+  // loopback and a published port forwards to nothing — the services logged that they had started
+  // and `curl localhost:8081` was refused.
+  assert.equal(bindFrom({}), "127.0.0.1");
+  assert.equal(bindFrom({ MARGINAL_BIND: "" }), "127.0.0.1");
+  assert.equal(bindFrom({ MARGINAL_BIND: "  " }), "127.0.0.1");
+  assert.equal(bindFrom({ MARGINAL_BIND: " 0.0.0.0 " }), "0.0.0.0");
+  assert.equal(bindFrom({}, "::1"), "::1");
 
   // `stdout` is what a service logs with when nobody passes a logger.
   const written: string[] = [];

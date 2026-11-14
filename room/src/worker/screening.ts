@@ -15,8 +15,8 @@ import { screen, type Screening } from "../appraisers/screening/index.js";
 import { signCertificate } from "../cert/forget.js";
 import { aeadOpen, memzero } from "../crypto/sodium.js";
 import { loadJob, openGood, type WorkerContext } from "./context.js";
-import { listingKeyFor } from "./keys.js";
-import { base64, certificateKey, commitmentOf, hashOf } from "./report.js";
+import { jobKeyFor } from "./keys.js";
+import { base64, certificateKey, commitmentOf } from "./report.js";
 
 /** `"marginal/screen\0"`, the report's 16-byte domain tag. */
 export const SCREENING_DOMAIN = Buffer.from("marginal/screen\0", "utf8").toString("hex");
@@ -26,8 +26,8 @@ export async function runScreening(ctx: WorkerContext, jobId: number): Promise<S
   const { job, listing, attestation, clearing } = await loadJob(ctx, jobId);
   if (job.kind !== "Screening") throw new Error(`job ${jobId} is a ${job.kind} job`);
 
-  const keys = await listingKeyFor({ ...ctx }, job, listing, ctx.appKeySource);
-  const good = await openGood(ctx, listing, keys, aeadOpen);
+  const key = await jobKeyFor(ctx, job, listing, ctx.appKeySource);
+  const good = await openGood(ctx, listing, key.unwrap, aeadOpen);
   try {
     const screening = screen(Buffer.from(good.plaintext).toString("utf8"));
     const { commitment } = commitmentOf(good.plaintext);
@@ -38,7 +38,7 @@ export async function runScreening(ctx: WorkerContext, jobId: number): Promise<S
       clearing: ctx.config.clearing,
       roomKeyHex: ctx.roomKeyHex,
       inputCommitments: [commitment],
-      keyIdsDestroyed: [hashOf(keys.publicKey)],
+      keyIdsDestroyed: key.keyIds,
       egress: [],
       tStart: started,
       tEnd: ctx.now(),
@@ -67,7 +67,6 @@ export async function runScreening(ctx: WorkerContext, jobId: number): Promise<S
   } finally {
     memzero(good.plaintext);
     memzero(good.dek);
-    memzero(keys.root);
-    memzero(keys.secretKey);
+    key.destroy();
   }
 }

@@ -8,6 +8,7 @@ import {
   ephemeralKey,
   openDelivery,
   sealDelivery,
+  sealDeliveryWith,
 } from "./delivery.js";
 import { boxKeys, boxPublicKey, hkdf, randomBytes } from "./sodium.js";
 
@@ -104,4 +105,23 @@ test("a malformed delivery is refused rather than half-read", () => {
     () => sealDelivery(randomBytes(32), JOB, deliveryPayload(randomBytes(32), randomBytes(32), 1), []),
     /nobody to deliver to/,
   );
+});
+
+test("the two entry points are one implementation, and the ikm is the only difference", () => {
+  const ikm = randomBytes(32);
+  const buyer = boxKeys();
+  const payload = deliveryPayload(randomBytes(32), randomBytes(32), 2);
+  // Under RoomSealed the ephemeral key is derived by the supervisor from the room's `box_sk` and
+  // handed to the worker (§3.19, §3.12.7); sealing it is otherwise the same code, so the same
+  // ephemeral key has to give the same delivery whichever way it got there.
+  assert.deepEqual(
+    sealDeliveryWith(ephemeralKey(ikm, JOB), JOB, payload, [buyer.publicKey]),
+    sealDelivery(ikm, JOB, payload, [buyer.publicKey]),
+  );
+  // And it is still a delivery the buyer can open, under a key no listing key derived.
+  const eph = ephemeralKey(randomBytes(32), JOB);
+  const delivery = sealDeliveryWith(eph, JOB, payload, [buyer.publicKey]);
+  assert.equal(delivery.eph_pk, Buffer.from(eph.publicKey).toString("hex"));
+  assert.deepEqual(openDelivery(delivery, buyer.secretKey, JOB), payload);
+  assert.throws(() => sealDeliveryWith(eph, JOB, payload, []), /nobody to deliver to/);
 });

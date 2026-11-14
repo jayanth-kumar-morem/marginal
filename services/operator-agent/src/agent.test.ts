@@ -12,15 +12,40 @@ import {
   agent,
   asNonce,
   contractOf,
+  isSimulated,
   nearAiBaseFrom,
   fetchCollateral,
+  NONCE_DEPOSIT,
+  REGISTER_GAS,
   serve,
+  simRoomRequest,
   transactionValue,
+  type SimulatedSource,
 } from "./index.js";
 import type { Relay } from "./near.js";
 
 const NONCE = "ab".repeat(32);
 const QUOTE = "0011".repeat(8);
+
+/** What a sandbox host claims for a room that has no quote (E14.4). */
+const MEASUREMENT = {
+  mrtd: "aa".repeat(48),
+  rtmr0: "bb".repeat(48),
+  rtmr1: "cc".repeat(48),
+  rtmr2: "dd".repeat(48),
+  compose_hash: "ee".repeat(32),
+  key_provider_digest: "11".repeat(48),
+};
+const PPID = "ab".repeat(16);
+const SIM_SOURCE = { measurement: JSON.stringify(MEASUREMENT), ppid: PPID };
+/** The bundle a simulated room sends: its own keys, and nothing it cannot prove. */
+const SIM_BUNDLE = {
+  sign_pk: "01".repeat(32),
+  box_pk: "02".repeat(32),
+  nonce: NONCE,
+  class: "Kcpu",
+  simulated: true,
+};
 
 /** A chain that records what it was asked and answers from a table. */
 function relay(answers: Record<string, unknown> = {}): Relay & {
@@ -89,7 +114,8 @@ test("a nonce comes from KeyPolicy, paid for by the agent", async () => {
     const asked = a.relay.calls[0];
     assert.equal(asked?.contract, "keypolicy.test");
     assert.equal(asked?.method, "issue_nonce");
-    assert.equal(asked?.deposit, TICKET_DEPOSIT, "the caller pays for the record");
+    // `NONCE_FEE`, not a ticket's `TICKET_FEE`: two fees, two amounts.
+    assert.equal(asked?.deposit, NONCE_DEPOSIT, "the caller pays KeyPolicy's nonce fee");
   } finally {
     await a.close();
   }
@@ -152,6 +178,137 @@ test("a registration with no quote, or no collateral to be had, is refused", asy
   }
   await assert.rejects(() => fetchCollateral("nothex"), /the quote is not hex/);
   assert.match(PCCS_URL, /^https:\/\/pccs\.phala\.network/);
+});
+
+test("a room with no quote registers through keypolicy-sim, with the host's measurement", async () => {
+  const a = await up({
+    simulated: SIM_SOURCE,
+    relay: relay({ register_room_simulated: "ok" }),
+    // No collateral options at all: the real path could not even get as far as a verifier call,
+    // so nothing here can be passing by accident on it.
+  });
+  try {
+    const reply = await a.call("/v1/register", postJson(SIM_BUNDLE));
+    assert.deepEqual(await reply.json(), { registered: "ok" });
+    const sent = a.relay.calls[0];
+    assert.equal(sent?.method, "register_room_simulated");
+    assert.equal(sent?.contract, "keypolicy.test");
+    assert.equal(sent?.deposit, REGISTER_DEPOSIT, "the same storage the real registration pays");
+    assert.equal(sent?.gas, REGISTER_GAS, "and the same gas");
+    assert.equal(a.relay.calls.length, 1, "and no collateral was fetched for it");
+
+    // The bytes are core's `SimRoom`, and they carry the host's claims rather than zeros: a
+    // measurement that quietly became zero would be a record that looks real and pins nothing.
+    assert.equal(sent?.args.request, simRoomRequest(SIM_BUNDLE, SIM_SOURCE));
+    const bytes = Buffer.from(sent?.args.request as string, "base64").toString("hex");
+    for (const [name, value] of Object.entries(MEASUREMENT)) {
+      assert.ok(bytes.includes(value), name);
+    }
+    assert.ok(bytes.startsWith(`${SIM_BUNDLE.sign_pk}${SIM_BUNDLE.box_pk}${NONCE}`), "the room's own keys");
+    assert.equal(bytes.includes("00".repeat(32)), false, "nothing was defaulted to zero");
+  } finally {
+    await a.close();
+  }
+});
+
+test("a room cannot talk its way onto the simulated path", async () => {
+  // Only the literal `true`. A room that could choose would choose the path with no verifier.
+  assert.equal(isSimulated(SIM_BUNDLE), true);
+  for (const value of ["true", "1", 1, 0, null, undefined, {}, []]) {
+    assert.equal(isSimulated({ ...SIM_BUNDLE, simulated: value }), false, JSON.stringify(value));
+  }
+  for (const bundle of [null, undefined, {}, { quote: QUOTE }]) {
+    assert.equal(isSimulated(bundle), false, JSON.stringify(bundle));
+  }
+
+  const a = await up({ simulated: SIM_SOURCE, relay: relay({ register_room_simulated: "ok" }) });
+  try {
+    // `"true"` is a string, so this is a real registration — and a real one with no quote at all.
+    const lying = await a.call("/v1/register", postJson({ ...SIM_BUNDLE, simulated: "true" }));
+    assert.equal(lying.status, 400);
+    assert.match(((await lying.json()) as { error: string }).error, /quote is required/);
+    const numeric = await a.call("/v1/register", postJson({ ...SIM_BUNDLE, simulated: 1 }));
+    assert.equal(numeric.status, 400);
+    assert.equal(a.relay.calls.length, 0, "and neither reached the chain");
+  } finally {
+    await a.close();
+  }
+});
+
+test("the host's own claims are refused by name, and never defaulted", async () => {
+  // A deployment that did not configure the simulated path does not get a zero-filled record.
+  const bare = await up({ relay: relay({ register_room_simulated: "ok" }) });
+  try {
+    const refused = await bare.call("/v1/register", postJson(SIM_BUNDLE));
+    assert.equal(refused.status, 503);
+    assert.match(
+      ((await refused.json()) as { error: string }).error,
+      /MARGINAL_SIM_MEASUREMENT is not set/,
+    );
+    assert.equal(bare.relay.calls.length, 0, "and nothing was registered");
+  } finally {
+    await bare.close();
+  }
+
+  const noPpid = await up({ simulated: { measurement: SIM_SOURCE.measurement }, relay: relay() });
+  try {
+    const refused = await noPpid.call("/v1/register", postJson(SIM_BUNDLE));
+    assert.equal(refused.status, 503);
+    assert.match(((await refused.json()) as { error: string }).error, /MARGINAL_SIM_PPID is not set/);
+    assert.equal(noPpid.relay.calls.length, 0);
+  } finally {
+    await noPpid.close();
+  }
+
+  // Every way the two variables can be wrong, named so an operator knows which one to fix.
+  const cases: [SimulatedSource, RegExp][] = [
+    [{ ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not set/],
+    [{ measurement: "   ", ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not set/],
+    [{ measurement: "{nope", ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not JSON/],
+    [{ measurement: "7", ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not a measurement object/],
+    [{ measurement: "null", ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not a measurement object/],
+    [{ measurement: "[]", ppid: PPID }, /MARGINAL_SIM_MEASUREMENT is not a measurement object/],
+    [
+      { measurement: JSON.stringify({ ...MEASUREMENT, mrtd: undefined }), ppid: PPID },
+      /MARGINAL_SIM_MEASUREMENT\.mrtd must be 96 hex characters/,
+    ],
+    [
+      { measurement: JSON.stringify({ ...MEASUREMENT, rtmr2: "ab" }), ppid: PPID },
+      /MARGINAL_SIM_MEASUREMENT\.rtmr2 must be 96 hex characters/,
+    ],
+    [
+      { measurement: JSON.stringify({ ...MEASUREMENT, compose_hash: "EE".repeat(32) }), ppid: PPID },
+      /MARGINAL_SIM_MEASUREMENT\.compose_hash must be 64 hex characters/,
+    ],
+    [
+      { measurement: JSON.stringify({ ...MEASUREMENT, gpu_policy_hash: "ff" }), ppid: PPID },
+      /MARGINAL_SIM_MEASUREMENT\.gpu_policy_hash must be 64 hex characters or null/,
+    ],
+    [{ measurement: SIM_SOURCE.measurement }, /MARGINAL_SIM_PPID is not set/],
+    [{ measurement: SIM_SOURCE.measurement, ppid: " " }, /MARGINAL_SIM_PPID is not set/],
+    [{ measurement: SIM_SOURCE.measurement, ppid: "ab" }, /MARGINAL_SIM_PPID must be 32 hex/],
+    [{ measurement: SIM_SOURCE.measurement, ppid: `${PPID}ff` }, /MARGINAL_SIM_PPID must be 32 hex/],
+  ];
+  for (const [source, message] of cases) {
+    assert.throws(() => simRoomRequest(SIM_BUNDLE, source), message, JSON.stringify(source));
+  }
+
+  // A GPU room's extra field is allowed, and absence is absence rather than a zero hash.
+  const withGpu = simRoomRequest(SIM_BUNDLE, {
+    ...SIM_SOURCE,
+    measurement: JSON.stringify({ ...MEASUREMENT, gpu_policy_hash: "7f".repeat(32) }),
+  });
+  assert.ok(Buffer.from(withGpu, "base64").toString("hex").includes("7f".repeat(32)));
+  assert.notEqual(withGpu, simRoomRequest(SIM_BUNDLE, SIM_SOURCE));
+
+  // And a bundle the room itself got wrong is the room's fault, not the host's.
+  for (const bad of [{ sign_pk: "zz" }, { class: "Q" }, { nonce: "ab" }]) {
+    assert.throws(
+      () => simRoomRequest({ ...SIM_BUNDLE, ...bad }, SIM_SOURCE),
+      /that is not a simulated registration/,
+      JSON.stringify(bad),
+    );
+  }
 });
 
 test("only the methods a room is allowed to ask for are relayed", async () => {
@@ -338,4 +495,19 @@ test("a transaction's value is read from its outcome, however it answered", () =
   assert.equal(transactionValue({ status: { SuccessValue: encode("plain") } }), "plain");
   assert.equal(transactionValue({ status: { SuccessValue: "" } }), null);
   assert.equal(transactionValue({ status: {} }), null);
+});
+
+/**
+ * The deposits are KeyPolicy's fees, and a mocked relay will happily accept a wrong one — which is
+ * how `issue_nonce` and `authorize` came to be underpaid: one constant served two different fees.
+ * These numbers are `contracts/keypolicy/src/fees.rs`'s `NONCE_FEE`, `TICKET_FEE` and
+ * `ATTESTATION_FEE`. If that file changes, this fails, which is the point.
+ */
+test("each deposit is exactly the fee KeyPolicy charges for it", () => {
+  const MILLINEAR = 1_000_000_000_000_000_000_000n;
+  assert.equal(NONCE_DEPOSIT, 2n * MILLINEAR, "NONCE_FEE");
+  assert.equal(TICKET_DEPOSIT, 5n * MILLINEAR, "TICKET_FEE");
+  assert.equal(REGISTER_DEPOSIT, 10n * MILLINEAR, "ATTESTATION_FEE");
+  // They are three different amounts; sharing one constant is what broke it.
+  assert.equal(new Set([NONCE_DEPOSIT, TICKET_DEPOSIT, REGISTER_DEPOSIT]).size, 3);
 });

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 import { boot, type Room } from "./boot.js";
 import { chainClient } from "./chain.js";
-import { loadConfig } from "./config.js";
+import { configEnv, loadConfig } from "./config.js";
 import { dstackClient } from "./dstack.js";
 import { generateRoomKeys } from "./keys.js";
 import { operatorClient } from "./operator.js";
@@ -37,7 +37,14 @@ export async function main(
     chain: chainClient(config.rpcUrl),
     dstack: dstackClient({ socketPath: config.dstackSocket }),
     operator,
-    spawner: forkSpawner({ workerPath: WORKER_PATH, keys, operator, onError }),
+    spawner: forkSpawner({
+      workerPath: WORKER_PATH,
+      keys,
+      operator,
+      onError,
+      // The worker's whole world: this room's configuration, none of the host's environment.
+      env: configEnv(config),
+    }),
     keys,
     onError,
   });

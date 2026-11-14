@@ -32,6 +32,32 @@ export async function roomKeys(chain: ChainPort, clearing: string): Promise<read
   return [...new Set(perClass.flat())];
 }
 
+/**
+ * The classes of room that may run a listing's jobs. `pick_room` in
+ * `contracts/clearing/src/listing.rs` draws from exactly these two pools (`KNOWLEDGE_ROOMS`), so
+ * these are the rooms a knowledge or dataset listing can ever be assigned to.
+ */
+export const KNOWLEDGE_ROOM_CLASSES = ["K", "Kcpu"] as const;
+
+/**
+ * Every room currently eligible to take a listing's work, without repeats.
+ *
+ * Unlike {@link roomKeys}, a view that does not answer is **not** swallowed here: this is what a
+ * seller's decision rests on under RoomSealed, and an RPC that failed must not read as "this
+ * deployment has no rooms".
+ */
+export async function knowledgeRoomKeys(
+  chain: ChainPort,
+  clearing: string,
+): Promise<readonly string[]> {
+  const perClass = await Promise.all(
+    KNOWLEDGE_ROOM_CLASSES.map((klass) =>
+      chain.view<readonly string[]>(clearing, "eligible", { class: klass }),
+    ),
+  );
+  return [...new Set(perClass.flat())];
+}
+
 /** One room: the registry's record, KeyPolicy's attestation, and the deny list. */
 export async function loadRoom(
   chain: ChainPort,

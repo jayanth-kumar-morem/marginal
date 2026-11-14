@@ -12,6 +12,7 @@ faucet = "faucet"
 token = "musdc"
 clearing = "clearing"
 keypolicy = "keypolicy"
+agent = "agent"                       # the operator agent signs with this one
 
 [hdp]                                 # becomes clearing's ProfileConfig (SDD §1.5, §6.2)
 gov_profile = "demo"                  # `gov` is a dev account, not a DAO
@@ -20,11 +21,65 @@ challenge_window_secs = 600           # W = 10 minutes
 rules_enabled = ["R1"]
 asset_classes_enabled = ["Knowledge", "Dataset"]
 
+# What gov sets on clearing right after init (E14.4). Without the appraiser and the fee table no
+# listing can be created and nothing can settle.
+[clearing]
+# `knowledge@1` is the only appraiser M1 builds; `compute_fee` is what an appraisal job's compute
+# bucket is funded with, in musdc's smallest unit (6 decimals), so 1000000 is one test dollar.
+appraisers = [{ id = "knowledge", version = 1, formula = "KnowledgeV1", compute_fee = "1000000", enabled = true }]
+# Basis points. The first two are the fee (of the price, and of the proceeds); the last three are
+# shares of that fee and clearing requires them to add up to 10000.
+fees = { clearing_fee_buyer_bps = 50, clearing_fee_seller_bps = 100, treasury_bps = 6000, operator_pool_bps = 3000, assurance_pool_bps = 1000 }
+# Seed the committed circuit's verifying key (circuits/formula_knowledge_v1.vkey.json, pinned by
+# circuits/SHA256SUMS), so a sealed verdict can be proved on chain. Off refuses every sealed verdict
+# with E_PROOF_DISABLED.
+sealed_verdicts = true
+# The compliance service's own public keys, which it derives from MARGINAL_ISSUER_SEED and
+# MARGINAL_COMPLIANCE_SEED. The seeds that produce exactly these two live in
+# `deploy/services/.env.sandbox` (mode 0600, gitignored) and are what the host services must run
+# with: **changing a seed invalidates every credential issued under it**, and clearing would then
+# reject credentials these keys signed. Public keys are safe to commit; the seeds are not.
+issuer_key = "5292b42670aff938404bb1c9e04cf2db9cdce328dbf2b406e4b06268ef11ee20"
+compliance_key = "8c2768e7a4a5293e8548be7774ab2c2a8dab98f5f363b65acc0b9501f4f07a58"
+# A NEAR AI signer needs a real NEAR AI key and the signer's 20-byte address; without one the room's
+# judge factors are simulated and flagged on chain.
+# ai_signer = { address = "<40 hex>", model = "<model id>", ttl_secs = 3600 }
+
+# What the host services run with. The deploy writes the whole environment the compose interpolates
+# into `deploy/services/.env.<profile>` (mode 0600, gitignored); this is the only part of it that is
+# a decision rather than a deploy result or a secret.
+[services]
+# Who the compliance service may issue an identity credential to (SDD §3.20). `gov` is the account
+# the deploy creates and the dev signer can sign as; `buyer.sandbox` is the buyer a local walk makes.
+# Anything not listed here is refused with 403, so add the account you walk as.
+allowed_identities = ["gov.sandbox", "buyer.sandbox"]
+
 [keypolicy]                           # fixed forever at init (SDD §3.12.2)
 mpc = "v1.signer-prod.testnet"        # never called in the sandbox; E3 tests use a mock MPC
 ckd_domain_id = 2
 dcap_verifier = "tee-verifier-2026-11-02.testnet"
+# Sandbox only, and refused by the validator and by deploy.ts on any other network: deploys
+# `keypolicy-sim`, whose `register_room_simulated` admits a room that proves nothing (SDD §6.1).
+# A laptop has no TDX machine, so this is the only way to run the demo locally.
+simulated_rooms = true
 
-[room_policy]                         # applied by the seed step once clearing has the module (E4.3)
-platforms = []
-measurement_sets = []
+# Seeded into clearing's registry by `[4/6]`. These values are **obviously fake** on purpose: no
+# real quote can produce them, and `keypolicy-sim` is the only build that accepts a room claiming
+# them. `up.sh` exports the member and the PPID to the host services as MARGINAL_SIM_MEASUREMENT
+# and MARGINAL_SIM_PPID, so the room claims exactly what was approved here.
+[room_policy]
+platforms = [
+  # "sandboxfakeppid0" in ASCII: 16 bytes, which is what a PPID is. M1 records the cap only (E16).
+  { ppid = "73616e64626f7866616b657070696430", operator = "agent.sandbox", cap_per_epoch = "1000000000000" },
+]
+measurement_sets = [
+  { id = "sandbox-fake@0.0.0", source_tag = "simulated; no CVM produced this", members = [
+    { mrtd = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      rtmr0 = "0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de",
+      rtmr1 = "f00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeed",
+      rtmr2 = "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe",
+      compose_hash = "decafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbad",
+      key_provider_digest = "feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface",
+      gpu_policy_hash = "" },           # "" is null: a CPU room (Kcpu) has no GPU policy
+  ] },
+]

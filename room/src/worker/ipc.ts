@@ -8,6 +8,7 @@
  * submitted something it did not.
  */
 import type { RoomJob } from "../chain.js";
+import type { BoxKeys } from "../crypto/sodium.js";
 
 /** The slice of `process` this needs, so a test does not have to fork. */
 export interface ChannelProcess {
@@ -38,7 +39,16 @@ export interface WorkerChannel {
   putBlob(key: string, bytes: string): Promise<void>;
   /** Opens a sealed box addressed to the room's `box_pk`; the worker never holds `box_sk`. */
   unseal(bytes: string): Promise<string>;
+  /**
+   * This job's ephemeral delivery key, derived by the supervisor from the room's `box_sk`
+   * (§3.19, §3.12.7). Only the RoomSealed fallback needs it: there is no `sk_L` to derive it from,
+   * and `box_sk` itself must not enter a worker, so the supervisor derives the one key this job
+   * needs and nothing more. It answers only for the commitment of the job it forked the worker for.
+   */
+  deliveryKey(jobCommitment: string): Promise<BoxKeys>;
 }
+
+const bytesOf = (hexBytes: string): Uint8Array => new Uint8Array(Buffer.from(hexBytes, "hex"));
 
 interface Pending {
   readonly resolve: (value: unknown) => void;
@@ -123,6 +133,15 @@ export function workerChannel(host: ChannelProcess): WorkerChannel {
       const opened = reply.value;
       if (typeof opened !== "string") throw new Error("supervisor: the box did not open");
       return opened;
+    },
+    async deliveryKey(jobCommitment: string): Promise<BoxKeys> {
+      const reply = await ask({ kind: "delivery_key", commitment: jobCommitment });
+      const secretKey = reply.secret_key;
+      const publicKey = reply.public_key;
+      if (typeof secretKey !== "string" || typeof publicKey !== "string") {
+        throw new Error("supervisor: no delivery key came back");
+      }
+      return { secretKey: bytesOf(secretKey), publicKey: bytesOf(publicKey) };
     },
   };
 }
