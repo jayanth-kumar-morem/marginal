@@ -183,6 +183,20 @@ test("a worker that gives up before its relay comes back is not written to", asy
 });
 
 test("only the two requests parse, and only in their own shape", () => {
+  assert.deepEqual(parseWorkerRequest({ kind: "blob", id: 4, op: "get", key: "certs/aa" }), {
+    kind: "blob",
+    id: 4,
+    op: "get",
+    key: "certs/aa",
+    bytes: "",
+  });
+  assert.deepEqual(parseWorkerRequest({ kind: "blob", id: 5, op: "put", key: "certs/aa", bytes: "00" }), {
+    kind: "blob",
+    id: 5,
+    op: "put",
+    key: "certs/aa",
+    bytes: "00",
+  });
   assert.deepEqual(parseWorkerRequest({ kind: "sign", id: 1, message: "ab" }), {
     kind: "sign",
     id: 1,
@@ -193,7 +207,12 @@ test("only the two requests parse, and only in their own shape", () => {
     id: 2,
     method: "m",
     args: { a: 1 },
-  });
+    contract: "clearing",
+  }, "clearing unless the worker says otherwise");
+  assert.deepEqual(
+    parseWorkerRequest({ kind: "submit", id: 3, method: "authorize", args: {}, contract: "keypolicy" }),
+    { kind: "submit", id: 3, method: "authorize", args: {}, contract: "keypolicy" },
+  );
   for (const raw of [
     null,
     42,
@@ -206,8 +225,40 @@ test("only the two requests parse, and only in their own shape", () => {
     { kind: "submit", id: 1, method: 7, args: {} },
     { kind: "submit", id: 1, method: "m", args: "{}" },
     { kind: "submit", id: 1, method: "m", args: null },
+    { kind: "submit", id: 1, method: "m", args: {}, contract: "mpc" },
+    { kind: "blob", id: 1, op: "get" },
+    { kind: "blob", id: 1, op: "put", key: "a" },
+    { kind: "blob", id: 1, op: "list", key: "a" },
+    { kind: "blob", id: 1, op: "get", key: "" },
     { kind: "unseal", id: 1 },
   ]) {
     assert.equal(parseWorkerRequest(raw), undefined, JSON.stringify(raw));
   }
+});
+
+test("a worker reads and writes blobs through the supervisor", async () => {
+  const worker = workerFixture(`
+    process.on("message", (m) => {
+      if (m.kind === "job") {
+        process.send({ kind: "blob", id: 1, op: "get", key: "listings/1/good" });
+        return;
+      }
+      if (m.id === 1) {
+        if (m.value !== "0011") process.exit(30);
+        process.send({ kind: "blob", id: 2, op: "put", key: "certs/aa", bytes: "2233" });
+        return;
+      }
+      if (m.id === 2) {
+        if (m.ok !== true) process.exit(31);
+        process.send({ kind: "blob", id: 3, op: "get", key: "missing" });
+        return;
+      }
+      // A blob that is not there comes back as an error, not as empty bytes.
+      process.exit(typeof m.error === "string" && m.error.includes("missing") ? 0 : 32);
+    });
+  `);
+  const operator = fakeOperator();
+  operator.blobs.set("listings/1/good", "0011");
+  await forkSpawner({ workerPath: worker, keys: generateRoomKeys(), operator }).run(job(2));
+  assert.equal(operator.blobs.get("certs/aa"), "2233", "the certificate was stored");
 });

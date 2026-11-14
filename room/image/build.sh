@@ -6,7 +6,8 @@
 #   build.sh image                 builds the container image from the committed tree and prints
 #                                  its digest.
 #   build.sh compose --image REF   assembles docker-compose.yaml and app-compose.json from the
-#                                  committed templates and prints the compose hash and the app id.
+#                                  committed templates and the deployment pins, and prints the
+#                                  compose hash and the app id.
 #
 # The compose step needs nothing but node and the committed files, so anyone can reproduce the
 # compose hash from a git tag and the pins recorded in MEASUREMENTS.md — which is what DRC-3 asks
@@ -62,7 +63,7 @@ cmd_image() {
 }
 
 cmd_compose() {
-  local image="" rpc="" operator="" clearing="" keypolicy="" chain="testnet"
+  local image="" rpc="" operator="" clearing="" keypolicy="" mpc="" chain="testnet"
   while [ $# -gt 0 ]; do
     case "$1" in
       --image) image="${2:-}"; shift 2 ;;
@@ -70,11 +71,12 @@ cmd_compose() {
       --operator-url) operator="${2:-}"; shift 2 ;;
       --clearing) clearing="${2:-}"; shift 2 ;;
       --keypolicy) keypolicy="${2:-}"; shift 2 ;;
+      --mpc-public-key) mpc="${2:-}"; shift 2 ;;
       --chain-id) chain="${2:-}"; shift 2 ;;
       *) echo "build.sh: unknown argument $1" >&2; usage ;;
     esac
   done
-  for pair in image:"$image" rpc-url:"$rpc" operator-url:"$operator" clearing:"$clearing" keypolicy:"$keypolicy" chain-id:"$chain"; do
+  for pair in image:"$image" rpc-url:"$rpc" operator-url:"$operator" clearing:"$clearing" keypolicy:"$keypolicy" mpc-public-key:"$mpc" chain-id:"$chain"; do
     if [ -z "${pair#*:}" ]; then
       echo "build.sh: --${pair%%:*} is required" >&2
       exit 1
@@ -82,7 +84,7 @@ cmd_compose() {
   done
   mkdir -p "$out"
   IMAGE_DIR="$here" OUT_DIR="$out" ROOM_IMAGE="$image" RPC_URL="$rpc" OPERATOR_URL="$operator" \
-    CLEARING="$clearing" KEYPOLICY="$keypolicy" CHAIN_ID="$chain" \
+    CLEARING="$clearing" KEYPOLICY="$keypolicy" CHAIN_ID="$chain" MPC_PUBLIC_KEY="$mpc" \
     node --input-type=module - <<'JS'
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -97,6 +99,7 @@ const pins = {
   CHAIN_ID: process.env.CHAIN_ID,
   CLEARING: process.env.CLEARING,
   KEYPOLICY: process.env.KEYPOLICY,
+  MPC_PUBLIC_KEY: process.env.MPC_PUBLIC_KEY,
 };
 
 let compose = readFileSync(join(dir, "docker-compose.tmpl.yaml"), "utf8");

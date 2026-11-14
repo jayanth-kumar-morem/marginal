@@ -172,6 +172,8 @@ To fix in SDD v0.3.
 | 32 | §3.5's job lifecycle has no way out of `PendingApproval` except approval, so a parked job nobody approves could never be refunded and its funds would be locked for good | `PendingApproval → Timeout` is allowed, and `refund_expired` ends a parked job like any other (E6.4) | SDD v0.3 |
 | 33 | §3.13's `app-compose.json` listing is not a deployable file: dstack also requires `manifest_version`, `name` and `runner`, and the listing shows `pre_launch_script: null` where omission is the only unambiguous encoding — dstack's own SDKs drop a falsy `pre_launch_script` when they normalise, which would predict a different compose hash from the one the guest measures | `room/image/app-compose.json` adds the three required keys (`manifest_version: 2`, `name: "marginal-room"`, `runner: "docker-compose"`) and omits `pre_launch_script` entirely. Add all four to the §3.13 listing | SDD v0.3 |
 | 34 | §3.13 and §3.14.3 are silent on where the compose hash comes from, so the listing reads as if any JSON with those keys would do. dstack hashes the **file's bytes** (`dstack-util/src/system_setup.rs`: `sha256_file(app_compose_file)`) while its SDKs predict the hash from recursively key-sorted compact JSON — two different numbers for the same keys in a different order | `build.sh compose` writes the canonical form, so both agree, and `room/src/image.test.ts` pins that. Say in §3.13 that the compose hash is the SHA-256 of the deployed file and that the file is written canonically | SDD v0.3 |
+| 35 | §3.18 gives `ForgetCertificateV1.attestation_ref` the type `[u8; 32]` and the comment "quote hash ‖ collateral hash". Those are two 32-byte hashes, so the field as written does not fit, and a verifier has no rule to recompute it by | `marginal_core::certificate::attestation_ref(quote_hash, collateral_hash)`: `SHA-256("marginal/attestation-ref/v1" ‖ borsh((quote_hash, collateral_hash)))`, with a vector, so the room and `replay-ts` agree and a certificate can be tied to one KeyPolicy record. Say so in §3.18 | SDD v0.3 |
+| 36 | §3.18 requires every forget certificate to carry an `Outcome`, but §3.9.2's outcome table is about appraisals. A provisioning or screening job has no outcome in it, and the enum has no value for "the job ran and nothing was priced" | M1 writes `NoDeal`, which is literally true of both — no value changed hands — and says so in the code. Either give §3.18 a `Completed` outcome for non-appraisal kinds or state that `NoDeal` is the value; `replay-ts` (E12.2) has to accept whichever it is | SDD v0.3 |
 
 ---
 
@@ -709,10 +711,41 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - **To close:** fund the testnet deployer ([P-3](#paid-and-account-gated-steps-jay)), call
     `request_app_private_key` on `v1.signer-prod.testnet` (domain 2) from a dev account with an app
     key from `appKey()`, and recover the key with `recoverSigma`.
-- [ ] **E8.3 Provisioning and screening jobs** · P0
+- [x] **E8.3 Provisioning and screening jobs** · P0
   - Provisioning: derive `K_L` and submit `pk_L` with its certificate.
   - Screening: run `screening@1` and submit `Pass` or `Flag(code)` with its certificate.
   - **From the contracts (E4).** Both are signed messages, not bare arguments: `provisioning_signing_bytes(ProvisioningV1{…, pk_l, cert_hash})` and `screening_signing_bytes(ScreeningV1{…, result, cert_hash})`, each binding the chain, the contract, the job, the listing version and the room key (`@marginal/core-wasm`, with vectors). M1's only flag reason is `FLAG_MNPI = 1`. Clearing refuses a report whose job is not `Assigned` to this room, so the room must answer the job it was given.
+  - **Completed 2026-11-14.** `room/src/worker/`: the worker's side of the supervisor channel
+    (`ipc.ts`), the key round trip (`keys.ts`), what every job loads and checks (`context.ts`), the
+    two jobs, and the entry point the fork runs (`main.ts`). Plus `room/src/cert/forget.ts` (the
+    forget certificate, shared with E8.5) and `room/src/appraisers/screening/` (the MNPI lexicon and
+    rules, which is E8.6's screening half, brought forward because E8.3 cannot run without it).
+  - **A worker holds no key and has no network.** It asks the supervisor for a signature over one of
+    the room's own domains, for a relay through the operator agent, or for a blob — and can ask for
+    nothing else. Every I/O the SDD puts behind supervisor IPC (§3.14.1) now is.
+  - **Verified end to end in one process and in a real fork:** a provisioning job derives the
+    listing key through a real CKD exchange (the MPC side played exactly as near/mpc plays it),
+    signs a certificate, stores it at `certs/{hash}` and reports `pk_L`; a screening job opens the
+    good from a real sealed box and real XChaCha20-Poly1305, runs the lexicon and submits `Pass` or
+    `Flag(1)`. `worker/main.test.ts` runs the whole worker through its entry point against an HTTP
+    RPC, with the room drawing its **own random scalar** — so the pairing check is doing real work.
+  - **What the tests pin, beyond the happy path.** A room refuses a job of another kind; a job whose
+    chain id or KeyPolicy does not match the room's pins; a listing that moved version; a ciphertext
+    that is not the published one; a wrap that is not `DEK_g ‖ salt`; a good that does not match its
+    commitment; an `authorize` answer that is not a ticket id; a `derive` answer that is not a key.
+    The screening report is checked to contain **none** of the document: clearing gets a reason code
+    and the matched terms go only to the job log.
+  - **Three things the contracts needed and core did not have**, now added with vectors:
+    `attestation_ref` (SDD issue 35), and Borsh `key_request_encode`/`_decode`,
+    `provisioning_encode` and `screening_encode` — clearing and KeyPolicy take Borsh in base64, and
+    the room's signature has to cover exactly those bytes.
+  - **A new pin in the measured image:** `MARGINAL_MPC_PUBLIC_KEY`. Every derived key is checked
+    against it, so a host that could choose it could answer with a key it made itself. It goes in
+    the compose file, which means it is measured and changes the compose hash.
+  - **Deviation:** the forget certificate's `outcome` is `NoDeal` for both job kinds, because §3.9.2
+    has no outcome for a job that priced nothing (SDD issue 36).
+  - **Not verified:** no real MPC answer, no real blob store and no chain — the operator agent
+    (E11.3) and the blob store (E11.1) are the other side of every call made here.
 - [ ] **E8.4 Appraisal pipeline** · P0 · §3.14.2 · **what clearing will check is built (E6.1, E6.2)**
   1. Load the job and recompute its commitment.
   2. Get the key through `authorize` + `derive`, and the context through `DEK_c`.

@@ -81,3 +81,92 @@ export async function roomRecord(
 ): Promise<RoomRecord | null> {
   return chain.view<RoomRecord | null>(clearing, "get_room", { room_key: roomKeyHex });
 }
+
+/** A job, as `get_job` reports it. Only the fields the room acts on. */
+export interface JobRecord {
+  readonly id: number;
+  readonly kind: string;
+  readonly listing_id: number;
+  readonly listing_version: number;
+  readonly state: string;
+  readonly job_commitment: string;
+  readonly privacy: string;
+  readonly deadline_height: number;
+}
+
+export async function jobRecord(
+  chain: ChainPort,
+  clearing: string,
+  jobId: number,
+): Promise<JobRecord | null> {
+  return chain.view<JobRecord | null>(clearing, "get_job", { job_id: String(jobId) });
+}
+
+/**
+ * The room's own attestation, as KeyPolicy recorded it. A forget certificate names the attestation
+ * it was issued under, and only KeyPolicy knows what that record says (SDD §3.18).
+ */
+export interface AttestationRecord {
+  readonly measurement: {
+    readonly mrtd: string;
+    readonly rtmr0: string;
+    readonly rtmr1: string;
+    readonly rtmr2: string;
+    readonly compose_hash: string;
+    readonly key_provider_digest: string;
+    readonly gpu_policy_hash: string | null;
+  };
+  readonly ppid_hash: string;
+  readonly quote_hash: string;
+  readonly collateral_hash: string;
+  readonly mode: string;
+  readonly expires_at: number;
+}
+
+export async function attestationRecord(
+  chain: ChainPort,
+  keypolicy: string,
+  roomKeyHex: string,
+): Promise<AttestationRecord | null> {
+  return chain.view<AttestationRecord | null>(keypolicy, "get_attestation", {
+    room_key: roomKeyHex,
+  });
+}
+
+/** The part of clearing's configuration a certificate has to quote (SDD §3.18 step 5). */
+export interface ClearingConfig {
+  readonly chain_id: string;
+  readonly keypolicy: string;
+  readonly policy_version: number;
+}
+
+export async function clearingConfig(
+  chain: ChainPort,
+  clearing: string,
+): Promise<ClearingConfig> {
+  return chain.view<ClearingConfig>(clearing, "config", {});
+}
+
+/** A listing, as `get_listing` reports it. Only the fields a room acts on. */
+export interface ListingRecord {
+  readonly id: number;
+  readonly seller: string;
+  readonly version: number;
+  readonly status: string;
+  readonly good_commitment: string;
+  readonly ciphertext: { readonly uri_hash: string; readonly sha256: string; readonly size_class: number };
+  readonly key_mode: string;
+  readonly pk_l: string | null;
+  readonly appraiser: string;
+  readonly value_class: string;
+}
+
+export async function listingRecord(
+  chain: ChainPort,
+  clearing: string,
+  listingId: number,
+): Promise<ListingRecord | null> {
+  return chain.view<ListingRecord | null>(clearing, "get_listing", {
+    listing_id: String(listingId),
+  });
+}

@@ -16,7 +16,8 @@ use marginal_core::attest::{
 };
 use marginal_core::audit::{audit_step, AuditEntry};
 use marginal_core::certificate::{
-    certificate_hash, forget_signing_bytes, measurement_hash, ForgetCertificateV1, Measurement,
+    attestation_ref, certificate_hash, forget_signing_bytes, measurement_hash, ForgetCertificateV1,
+    Measurement,
 };
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::commit::{good_commitment, job_commitment, JobCore};
@@ -209,6 +210,15 @@ struct PpidIn {
     ppid: Vec<u8>,
 }
 
+/// The two hashes KeyPolicy's attestation record holds, which a certificate refers to as one.
+#[derive(Deserialize)]
+struct AttestationRefIn {
+    #[serde(with = "hex")]
+    quote_hash: [u8; 32],
+    #[serde(with = "hex")]
+    collateral_hash: [u8; 32],
+}
+
 /// A verifier reply as the Borsh bytes it came in, plus what KeyPolicy checks it against.
 #[derive(Deserialize)]
 struct EvaluateIn {
@@ -307,6 +317,10 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
             )
         }),
         "register_room_encode" => encode::<RegisterRoomRequest>(input),
+        "key_request_encode" => encode::<KeyRequest>(input),
+        "key_request_decode" => decode::<KeyRequest>(input),
+        "provisioning_encode" => encode::<ProvisioningV1>(input),
+        "screening_encode" => encode::<ScreeningV1>(input),
         "key_request_signing_bytes" => run(input, |r: KeyRequest| {
             Ok(Hex(key_request_signing_bytes(&r)))
         }),
@@ -370,6 +384,9 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
         }),
         "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
         "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),
+        "attestation_ref" => run(input, |i: AttestationRefIn| {
+            Ok(Hex(attestation_ref(&i.quote_hash, &i.collateral_hash)))
+        }),
         "audit_step" => run(input, |i: AuditIn| {
             Ok(Hex(audit_step(&i.prev_head, &i.entry)))
         }),

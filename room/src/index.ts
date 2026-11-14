@@ -41,7 +41,23 @@ export {
 export { loadConfig, DEFAULTS, type RoomConfig } from "./config.js";
 export { generateRoomKeys, type RoomKeys, type PublicKey } from "./keys.js";
 export { dstackClient, isHttpError, type DstackPort, type DstackOptions, type Quote, type RawEvent } from "./dstack.js";
-export { chainClient, jobsForRoom, roomRecord, type ChainPort, type RoomJob, type RoomRecord, type Fetch } from "./chain.js";
+export {
+  chainClient,
+  jobsForRoom,
+  roomRecord,
+  jobRecord,
+  listingRecord,
+  attestationRecord,
+  clearingConfig,
+  type ChainPort,
+  type RoomJob,
+  type RoomRecord,
+  type JobRecord,
+  type ListingRecord,
+  type AttestationRecord,
+  type ClearingConfig,
+  type Fetch,
+} from "./chain.js";
 export { operatorClient, type OperatorPort } from "./operator.js";
 export {
   buildRegistration,
@@ -73,3 +89,37 @@ export {
 } from "./spawn.js";
 export { boot, RENEW_BEFORE_SECS, RENEW_EVERY_MS, type Room, type BootPorts } from "./boot.js";
 export { main, WORKER_PATH } from "./main.js";
+
+// The worker side (E8): the channel it reaches the supervisor through, the keys it derives, the
+// certificate it signs, and the two jobs it can run.
+export { workerChannel, type WorkerChannel, type Assignment, type ChannelProcess } from "./worker/ipc.js";
+export { listingKeyFor, listingPath, type KeyContext, type DerivedKey } from "./worker/keys.js";
+export {
+  loadJob,
+  openGood,
+  goodKey,
+  wrappedKeyKey,
+  type WorkerContext,
+  type JobData,
+  type Good,
+} from "./worker/context.js";
+export { runProvisioning, PROVISIONING_DOMAIN } from "./worker/provisioning.js";
+export { runScreening, SCREENING_DOMAIN } from "./worker/screening.js";
+export { runJob, main as workerMain } from "./worker/main.js";
+export { base64, hashOf, certificateKey, commitmentOf } from "./worker/report.js";
+export {
+  buildCertificate,
+  signCertificate,
+  scopeFor,
+  nonPersistenceBasis,
+  FORGET_DOMAIN,
+  NP_PROCESS_EXIT,
+  NP_NO_PERSISTENT_STORAGE,
+  NP_NO_SWAP,
+  NP_TEE_MEMORY,
+  type CertificateInputs,
+  type SignedCertificate,
+  type Scope,
+} from "./cert/forget.js";
+export { screen, FLAG_MNPI, type Screening, type ScreeningResult } from "./appraisers/screening/index.js";
+export { INSIDER_PHRASES, EVENT_TERMS, ISSUER_LEXICON } from "./appraisers/screening/lexicon.js";

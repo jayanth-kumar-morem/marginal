@@ -30,6 +30,7 @@ as a **new app** with no pinned `app_id`.
 | `core.wasm` | printed as `core_wasm_sha256` by `build.sh image`; `d2f68f50a7beeb2e41ac0448c26968f731b0351c89514d5ef1b0fbc60e68123a` at commit `7d96482` | built by `make wasm-core`, not committed |
 | Room image | the digest `build.sh image` prints for the commit being deployed; published, then referenced by digest. It is a function of the commit, not only of the room's code: `SOURCE_DATE_EPOCH` is the commit's timestamp, so every commit gives a new digest and the same commit always gives the same one | `--image` |
 | RPC URL, operator agent URL, chain id, clearing and KeyPolicy accounts | written literally into the compose file | `--rpc-url`, `--operator-url`, `--chain-id`, `--clearing`, `--keypolicy` |
+| The MPC network's CKD public key | written literally into the compose file. It is a **pin**, not configuration: every derived key is checked against it (§3.12.3 step 4), so a host that could choose it could hand the room a key it made itself and the pairing check would still pass | `--mpc-public-key` |
 
 Every one of those changes the compose hash, which is the point: a room cannot be pointed at another
 clearing contract, another RPC or another image without becoming a different room (DR-9).
@@ -47,7 +48,8 @@ room/image/build.sh compose \
   --operator-url http://<the operator agent, on the CVM host> \
   --chain-id   testnet \
   --clearing   clearing.marginal-demo.testnet \
-  --keypolicy  keypolicy.marginal-demo.testnet
+  --keypolicy  keypolicy.marginal-demo.testnet \
+  --mpc-public-key bls12381g2:<the CKD key of the signer contract's domain>
 ```
 
 Step 2 needs nothing but node and this repository, so two builders can reproduce the compose hash

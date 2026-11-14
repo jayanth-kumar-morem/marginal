@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DEFAULTS, loadConfig } from "./config.js";
+import { MPC_PUBLIC_KEY } from "./testing.js";
 
 const complete = {
   MARGINAL_RPC_URL: "https://rpc.testnet.near.org",
@@ -9,6 +10,7 @@ const complete = {
   MARGINAL_CLEARING: "clearing.marginal-demo.testnet",
   MARGINAL_KEYPOLICY: "keypolicy.marginal-demo.testnet",
   MARGINAL_OPERATOR_URL: "http://127.0.0.1:8080",
+  MARGINAL_MPC_PUBLIC_KEY: MPC_PUBLIC_KEY,
 };
 
 test("the RPC URL is the only operator input; everything else has a default or is fixed", () => {
@@ -18,6 +20,7 @@ test("the RPC URL is the only operator input; everything else has a default or i
   assert.equal(config.dstackSocket, DEFAULTS.dstackSocket);
   assert.equal(config.pollMs, DEFAULTS.pollMs);
   assert.equal(config.maxWorkers, DEFAULTS.maxWorkers);
+  assert.equal(config.mpcPublicKey, MPC_PUBLIC_KEY);
 });
 
 test("every value can be overridden for a sandbox run", () => {
@@ -54,6 +57,19 @@ test("a URL must be one, and a count must be a positive whole number", () => {
   }
   assert.equal(loadConfig({ ...complete, MARGINAL_POLL_MS: "" }).pollMs, DEFAULTS.pollMs);
   assert.throws(() => loadConfig({ ...complete, MARGINAL_MAX_WORKERS: "0" }), /positive integer/);
+});
+
+test("the MPC key is a pin, and a room will not start on one it cannot use", () => {
+  // It is what every derived key is checked against (§3.12.3), so a value of the wrong curve is
+  // refused at boot rather than at the first job.
+  assert.throws(
+    () => loadConfig({ ...complete, MARGINAL_MPC_PUBLIC_KEY: "bls12381g1:abc" }),
+    /MARGINAL_MPC_PUBLIC_KEY must be a bls12381g2 key/,
+  );
+  assert.throws(
+    () => loadConfig({ ...complete, MARGINAL_MPC_PUBLIC_KEY: "ed25519:abc" }),
+    /must be a bls12381g2 key/,
+  );
 });
 
 test("the room class is one the registry knows", () => {

@@ -49,9 +49,38 @@ test("a registration and a submission are posted, and an empty answer is fine", 
   );
   assert.deepEqual(seen.seen[0]?.body, { quote: "ab", nonce: NONCE });
   assert.deepEqual(seen.seen[1]?.body, {
+    contract: "clearing",
     method: "submit_verdict",
     args: { verdict: "bb", sig: "cc" },
   });
+});
+
+test("the key-release pair goes to KeyPolicy, and blobs go to the blob store", async () => {
+  const seen = agent((url) =>
+    url.endsWith("/v1/blob/get") ? { body: JSON.stringify({ bytes: "abcd" }) } : { body: "" },
+  );
+  const client = operatorClient("http://agent.test", seen.fetch);
+  await client.submit("authorize", { request: "ab" }, "keypolicy");
+  assert.deepEqual(seen.seen[0]?.body, {
+    contract: "keypolicy",
+    method: "authorize",
+    args: { request: "ab" },
+  });
+
+  await client.putBlob("certs/aa", "0011");
+  assert.equal(seen.seen[1]?.url, "http://agent.test/v1/blob/put");
+  assert.deepEqual(seen.seen[1]?.body, { key: "certs/aa", bytes: "0011" });
+
+  assert.equal(await client.getBlob("certs/aa"), "abcd");
+  assert.equal(seen.seen[2]?.url, "http://agent.test/v1/blob/get");
+});
+
+test("a blob that does not come back as hex is an error, not a half-read object", async () => {
+  for (const body of ["{}", JSON.stringify({ bytes: 7 }), JSON.stringify({ bytes: "0a0" }), ""]) {
+    const seen = agent(() => ({ body }));
+    const client = operatorClient("http://agent.test", seen.fetch);
+    await assert.rejects(() => client.getBlob("certs/aa"), /did not come back as hex/, body);
+  }
 });
 
 test("an agent that refuses says so, with what it said", async () => {

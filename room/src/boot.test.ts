@@ -47,7 +47,9 @@ test("a room that cannot register does not start polling", async () => {
     operator: {
       issueNonce: () => Promise.resolve("22".repeat(32)),
       register: () => Promise.reject(new Error("operator: HTTP 500")),
-      submit: () => Promise.resolve(),
+      submit: () => Promise.resolve(null),
+      putBlob: () => Promise.resolve(),
+      getBlob: () => Promise.resolve(""),
     },
   };
   await assert.rejects(() => boot(testConfig(), p), /HTTP 500/);
@@ -221,7 +223,9 @@ test("a renewal that fails is reported, and the room stays up to try again", asy
       // The first registration is the boot; every renewal after it fails.
       return registrations === 1 ? Promise.resolve() : Promise.reject(new Error("operator: HTTP 503"));
     },
-    submit: () => Promise.resolve(),
+    submit: () => Promise.resolve(null),
+    putBlob: () => Promise.resolve(),
+    getBlob: () => Promise.resolve(""),
   };
   const room = await boot(testConfig(), {
     ...ports(),
@@ -250,7 +254,9 @@ test("a renewal nobody is listening to is swallowed, and the room still tries ag
         registrations += 1;
         return registrations === 1 ? Promise.resolve() : Promise.reject(new Error("operator: HTTP 503"));
       },
-      submit: () => Promise.resolve(),
+      submit: () => Promise.resolve(null),
+      putBlob: () => Promise.resolve(),
+      getBlob: () => Promise.resolve(""),
     },
     renewEveryMs: 2,
     // No onError on purpose: a supervisor started without a logger must not die of a failed renewal.

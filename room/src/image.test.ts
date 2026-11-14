@@ -5,6 +5,8 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
+import { MPC_PUBLIC_KEY } from "./testing.js";
+
 const IMAGE_DIR = fileURLToPath(new URL("../image/", import.meta.url));
 const BUILD = `${IMAGE_DIR}build.sh`;
 
@@ -15,6 +17,7 @@ const PINS = {
   "--clearing": "clearing.marginal-demo.testnet",
   "--keypolicy": "keypolicy.marginal-demo.testnet",
   "--chain-id": "testnet",
+  "--mpc-public-key": MPC_PUBLIC_KEY,
 };
 
 /** Runs the compose step and returns what it printed, keyed by name. */
@@ -99,7 +102,14 @@ test("the compose file is embedded verbatim, with every pin filled in and no env
 });
 
 test("a build without its pins is refused, not guessed", () => {
-  for (const missing of ["--image", "--rpc-url", "--operator-url", "--clearing", "--keypolicy"]) {
+  for (const missing of [
+    "--image",
+    "--rpc-url",
+    "--operator-url",
+    "--clearing",
+    "--keypolicy",
+    "--mpc-public-key",
+  ]) {
     const args = ["compose"];
     for (const [flag, value] of Object.entries(PINS)) {
       if (flag !== missing) args.push(flag, value);

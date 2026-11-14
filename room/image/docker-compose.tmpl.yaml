@@ -29,4 +29,6 @@ services:
       MARGINAL_CHAIN_ID: "@@CHAIN_ID@@"
       MARGINAL_CLEARING: "@@CLEARING@@"
       MARGINAL_KEYPOLICY: "@@KEYPOLICY@@"
+      # A pin, not an input: every key the room derives is checked against it (§3.12.3 step 4).
+      MARGINAL_MPC_PUBLIC_KEY: "@@MPC_PUBLIC_KEY@@"
       MARGINAL_ROOM_CLASS: "Kcpu"

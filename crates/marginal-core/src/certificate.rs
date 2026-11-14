@@ -112,3 +112,45 @@ pub fn measurement_hash(measurement: &Measurement) -> [u8; 32] {
 pub fn certificate_hash(certificate: &ForgetCertificateV1) -> [u8; 32] {
     hash_of(certificate)
 }
+
+/// Domain of [`attestation_ref`].
+pub const ATTESTATION_REF_DOMAIN: &[u8] = b"marginal/attestation-ref/v1";
+
+/// The reference a certificate carries to the attestation it was issued under:
+/// `SHA-256("marginal/attestation-ref/v1" ‖ borsh((quote_hash, collateral_hash)))`.
+///
+/// §3.18 writes the field as "quote hash ‖ collateral hash", which is 64 bytes and does not fit
+/// the 32 the type has. It is that pair hashed, so a verifier can recompute it from KeyPolicy's
+/// `get_attestation` record and tell whether a certificate names this attestation or another one
+/// (`tasks.md` SDD issue 35).
+pub fn attestation_ref(quote_hash: &[u8; 32], collateral_hash: &[u8; 32]) -> [u8; 32] {
+    sha256(&[&domain_bytes(
+        ATTESTATION_REF_DOMAIN,
+        &(quote_hash, collateral_hash),
+    )])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_attestation_ref_is_both_hashes_and_their_order() {
+        let quote = [1u8; 32];
+        let collateral = [2u8; 32];
+        let reference = attestation_ref(&quote, &collateral);
+        // Both halves matter, and so does which is which: an attestation with the quote and the
+        // collateral swapped is a different attestation.
+        assert_ne!(reference, attestation_ref(&collateral, &quote));
+        assert_ne!(reference, attestation_ref(&quote, &[3u8; 32]));
+        assert_ne!(reference, attestation_ref(&[3u8; 32], &collateral));
+        // And it is the documented hash, not something else of the same shape.
+        assert_eq!(
+            reference,
+            sha256(&[&domain_bytes(
+                ATTESTATION_REF_DOMAIN,
+                &(&quote, &collateral)
+            )])
+        );
+    }
+}

@@ -15,8 +15,25 @@ export interface OperatorPort {
   issueNonce(): Promise<string>;
   /** Relay a registration: the agent adds the collateral and encodes the call (E11.3). */
   register(bundle: unknown): Promise<void>;
-  /** Relay one of the room's signed reports to clearing. */
-  submit(method: string, args: Record<string, unknown>): Promise<void>;
+  /**
+   * Relay one of the room's signed calls and give back what it returned. `contract` says which of
+   * the two the agent should call; most calls go to clearing, but the key-release pair
+   * (`authorize`, `derive`) is KeyPolicy's. The return value matters for those two: one is a ticket
+   * id and the other is the MPC network's answer (SDD §3.12.3).
+   */
+  submit(
+    method: string,
+    args: Record<string, unknown>,
+    contract?: "clearing" | "keypolicy",
+  ): Promise<unknown>;
+  /**
+   * Stores an object the room emitted — a certificate, a delivery, a job log — at `key`, with its
+   * bytes as hex. The room has no route to the blob store itself, and nothing here is secret: each
+   * object is either public or already sealed (SDD §3.18, §3.19).
+   */
+  putBlob(key: string, bytes: string): Promise<void>;
+  /** Fetches an object by key, as hex. A worker has no network, so every read comes through here. */
+  getBlob(key: string): Promise<string>;
 }
 
 async function post(
@@ -50,8 +67,25 @@ export function operatorClient(baseUrl: string, fetchImpl: Fetch = globalThis.fe
     async register(bundle: unknown): Promise<void> {
       await post(fetchImpl, baseUrl, "/v1/register", bundle);
     },
-    async submit(method: string, args: Record<string, unknown>): Promise<void> {
-      await post(fetchImpl, baseUrl, "/v1/submit", { method, args });
+    async putBlob(key: string, bytes: string): Promise<void> {
+      await post(fetchImpl, baseUrl, "/v1/blob/put", { key, bytes });
+    },
+    async getBlob(key: string): Promise<string> {
+      const reply = (await post(fetchImpl, baseUrl, "/v1/blob/get", { key })) as {
+        bytes?: unknown;
+      } | null;
+      const bytes = reply?.bytes;
+      if (typeof bytes !== "string" || !/^([0-9a-f]{2})*$/.test(bytes)) {
+        throw new Error(`operator: ${key} did not come back as hex`);
+      }
+      return bytes;
+    },
+    async submit(
+      method: string,
+      args: Record<string, unknown>,
+      contract: "clearing" | "keypolicy" = "clearing",
+    ): Promise<unknown> {
+      return post(fetchImpl, baseUrl, "/v1/submit", { contract, method, args });
     },
   };
 }

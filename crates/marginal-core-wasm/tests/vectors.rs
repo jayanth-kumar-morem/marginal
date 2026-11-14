@@ -231,6 +231,16 @@ fn attestation_cases() -> Vec<Case> {
             to_value(&key_request).unwrap(),
             ok(json!(to_hex(&signing))),
         ),
+        case(
+            "key request: the Borsh KeyPolicy's authorize takes",
+            "key_request_encode",
+            to_value(&key_request).unwrap(),
+        ),
+        case(
+            "key request: back from Borsh",
+            "key_request_decode",
+            json!({"bytes": to_hex(&to_bytes(&key_request))}),
+        ),
         known(
             "listing path",
             "listing_path",
@@ -260,6 +270,16 @@ fn attestation_cases() -> Vec<Case> {
             json!({"ppid": to_hex(&report.ppid)}),
             ok(json!(sha256_of(&[b"marginal/ppid/v1", &report.ppid]))),
         ),
+        known(
+            "attestation ref: a certificate's one reference to the attestation it was issued under",
+            "attestation_ref",
+            json!({"quote_hash": to_hex(&h(11)), "collateral_hash": to_hex(&h(12))}),
+            ok(json!(sha256_of(&[
+                b"marginal/attestation-ref/v1",
+                &h(11),
+                &h(12)
+            ]))),
+        ),
         // What a room signs about a listing (SDD §3.4, E4).
         known(
             "provisioning: what the room signs with the listing key it derived",
@@ -273,6 +293,11 @@ fn attestation_cases() -> Vec<Case> {
                 .concat()
             ))),
         ),
+        case(
+            "provisioning: the Borsh clearing takes",
+            "provisioning_encode",
+            to_value(provisioning()).unwrap(),
+        ),
         known(
             "screening: what the room signs when a listing passes",
             "screening_signing_bytes",
@@ -284,6 +309,11 @@ fn attestation_cases() -> Vec<Case> {
                 ]
                 .concat()
             ))),
+        ),
+        case(
+            "screening: the Borsh clearing takes",
+            "screening_encode",
+            to_value(screening(ScreeningResult::Flag { reason: FLAG_MNPI })).unwrap(),
         ),
         case(
             "screening: a listing flagged for MNPI",
@@ -834,10 +864,15 @@ fn the_cases_cover_every_operation_and_error() {
         "evaluate_quote",
         "register_room_encode",
         "key_request_signing_bytes",
+        "key_request_encode",
+        "key_request_decode",
+        "provisioning_encode",
+        "screening_encode",
         "listing_path",
         "path_hash",
         "measurement_hash",
         "ppid_hash",
+        "attestation_ref",
         "provisioning_signing_bytes",
         "screening_signing_bytes",
         "nullifier_signing_bytes",

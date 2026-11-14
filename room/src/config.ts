@@ -21,6 +21,14 @@ export interface RoomConfig {
   readonly dstackSocket: string;
   /** Where the operator agent (E11.3) listens, on the host. */
   readonly operatorUrl: string;
+  /**
+   * The MPC network's CKD public key for this deployment's domain, `bls12381g2:<base58>`.
+   *
+   * It is a **pin**, not an operator input: the room checks every derived key against it (§3.12.3
+   * step 4), so a host that could choose it could hand the room a key it made itself and the
+   * pairing check would pass. It is written into the compose file and therefore measured.
+   */
+  readonly mpcPublicKey: string;
   /** How often to poll `get_jobs_for_room`, in milliseconds. */
   readonly pollMs: number;
   /** The most jobs to run at once. */
@@ -51,6 +59,13 @@ function url(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
+/** A `bls12381g2:` key, checked here so a room never starts with a key it cannot parse. */
+function blsKey(env: NodeJS.ProcessEnv, name: string): string {
+  const value = required(env, name);
+  if (!value.startsWith("bls12381g2:")) throw new Error(`${name} must be a bls12381g2 key`);
+  return value;
+}
+
 function positive(env: NodeJS.ProcessEnv, name: string, fallback: number): number {
   const raw = env[name];
   if (raw === undefined || raw.trim() === "") return fallback;
@@ -76,6 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): RoomConfig {
     roomClass: roomClass as RoomConfig["roomClass"],
     dstackSocket: (env.MARGINAL_DSTACK_SOCKET ?? DEFAULTS.dstackSocket).trim(),
     operatorUrl: url(env, "MARGINAL_OPERATOR_URL"),
+    mpcPublicKey: blsKey(env, "MARGINAL_MPC_PUBLIC_KEY"),
     pollMs: positive(env, "MARGINAL_POLL_MS", DEFAULTS.pollMs),
     maxWorkers: positive(env, "MARGINAL_MAX_WORKERS", DEFAULTS.maxWorkers),
   };

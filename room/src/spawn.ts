@@ -36,6 +36,16 @@ export type WorkerRequest =
       readonly id: number;
       readonly method: string;
       readonly args: Record<string, unknown>;
+      /** Which contract the agent should call; clearing unless the worker says otherwise. */
+      readonly contract: "clearing" | "keypolicy";
+    }
+  | {
+      readonly kind: "blob";
+      readonly id: number;
+      readonly op: "get" | "put";
+      readonly key: string;
+      /** Hex, on a put. */
+      readonly bytes: string;
     };
 
 /**
@@ -55,11 +65,29 @@ export function parseWorkerRequest(raw: unknown): WorkerRequest | undefined {
     typeof message.args === "object" &&
     message.args !== null
   ) {
+    if (message.contract !== undefined && message.contract !== "clearing" && message.contract !== "keypolicy") {
+      return undefined;
+    }
     return {
       kind: "submit",
       id: message.id,
       method: message.method,
       args: message.args as Record<string, unknown>,
+      contract: message.contract === "keypolicy" ? "keypolicy" : "clearing",
+    };
+  }
+  if (
+    message.kind === "blob" &&
+    typeof message.key === "string" &&
+    message.key !== "" &&
+    (message.op === "get" || (message.op === "put" && typeof message.bytes === "string"))
+  ) {
+    return {
+      kind: "blob",
+      id: message.id,
+      op: message.op,
+      key: message.key,
+      bytes: message.op === "put" ? (message.bytes as string) : "",
     };
   }
   return undefined;
@@ -118,9 +146,21 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
             reply(child, { kind: "sign", ...signForWorker(options.keys, request) });
             return;
           }
+          if (request.kind === "blob") {
+            const work =
+              request.op === "get"
+                ? options.operator.getBlob(request.key)
+                : options.operator.putBlob(request.key, request.bytes).then(() => "");
+            void work
+              .then((bytes) => reply(child, { kind: "blob", id: request.id, ok: true, value: bytes }))
+              .catch((error: unknown) =>
+                reply(child, { kind: "blob", id: request.id, error: (error as Error).message }),
+              );
+            return;
+          }
           void options.operator
-            .submit(request.method, request.args)
-            .then(() => reply(child, { kind: "submit", id: request.id, ok: true }))
+            .submit(request.method, request.args, request.contract)
+            .then((value) => reply(child, { kind: "submit", id: request.id, ok: true, value }))
             .catch((error: unknown) =>
               reply(child, { kind: "submit", id: request.id, error: (error as Error).message }),
             );
@@ -130,7 +170,12 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
           if (code === 0) finish();
           else finish(new Error(`worker for job ${job.id} exited with ${signal ?? code}`));
         });
-        child.send({ kind: "job", job });
+        // The worker holds no key of its own, so the room's public key comes with the job.
+        child.send({
+          kind: "job",
+          job,
+          room_key: Buffer.from(options.keys.signPk).toString("hex"),
+        });
       });
     },
   };
