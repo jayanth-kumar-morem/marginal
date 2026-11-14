@@ -186,7 +186,7 @@ test("a room answers the job it was given, and nothing else", async () => {
   await assert.rejects(() => runProvisioning(w.ctx, 11), /job 11 is a Screening job/);
   const p = world({ kind: "Provisioning" });
   await assert.rejects(() => runScreening(p.ctx, 11), /job 11 is a Provisioning job/);
-  await assert.rejects(() => runJob(p.ctx, "Appraisal", 11), /does not run Appraisal jobs/);
+  await assert.rejects(() => runJob(p.ctx, "Redelivery", 11), /does not run Redelivery jobs/);
   await runJob(p.ctx, "Provisioning", 11);
   const s = world({ kind: "Screening" });
   await runJob(s.ctx, "Screening", 11);

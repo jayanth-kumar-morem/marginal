@@ -94,6 +94,8 @@ export interface JobRecord {
   readonly mode: string;
   readonly snapshot_id: number | null;
   readonly max_debit_mbits: number;
+  /** The buckets the deposit was split into; `budget` is what the commitment covers (§3.9.1). */
+  readonly buckets: { readonly budget: string; readonly compute: string };
   /** Where a delivery is sealed to (SDD §3.19). */
   readonly delivery_pk: string;
   readonly compliance_pk: string | null;
@@ -166,6 +168,27 @@ export interface ListingRecord {
   readonly pk_l: string | null;
   readonly appraiser: string;
   readonly value_class: string;
+  /** Everything below is part of `job_commitment`, which the room recomputes (SDD §3.12.3). */
+  readonly rule: unknown;
+  readonly disclosure_policy: unknown;
+}
+
+/** A snapshot of a buyer's context, as `get_snapshot` reports it. */
+export interface SnapshotRecord {
+  readonly id: number;
+  readonly owner: string;
+  readonly content_hash: string;
+  readonly blob: { readonly uri_hash: string; readonly sha256: string; readonly size_class: number };
+}
+
+export async function snapshotRecord(
+  chain: ChainPort,
+  clearing: string,
+  snapshotId: number,
+): Promise<SnapshotRecord | null> {
+  return chain.view<SnapshotRecord | null>(clearing, "get_snapshot", {
+    snapshot_id: String(snapshotId),
+  });
 }
 
 export async function listingRecord(

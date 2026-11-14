@@ -36,6 +36,8 @@ export interface WorkerChannel {
   getBlob(key: string): Promise<string>;
   /** Stores an object the room emitted. */
   putBlob(key: string, bytes: string): Promise<void>;
+  /** Opens a sealed box addressed to the room's `box_pk`; the worker never holds `box_sk`. */
+  unseal(bytes: string): Promise<string>;
 }
 
 interface Pending {
@@ -115,6 +117,12 @@ export function workerChannel(host: ChannelProcess): WorkerChannel {
     },
     async putBlob(key: string, bytes: string): Promise<void> {
       await ask({ kind: "blob", op: "put", key, bytes });
+    },
+    async unseal(bytes: string): Promise<string> {
+      const reply = await ask({ kind: "unseal", bytes });
+      const opened = reply.value;
+      if (typeof opened !== "string") throw new Error("supervisor: the box did not open");
+      return opened;
     },
   };
 }

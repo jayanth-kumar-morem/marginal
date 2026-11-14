@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { generateRoomKeys } from "./keys.js";
+import { seal } from "./crypto/sodium.js";
 import { forkSpawner, parseWorkerRequest, WORKER_TIMEOUT_MS } from "./spawn.js";
 import { fakeOperator, job, workerFixture } from "./testing.js";
 
@@ -183,6 +184,11 @@ test("a worker that gives up before its relay comes back is not written to", asy
 });
 
 test("only the two requests parse, and only in their own shape", () => {
+  assert.deepEqual(parseWorkerRequest({ kind: "unseal", id: 6, bytes: "aa" }), {
+    kind: "unseal",
+    id: 6,
+    bytes: "aa",
+  });
   assert.deepEqual(parseWorkerRequest({ kind: "blob", id: 4, op: "get", key: "certs/aa" }), {
     kind: "blob",
     id: 4,
@@ -231,6 +237,8 @@ test("only the two requests parse, and only in their own shape", () => {
     { kind: "blob", id: 1, op: "list", key: "a" },
     { kind: "blob", id: 1, op: "get", key: "" },
     { kind: "unseal", id: 1 },
+    { kind: "unseal", id: 1, bytes: "" },
+    { kind: "unseal", id: 1 },
   ]) {
     assert.equal(parseWorkerRequest(raw), undefined, JSON.stringify(raw));
   }
@@ -261,4 +269,25 @@ test("a worker reads and writes blobs through the supervisor", async () => {
   operator.blobs.set("listings/1/good", "0011");
   await forkSpawner({ workerPath: worker, keys: generateRoomKeys(), operator }).run(job(2));
   assert.equal(operator.blobs.get("certs/aa"), "2233", "the certificate was stored");
+});
+
+test("a worker opens a sealed box through the supervisor, never holding the box key", async () => {
+  const keys = generateRoomKeys();
+  const sealed = Buffer.from(seal(new Uint8Array([7, 7, 7]), keys.boxPk)).toString("hex");
+  const worker = workerFixture(`
+    process.on("message", (m) => {
+      if (m.kind === "job") {
+        process.send({ kind: "unseal", id: 1, bytes: ${JSON.stringify(sealed)} });
+        return;
+      }
+      if (m.id === 1) {
+        if (m.value !== "070707") process.exit(40);
+        // A box sealed to somebody else does not open, and says so.
+        process.send({ kind: "unseal", id: 2, bytes: "00".repeat(64) });
+        return;
+      }
+      process.exit(typeof m.error === "string" ? 0 : 41);
+    });
+  `);
+  await forkSpawner({ workerPath: worker, keys, operator: fakeOperator() }).run(job(5));
 });

@@ -112,7 +112,17 @@ export {
 } from "./worker/context.js";
 export { runProvisioning, PROVISIONING_DOMAIN } from "./worker/provisioning.js";
 export { runScreening, SCREENING_DOMAIN } from "./worker/screening.js";
-export { runJob, main as workerMain } from "./worker/main.js";
+export { runJob, appraiserFor, main as workerMain } from "./worker/main.js";
+export {
+  runAppraisal,
+  checkCommitment,
+  parseBundle,
+  restrictedMatch,
+  contextKey,
+  VERDICT_DOMAIN,
+  type Bundle,
+  type Appraised,
+} from "./worker/appraisal.js";
 export { base64, hashOf, certificateKey, commitmentOf } from "./worker/report.js";
 export {
   buildCertificate,

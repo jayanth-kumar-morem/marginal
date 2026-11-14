@@ -84,6 +84,19 @@ test("blobs go through the supervisor, because a worker has no network", async (
   await writing;
 });
 
+test("a sealed box is opened by the supervisor, which holds the box key", async () => {
+  const h = host();
+  const channel = workerChannel(h.process);
+  const opening = channel.unseal("aabb");
+  assert.deepEqual(h.sent[0], { kind: "unseal", bytes: "aabb", id: 1 });
+  h.answer({ kind: "unseal", id: 1, ok: true, value: "0011" });
+  assert.equal(await opening, "0011");
+
+  const empty = channel.unseal("aabb");
+  h.answer({ kind: "unseal", id: 2, ok: true });
+  await assert.rejects(() => empty, /the box did not open/);
+});
+
 test("a refusal is an error, and a reply that answers nothing is not mistaken for one", async () => {
   const h = host();
   const channel = workerChannel(h.process);

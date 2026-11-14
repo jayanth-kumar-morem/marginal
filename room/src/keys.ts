@@ -28,6 +28,15 @@ function raw(key: KeyObject): Uint8Array {
   return new Uint8Array(der.subarray(der.length - 32));
 }
 
+/**
+ * The raw 32 bytes of the box private key, which is what libsodium's sealed boxes take. Node's
+ * PKCS#8 encoding of an X25519 key ends with the scalar, after a fixed 16-byte header.
+ */
+export function boxSecretKey(keys: RoomKeys): Uint8Array {
+  const der = keys.boxPrivate().export({ type: "pkcs8", format: "der" });
+  return new Uint8Array(der.subarray(der.length - 32));
+}
+
 /** Generates a room's keys. Call once per boot. */
 export function generateRoomKeys(): RoomKeys {
   const signing = generateKeyPairSync("ed25519");

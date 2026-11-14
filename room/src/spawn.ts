@@ -17,6 +17,8 @@ import type { RoomKeys } from "./keys.js";
 import type { OperatorPort } from "./operator.js";
 import type { WorkerSpawner } from "./scheduler.js";
 import { signForWorker } from "./signer.js";
+import { boxSecretKey } from "./keys.js";
+import { unseal } from "./crypto/sodium.js";
 
 /**
  * The longest a worker may run before it is killed. A job's own on-chain deadline is what decides
@@ -38,6 +40,17 @@ export type WorkerRequest =
       readonly args: Record<string, unknown>;
       /** Which contract the agent should call; clearing unless the worker says otherwise. */
       readonly contract: "clearing" | "keypolicy";
+    }
+  | {
+      /**
+       * Open a sealed box addressed to the room's `box_pk`. The worker never holds `box_sk`
+       * (§3.12.4): it hands over the ciphertext and gets the plaintext. The supervisor cannot tell
+       * which job a sealed box belongs to, so a worker can open any context key sealed to this
+       * room — which is the room's own key for the room's own jobs, and nothing else.
+       */
+      readonly kind: "unseal";
+      readonly id: number;
+      readonly bytes: string;
     }
   | {
       readonly kind: "blob";
@@ -75,6 +88,9 @@ export function parseWorkerRequest(raw: unknown): WorkerRequest | undefined {
       args: message.args as Record<string, unknown>,
       contract: message.contract === "keypolicy" ? "keypolicy" : "clearing",
     };
+  }
+  if (message.kind === "unseal" && typeof message.bytes === "string" && message.bytes !== "") {
+    return { kind: "unseal", id: message.id, bytes: message.bytes };
   }
   if (
     message.kind === "blob" &&
@@ -144,6 +160,23 @@ export function forkSpawner(options: ForkOptions): WorkerSpawner {
           }
           if (request.kind === "sign") {
             reply(child, { kind: "sign", ...signForWorker(options.keys, request) });
+            return;
+          }
+          if (request.kind === "unseal") {
+            try {
+              const opened = unseal(new Uint8Array(Buffer.from(request.bytes, "hex")), {
+                publicKey: options.keys.boxPk,
+                secretKey: boxSecretKey(options.keys),
+              });
+              reply(child, {
+                kind: "unseal",
+                id: request.id,
+                ok: true,
+                value: Buffer.from(opened).toString("hex"),
+              });
+            } catch (error) {
+              reply(child, { kind: "unseal", id: request.id, error: (error as Error).message });
+            }
             return;
           }
           if (request.kind === "blob") {

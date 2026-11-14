@@ -7,13 +7,33 @@
  */
 import { loadConfig } from "../config.js";
 import { chainClient } from "../chain.js";
+import { embedder } from "../appraisers/knowledge/embed.js";
+import { knowledgeAppraiser } from "../appraisers/knowledge/index.js";
+import type { Appraiser } from "../appraisers/types.js";
+import { runAppraisal } from "./appraisal.js";
 import { runProvisioning } from "./provisioning.js";
 import { runScreening } from "./screening.js";
 import { workerChannel, type ChannelProcess } from "./ipc.js";
 import type { WorkerContext } from "./context.js";
 
+/**
+ * The appraiser for a listing. M1 has one, and loading it means reading 90 MB of weights, so it is
+ * built only for the job kind that needs it.
+ */
+export async function appraiserFor(listingAppraiser: string): Promise<Appraiser> {
+  if (listingAppraiser !== "knowledge@1") {
+    throw new Error(`this room does not run ${listingAppraiser}`);
+  }
+  return knowledgeAppraiser(await embedder());
+}
+
 /** Runs one job and returns, leaving nothing behind. */
-export async function runJob(ctx: WorkerContext, kind: string, jobId: number): Promise<void> {
+export async function runJob(
+  ctx: WorkerContext,
+  kind: string,
+  jobId: number,
+  appraiser: (id: string) => Promise<Appraiser> = appraiserFor,
+): Promise<void> {
   if (kind === "Provisioning") {
     await runProvisioning(ctx, jobId);
     return;
@@ -22,7 +42,11 @@ export async function runJob(ctx: WorkerContext, kind: string, jobId: number): P
     await runScreening(ctx, jobId);
     return;
   }
-  // Appraisal is E8.4; the other kinds are v2 (§3.5).
+  if (kind === "Appraisal") {
+    await runAppraisal(ctx, jobId, await appraiser("knowledge@1"));
+    return;
+  }
+  // The other kinds are v2 (§3.5).
   throw new Error(`job ${jobId}: this room does not run ${kind} jobs`);
 }
 

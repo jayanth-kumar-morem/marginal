@@ -15,9 +15,9 @@ import type { ChainPort, JobRecord, RoomJob } from "./chain.js";
 import type { RoomConfig } from "./config.js";
 import type { DstackPort, Quote, RawEvent } from "./dstack.js";
 import type { OperatorPort } from "./operator.js";
-import type { RoomKeys } from "./keys.js";
+import { boxSecretKey, type RoomKeys } from "./keys.js";
 import { signForWorker } from "./signer.js";
-import { AEAD_KEY_BYTES, AEAD_NONCE_BYTES, aeadSeal, randomBytes, seal } from "./crypto/sodium.js";
+import { AEAD_KEY_BYTES, AEAD_NONCE_BYTES, aeadSeal, randomBytes, seal, unseal as unsealBox } from "./crypto/sodium.js";
 import type { WorkerChannel } from "./worker/ipc.js";
 
 export const CHAIN_ID = "sandbox";
@@ -200,10 +200,11 @@ export function jobRecordFixture(overrides: Partial<JobRecord> = {}): JobRecord 
     listing_version: 1,
     state: "Computing",
     job_commitment: "0a".repeat(32),
-    privacy: "Blind",
+    privacy: "Open",
     mode: "Blind",
     snapshot_id: null,
     max_debit_mbits: 4_000,
+    buckets: { budget: "500000000", compute: "1000000" },
     delivery_pk: "0b".repeat(32),
     compliance_pk: null,
     context_auth_pk: "0c".repeat(32),
@@ -331,6 +332,13 @@ export function localChannel(
     putBlob(key: string, bytes: string): Promise<void> {
       return operator.putBlob(key, bytes);
     },
+    unseal(bytes: string): Promise<string> {
+      const opened = unsealBox(new Uint8Array(Buffer.from(bytes, "hex")), {
+        publicKey: keys.boxPk,
+        secretKey: boxSecretKey(keys),
+      });
+      return Promise.resolve(Buffer.from(opened).toString("hex"));
+    },
   };
 }
 
@@ -381,6 +389,18 @@ export function supervisorHost(
           toWorker({ kind: "sign", ...signForWorker(keys, { id: id as number, message: message.message as string }) });
           return true;
         }
+        if (message.kind === "unseal") {
+          try {
+            const opened = unsealBox(new Uint8Array(Buffer.from(message.bytes as string, "hex")), {
+              publicKey: keys.boxPk,
+              secretKey: boxSecretKey(keys),
+            });
+            toWorker({ kind: "unseal", id, ok: true, value: Buffer.from(opened).toString("hex") });
+          } catch (error) {
+            toWorker({ kind: "unseal", id, error: (error as Error).message });
+          }
+          return true;
+        }
         if (message.kind === "submit") {
           void operator
             .submit(
@@ -406,4 +426,29 @@ export function supervisorHost(
       toWorker({ kind: "job", job, room_key: Buffer.from(keys.signPk).toString("hex") });
     },
   };
+}
+
+/** The buyer's sealed context bundle for a job (E12.1 writes it; §3.14.2 step 3 reads it). */
+export function sealBundle(
+  bundle: { context: string; need: string; restricted: string[] },
+  roomBoxPk: Uint8Array,
+): { sealedKey: string; object: string } {
+  const dek = randomBytes(AEAD_KEY_BYTES);
+  const nonce = randomBytes(AEAD_NONCE_BYTES);
+  const bytes = new Uint8Array(Buffer.from(JSON.stringify(bundle), "utf8"));
+  return {
+    // Clearing hands this back from `get_context_key` as base64 of the sealed box.
+    sealedKey: Buffer.from(seal(dek, roomBoxPk)).toString("base64"),
+    object: Buffer.from(
+      new Uint8Array([...nonce, ...aeadSeal(dek, nonce, bytes, new Uint8Array(0))]),
+    ).toString("hex"),
+  };
+}
+
+/** A context long enough to pass the minimum-sentences check (§3.15.1). */
+export function longContext(sentences = 32): string {
+  return Array.from(
+    { length: sentences },
+    (_, index) => `Context sentence number ${index} has quite enough words in it to count.`,
+  ).join("\n");
 }

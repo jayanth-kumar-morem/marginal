@@ -65,6 +65,10 @@ impl Clearing {
             "appraiser": format!("{}@{}", listing.appraiser.id, listing.appraiser.version),
             "schema_hash": to_hex(&listing.schema_hash),
             "rule": listing.rule,
+            // The room recomputes `job_commitment` itself and will not trust a job parameter that
+            // does not hash into it (SDD §3.12.3 step 4), so the view has to carry every field the
+            // commitment covers.
+            "disclosure_policy": listing.disclosure_policy,
             "token": listing.token,
             "max_copies": listing.max_copies,
             "copies": listing.copies,
@@ -98,7 +102,9 @@ impl Clearing {
                 _ => Value::Null,
             },
             "privacy": format!("{:?}", job.privacy),
-            "mode": format!("{:?}", job.mode),
+            // serde, not `Debug`: `DisplayMode::Fields` has a payload, and the room feeds this
+            // straight back into `job_commitment` (SDD issue 11 keeps `Fields` refused in M1).
+            "mode": job.mode,
             "snapshot_id": job.snapshot_id,
             "max_debit_mbits": job.max_debit_mbits,
             // The room needs these to seal a delivery and to recompute `job_commitment` itself

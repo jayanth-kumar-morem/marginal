@@ -52,9 +52,9 @@ function host(): { process: ChannelProcess; give(kind: string): void } {
 test("the worker waits for its job, then runs the pipeline for its kind", async () => {
   const h = host();
   const running = main(h.process, env);
-  h.give("Appraisal");
-  // Appraisal is E8.4: the worker says so rather than pretending to run it.
-  await assert.rejects(() => running, /does not run Appraisal jobs/);
+  h.give("Redelivery");
+  // Re-delivery is v2: the worker says so rather than pretending to run it.
+  await assert.rejects(() => running, /does not run Redelivery jobs/);
 });
 
 test("a worker started on a kind no room runs says so, and a bad configuration stops it", async () => {

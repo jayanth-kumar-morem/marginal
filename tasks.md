@@ -746,7 +746,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     has no outcome for a job that priced nothing (SDD issue 36).
   - **Not verified:** no real MPC answer, no real blob store and no chain — the operator agent
     (E11.3) and the blob store (E11.1) are the other side of every call made here.
-- [ ] **E8.4 Appraisal pipeline** · P0 · §3.14.2 · **what clearing will check is built (E6.1, E6.2)**
+- [x] **E8.4 Appraisal pipeline** · P0 · §3.14.2 · **what clearing will check is built (E6.1, E6.2)**
   1. Load the job and recompute its commitment.
   2. Get the key through `authorize` + `derive`, and the context through `DEK_c`.
   3. A context that is too small gives `InputRejected`.
@@ -756,6 +756,35 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   7. Decide the branch with core-wasm.
   8. Exit the process.
   - **From the contracts (E6.1).** Clearing recomputes the price itself from the published components and factors, so the verdict's own numbers are only a claim: send `VerdictV1` with `open: Some(OpenBody{components, factors, shown: vec![]})` and sign `verdict_signing_bytes`. It is **rejected, not fatal**, if the components are not what the formula takes, any field is shown (M1 is blind), the appraiser is not the listing's, a deal has no `delivery_commitment`, or `cert_hash` is zero — the job stays `Computing` until its deadline, so the room can fix it and send again. A room whose attestation has lapsed is refused outright, so renew before the window closes.
+  - **Completed 2026-11-14.** `room/src/worker/appraisal.ts`, all eight steps in order, and the
+    order is the design: the commitment is recomputed **before** anything is decrypted, the context
+    is checked **before** the good is touched, and the restricted list is applied **before** the
+    good is read. A job that fails any of those is answered with a verdict rather than left silent,
+    because silence would lock the buyer's funds until the deadline.
+  - **The commitment check is what makes the rest trustworthy (DR-5).** The room rebuilds
+    `job_commitment` from the chain's own answers — including `formula_params` as the default and
+    `assigned_rooms` empty, which is what clearing commits to at request time — and refuses the job
+    if it does not match. A test tampers with one field (`max_debit_mbits`) and shows the room asks
+    for no key at all.
+  - **The worker still holds no key.** `box_sk` stays in the supervisor: the worker hands over the
+    sealed context key and gets the plaintext back (a fourth IPC request). The supervisor cannot
+    tell which job a sealed box belongs to, so a worker can open any context key sealed to this
+    room — which is this room's own key for this room's own jobs, and the limitation is written into
+    the code.
+  - **Verified:** a full appraisal — components published, the delivery sealed and stored, the
+    receipt submitted with the hash the verdict committed to, and **the buyer opening that delivery
+    with their own key**; a compliance copy as a second entry only when the job asked for one; too
+    little context giving `InputRejected` with the appraiser never called; a restricted-list match
+    giving `Restricted` with nothing else computed; a missing context key; a tampered commitment; a
+    snapshot the chain does not have; a malformed bundle; and a relay that answers without a price.
+    One test runs the **real `knowledge@1`** from the image through the whole pipeline.
+  - **Two views had to grow** for the room to recompute the commitment at all: `get_listing` now
+    carries `disclosure_policy`, and `get_job` carries its buckets. `get_job`'s `mode` is now
+    serialised by serde rather than `Debug`, because `DisplayMode::Fields` has a payload that
+    `Debug` writes in a form nothing can parse back (M1 keeps `Fields` refused — SDD issue 11).
+  - **Not verified:** nothing has run against a real chain, a real blob store or the real MPC
+    network; the duration-class wait (step 11) is a cut M1 already made (E17); and no judge runs,
+    so `factors` is empty and `judgement_factor([])` leaves the ceiling alone (E9.1).
 - [ ] **E8.5 Delivery and certificate** · P0 · §3.18, §3.19 · **clearing's side is built (E6.1, E6.4)** · built; the SDK half of the Done line is E12.1
   - Deterministic `DeliveryV1`, with an optional `compliance_pk` entry (D8), and `h_D`.
   - A `ForgetCertificateV1` for every job.
