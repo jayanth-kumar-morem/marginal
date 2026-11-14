@@ -61,6 +61,8 @@ test("the room knows when its attestation is about to lapse", async () => {
     fresh.stop();
   }
 
+  assert.equal(RENEW_BEFORE_SECS, 3_600, "an hour of the 24 the attestation lasts (§3.13 step 9)");
+
   // Inside the renewal window: still admitted, but not for long enough to take new work.
   const expiring = await boot(testConfig(), {
     ...ports(),

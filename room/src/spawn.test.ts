@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { generateRoomKeys } from "./keys.js";
 import { forkSpawner, parseWorkerRequest, WORKER_TIMEOUT_MS } from "./spawn.js";
@@ -12,6 +15,10 @@ const goodWorker = workerFixture(`
 process.on("message", (m) => {
   if (m.kind === "job") {
     if (m.job.id !== 7) process.exit(10);
+    // A worker is given nothing of the host's environment, and a heap it cannot grow past.
+    // None of the host's own variables reach a worker (the platform may still inject its own).
+    if (process.env.PATH !== undefined || process.env.HOME !== undefined) process.exit(15);
+    if (!process.execArgv.some((a) => a.startsWith("--max-old-space-size="))) process.exit(16);
     process.send({ kind: "sign", id: 1, message: ${JSON.stringify(VERDICT)} });
     return;
   }
@@ -90,17 +97,26 @@ test("a worker that fails takes its job's slot with it, and says how it failed",
 });
 
 test("a worker that will not finish is killed", async () => {
-  const worker = workerFixture(`setInterval(() => {}, 1000);`);
+  // It counts into a file every few milliseconds, so the file says whether it is still alive.
+  const beat = join(mkdtempSync(join(tmpdir(), "marginal-beat-")), "beats");
+  const worker = workerFixture(`
+    import { appendFileSync } from "node:fs";
+    setInterval(() => appendFileSync(${JSON.stringify(beat)}, "x"), 5);
+  `);
   await assert.rejects(
     () =>
       forkSpawner({
         workerPath: worker,
         keys: generateRoomKeys(),
         operator: fakeOperator(),
-        timeoutMs: 50,
+        timeoutMs: 60,
       }).run(job(4)),
     /worker for job 4 timed out/,
   );
+  const atDeath = readFileSync(beat, "utf8").length;
+  assert.ok(atDeath > 0, "it was running");
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(readFileSync(beat, "utf8").length, atDeath, "and it is not running any more");
   assert.equal(WORKER_TIMEOUT_MS, 600_000, "and the real cap is ten minutes");
 });
 

@@ -48,7 +48,9 @@ test("no more workers than the cap, however many jobs are waiting", async () => 
   const sched = scheduler({ chain, clearing: CLEARING, roomKeyHex: ROOM, spawner: workers, maxWorkers: 2 });
   assert.equal(await sched.tick(), 2);
   assert.deepEqual(workers.started, [1, 2]);
-  assert.equal(await sched.tick(), 0, "full: the loop does not even ask");
+  const asked = chain.calls.length;
+  assert.equal(await sched.tick(), 0, "full");
+  assert.equal(chain.calls.length, asked, "and a full room does not even ask the chain");
   workers.finish(2);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(await sched.tick(), 1);
@@ -123,7 +125,7 @@ test("the loop polls until it is stopped, and stopping it twice is harmless", as
   loop.stop();
 });
 
-test("a loop stopped before its first tick never runs one", () => {
+test("a loop stopped before its first tick never runs one", async () => {
   const timers: (() => void)[] = [];
   let cleared = 0;
   const loop = runLoop(
@@ -139,7 +141,9 @@ test("a loop stopped before its first tick never runs one", () => {
   );
   loop.stop();
   assert.equal(cleared, 1);
-  // Firing the timer after stopping schedules nothing more.
+  // Firing the timer after stopping schedules nothing more. `schedule` runs when the tick settles,
+  // so the assertion has to wait for that microtask.
   timers[0]?.();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   assert.equal(timers.length, 1);
 });

@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createPublicKey, verify } from "node:crypto";
 import { call } from "@marginal/core-wasm";
 
 import { generateRoomKeys } from "./keys.js";
@@ -64,7 +65,21 @@ test("a registration carries the signed parts, and not the collateral", async ()
   assert.equal(bundle.nonce, NONCE);
   assert.equal(bundle.class, "Kcpu");
   assert.match(bundle.quote, /^[0-9a-f]+$/);
-  assert.match(bundle.sign_sig, /^[0-9a-f]{128}$/);
+  // It has to be the room's own signature over the pop bytes, because that is what KeyPolicy
+  // checks: a quote proves what software runs, not who holds the key (E3.2).
+  const der = Buffer.concat([
+    Buffer.from("302a300506032b6570032100", "hex"),
+    Buffer.from(keys.signPk),
+  ]);
+  const popBytes = Buffer.from(
+    call("room_pop_signing_bytes", roomBinding(config, keys, NONCE)) as string,
+    "hex",
+  );
+  assert.equal(
+    verify(null, popBytes, createPublicKey({ key: der, format: "der", type: "spki" }), Buffer.from(bundle.sign_sig, "hex")),
+    true,
+    "sign_sig is the room's signature over its own proof-of-possession bytes",
+  );
   assert.equal(bundle.events.length, 9);
   assert.equal("collateral" in bundle, false, "the agent fetches that");
 

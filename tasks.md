@@ -562,6 +562,9 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     open. Two SDD issues found while writing the file: 33 (§3.13's listing is missing the three keys
     dstack requires and shows `pre_launch_script: null` where omission is the only safe encoding) and
     34 (the compose hash is the SHA-256 of the deployed file, which §3.13 never says).
+  - **No `nftables.conf` either** (SDD §3.1 lists one in `room/image/`): egress enforcement is a
+    cut M1 already made ([What M1 cuts](#what-m1-cuts) → E17.1), and a policy file nothing applies
+    would only make the measurement look stronger than it is.
   - **To close:** E8.6 adds `room/models/` with its pins, then re-runs `build.sh` and updates
     `room/image/MEASUREMENTS.md` with the new compose hash.
 - [x] **E7.3 Reproducible build** · P0 · D3 · §3.13
@@ -578,8 +581,11 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     its own SDKs predict the hash from recursively key-sorted compact JSON. Writing the canonical
     form makes the two answers the same number, so a verifier can use either (SDD issue 34).
   - **Verified beyond the Done line:** `build.sh image` builds, and a second `--no-cache` build of
-    the same commit gave the same manifest digest,
-    `sha256:f0bacb3b0da4f4774bea1edb747052dac1f81c4165bf3dc81d3f54d7d3d5af08`.
+    the same commit gave the same manifest digest
+    (`sha256:f0bacb3b…af08` at commit `7d96482`). The digest is per **commit**, not per source tree:
+    `SOURCE_DATE_EPOCH` is the commit's timestamp, so a later commit gives a new digest even when
+    the room's code has not changed. That is the right semantics for "built from this tag", and it
+    is why the pin lands only when the image is published ([P-5](#paid-and-account-gated-steps-jay)).
   - **Not verified:** that another machine reproduces that image digest (only this host was tried),
     and the one known gap — `core.wasm` is built on the host rather than inside the image, so two
     builders must also compare `core_wasm_sha256`. `MEASUREMENTS.md` says so.
@@ -597,6 +603,10 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     out of the quote at offset 568, replays the RTMR3 log and applies the same event policy KeyPolicy
     will (`rtmr3_replay`, `room_events`). The 200 TGas verifier call and the storage are the
     operator's money, so a quote that cannot pass is refused locally.
+  - **A mutation found a real gap.** Replacing `sign_sig` with 64 zero bytes left every test
+    passing: `proofOfPossession` was checked on its own, but nothing checked that
+    `buildRegistration` used it. The bundle test now verifies the signature against the room's
+    published key over `room_pop_signing_bytes`, which is the check KeyPolicy makes.
   - **Deviation from the task text: not `@phala/dstack-sdk`.** The room needs one call, `GetQuote`,
     and node already frames an HTTP request over a unix socket, so `dstack.ts` is a direct client of
     the guest agent's v0 surface (`{report_data: hex}` to `/prpc/GetQuote`, `{quote, event_log}`
@@ -627,6 +637,13 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
   - **Not verified:** anything a real worker does. The module `forkSpawner` forks,
     `room/dist/worker/main.js`, is E8; until then a job that arrives is forked, fails to start and is
     reported.
+  - **Mutations over all of `room/src`: 54 run, 53 caught** — one per guard, constant, offset and
+    policy check across the eleven modules. Four survived the first pass; three were real gaps and
+    are closed: a full scheduler was never asserted to skip the RPC (it only looked full), the
+    stop-before-first-tick test asserted before the microtask that reschedules, and `sign_sig` was
+    never verified (E7.4). The one survivor that stays is `if (child.connected)` in `spawn.ts`:
+    removing it changes nothing a test can observe, but it makes a finished worker's child emit
+    `ERR_IPC_CHANNEL_CLOSED` after the job has already ended, so the guard earns its line.
 
 ## E8. Room worker and appraisers
 
