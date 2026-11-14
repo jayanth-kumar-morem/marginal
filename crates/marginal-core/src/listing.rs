@@ -5,8 +5,10 @@
 //! allowed or the caller the seller is contract state, and stays in the contract.
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
+use crate::json::{hex, hex_opt};
 use crate::leakage::MAX_ALPHABET;
 use crate::types::{
     AccountId, AppraiserRef, AssetClass, BlobRef, CategoryId, DisclosurePolicy, Eligibility,
@@ -69,7 +71,7 @@ pub fn validate_rule(rule: &PricingRule) -> Result<(), CoreError> {
 /// JSON schema, which `cargo near`'s ABI step needs).
 ///
 /// [`Listing`]: crate::types::Listing
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct ListingSpec {
     pub asset_class: AssetClass,
     pub category: CategoryId,
@@ -89,6 +91,7 @@ pub struct ListingSpec {
     pub eligibility: Eligibility,
     pub challenge_window_blocks: u64,
     pub delivery_deadline_blocks: u64,
+    #[serde(with = "hex_opt")]
     pub dossier_hash: Option<[u8; 32]>,
 }
 
@@ -121,8 +124,9 @@ pub fn validate_spec(spec: &ListingSpec) -> Result<(), CoreError> {
 
 /// What `publish_listing` adds to a provisioned listing (SDD §3.4): the commitment the buyer will
 /// check a delivered good against, where the ciphertext lives, and where the proceeds go.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PublishSpec {
+    #[serde(with = "hex")]
     pub good_commitment: [u8; 32],
     pub ciphertext: BlobRef,
     pub payout: PayoutRoute,

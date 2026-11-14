@@ -1,0 +1,3 @@
+# A demo deployment of a private project: nothing here should be indexed.
+User-agent: *
+Disallow: /

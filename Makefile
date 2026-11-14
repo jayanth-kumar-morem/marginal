@@ -8,7 +8,7 @@ CONTRACTS := contracts/clearing contracts/keypolicy contracts/test-tokens/musdc
 TEST_CONTRACTS := contracts/test-mocks/mocks
 NODE := . $$HOME/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1 || true
 
-.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core models props wasm wasm-dev e2e ci
+.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core models props wasm wasm-dev web e2e ci
 
 hooks:
 	git config core.hooksPath .githooks
@@ -96,6 +96,13 @@ wasm-dev:
 	@for c in $(CONTRACTS) $(TEST_CONTRACTS); do echo "== dev build: $$c"; (cd $$c && cargo near build non-reproducible-wasm --locked) || exit 1; done
 	@echo "== dev build: contracts/keypolicy (sim-attestation)"; (cd contracts/keypolicy && cargo near build non-reproducible-wasm --locked --features sim-attestation --out-dir ../../target/near/keypolicy-sim) || exit 1
 
+# The web app's real build. It is not part of `make check` on purpose: `pnpm build` typechecks every
+# package (`tsc --noEmit` for apps/web), which is what the coverage gate needs, while a Next build
+# costs the better part of a minute and fetches the three Google fonts. This runs before a deploy.
+web: wasm-core
+	$(NODE); pnpm --filter @marginal/core-wasm --filter @marginal/sdk --filter @marginal/replay-ts build
+	$(NODE); pnpm --filter @marginal/web build:next
+
 # Needs built wasm: sandbox contract tests and the deploy end-to-end.
 e2e: ensure-wasm
 	cargo test --workspace --test '*' --locked
@@ -104,4 +111,4 @@ e2e: ensure-wasm
 # Full gate: `check` (which includes 100% coverage), the full property sweep, reproducible builds
 # and the end-to-end tests.
 # Needs Docker and a clean tree.
-ci: check props wasm e2e
+ci: check props wasm web e2e

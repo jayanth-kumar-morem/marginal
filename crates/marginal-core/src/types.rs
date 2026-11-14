@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::codec::{from_bytes, to_bytes};
 use crate::error::CoreError;
-use crate::json::dec;
+use crate::json::{dec, hex};
 
 /// A NEAR account id. Same Borsh encoding as `near_sdk::AccountId`.
 pub type AccountId = String;
@@ -60,7 +60,9 @@ pub const SETTLEMENT_V: u8 = 1;
 // ---------------------------------------------------------------------------------------------
 // Classifications
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum AssetClass {
     Knowledge,
     Dataset,
@@ -81,7 +83,9 @@ pub enum ValueClass {
     X,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub enum KeyReleaseMode {
     Ckd,
     /// Fallback only: used when MPC CKD is unavailable.
@@ -126,7 +130,19 @@ pub enum DisclosurePolicy {
 }
 
 /// Identity tiers (SPEC §4.13.1). `Id0` is anonymous and cannot appraise.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    BorshSerialize,
+    BorshDeserialize,
+    Serialize,
+    Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+)]
 pub enum Tier {
     Id0,
     Id1,
@@ -135,7 +151,9 @@ pub enum Tier {
 }
 
 /// A category from the governance table (category-to-tier requirements live in clearing).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq,
+)]
 pub struct CategoryId(pub u16);
 
 // ---------------------------------------------------------------------------------------------
@@ -240,12 +258,13 @@ pub struct AppraiserRef {
 }
 
 /// Leakage budget and its counters, all in millibits (§3.8).
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct LeakageAccount {
     pub budget_mbits: u64,
     pub reserved_mbits: u64,
     pub spent_mbits: u64,
     /// π: paid to the seller per bit debited.
+    #[serde(with = "dec")]
     pub price_per_bit: u128,
     /// 0 means none.
     pub sub_budget_mbits_per_identity: u64,
@@ -271,15 +290,17 @@ pub enum ListingStatus {
 }
 
 /// A blob in the blob store, by content.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct BlobRef {
+    #[serde(with = "hex")]
     pub uri_hash: [u8; 32],
+    #[serde(with = "hex")]
     pub sha256: [u8; 32],
     /// Padded size bucket the object was uploaded in.
     pub size_class: u8,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Eligibility {
     pub min_tier: Tier,
     pub min_anonymity_set: u32,
@@ -287,7 +308,7 @@ pub struct Eligibility {
     pub cooling_blocks: u64,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum PayoutRoute {
     /// `token.ft_transfer`.
     NearAccount(AccountId),
@@ -444,7 +465,7 @@ pub struct Buckets {
 }
 
 /// Where a refund goes.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum RefundRoute {
     /// Credit the buyer's balance inside clearing.
     Balance,

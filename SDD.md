@@ -371,6 +371,9 @@ marginal/
 │   ├── replay-ts/                  verifier #1 (grows from LETHE's verify.js)
 │   └── replay-py/                  verifier #2, written independently from SPEC + this SDD only [v1 exit]
 ├── apps/web/                       Next.js app: sell, appraise, jobs, verify, rooms, compliance, agents
+│   ├── src/app/(app)/              the pages; src/app/api/ the route handlers that hold the server side
+│   ├── src/components/ui/          vendored shadcn/Magic UI/21st.dev components, kept as they ship
+│   └── src/lib/                    every piece of logic worth testing, under the 100% gate
 ├── sdk/ts/                         @marginal/sdk: sealing, tx builders, job watcher
 ├── cli/                            `marginal` CLI (seller, buyer, gov, debug)
 ├── sim/                            economic simulation, red-team harness (Sybil probing, injection corpora)

@@ -1880,6 +1880,319 @@
     },
     {
       "expect": {
+        "ok": "Deal"
+      },
+      "input": {
+        "outcome": "Deal"
+      },
+      "name": "settlement: the state a deal must end in",
+      "op": "state_for"
+    },
+    {
+      "expect": {
+        "err": "E_JOB_STATE"
+      },
+      "input": {
+        "outcome": "Revoked"
+      },
+      "name": "settlement: an outcome that is not a first settlement has no end state",
+      "op": "state_for"
+    },
+    {
+      "expect": {
+        "ok": "25000000"
+      },
+      "input": {
+        "mbits": 4000,
+        "price_per_bit": "6250000"
+      },
+      "name": "settlement: π · d, rounded down, is what the seller is owed",
+      "op": "compensation"
+    },
+    {
+      "expect": {
+        "ok": "000100010000090000006b6e6f776c656467650100000000010000000106000000736563746f72080002000000100010000b00000084d7170000000000000000000000001b0000006d757364632e6d617267696e616c2d64656d6f2e746573746e65740100e8030000010000a08601000000000000000000000000000000000000000000e80300000000000000000000000000000000000000000000000000000101000000000000000000000000006400000000000000c80000000000000000"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "asset_class": "Knowledge",
+        "category": 1,
+        "challenge_window_blocks": 100,
+        "delivery_deadline_blocks": 200,
+        "disclosure_policy": "DisputeOnly",
+        "dossier_hash": null,
+        "eligibility": {
+          "cooling_blocks": 0,
+          "min_anonymity_set": 0,
+          "min_tier": "Id1",
+          "nullifier_gated": false
+        },
+        "external_judges_allowed": true,
+        "key_mode": "Ckd",
+        "l_floor_bps": 1000,
+        "leakage": {
+          "budget_mbits": 100000,
+          "price_per_bit": "1000",
+          "reserved_mbits": 0,
+          "spent_mbits": 0,
+          "sub_budget_mbits_per_identity": 0,
+          "verified_reserve_bps": 0
+        },
+        "licence_class": 1,
+        "max_copies": 1,
+        "privacy_default": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            16,
+            16
+          ],
+          "fields": [
+            {
+              "alphabet": 8,
+              "id": 1,
+              "name": "sector"
+            }
+          ],
+          "judge_scale": 11
+        },
+        "token": "musdc.marginal-demo.testnet",
+        "value_class": "M"
+      },
+      "name": "listing spec: a seller's create_listing argument",
+      "op": "listing_spec_encode"
+    },
+    {
+      "expect": {
+        "ok": true
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "asset_class": "Knowledge",
+        "category": 1,
+        "challenge_window_blocks": 100,
+        "delivery_deadline_blocks": 200,
+        "disclosure_policy": "DisputeOnly",
+        "dossier_hash": null,
+        "eligibility": {
+          "cooling_blocks": 0,
+          "min_anonymity_set": 0,
+          "min_tier": "Id1",
+          "nullifier_gated": false
+        },
+        "external_judges_allowed": true,
+        "key_mode": "Ckd",
+        "l_floor_bps": 1000,
+        "leakage": {
+          "budget_mbits": 100000,
+          "price_per_bit": "1000",
+          "reserved_mbits": 0,
+          "spent_mbits": 0,
+          "sub_budget_mbits_per_identity": 0,
+          "verified_reserve_bps": 0
+        },
+        "licence_class": 1,
+        "max_copies": 1,
+        "privacy_default": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            16,
+            16
+          ],
+          "fields": [
+            {
+              "alphabet": 8,
+              "id": 1,
+              "name": "sector"
+            }
+          ],
+          "judge_scale": 11
+        },
+        "token": "musdc.marginal-demo.testnet",
+        "value_class": "M"
+      },
+      "name": "listing spec: core's own checks pass it",
+      "op": "validate_spec"
+    },
+    {
+      "expect": {
+        "err": "E_RULE_PARAMS"
+      },
+      "input": {
+        "appraiser": {
+          "formula_id": "KnowledgeV1",
+          "id": "knowledge",
+          "version": 1
+        },
+        "asset_class": "Knowledge",
+        "category": 1,
+        "challenge_window_blocks": 100,
+        "delivery_deadline_blocks": 200,
+        "disclosure_policy": "DisputeOnly",
+        "dossier_hash": null,
+        "eligibility": {
+          "cooling_blocks": 0,
+          "min_anonymity_set": 0,
+          "min_tier": "Id1",
+          "nullifier_gated": false
+        },
+        "external_judges_allowed": true,
+        "key_mode": "Ckd",
+        "l_floor_bps": 1000,
+        "leakage": {
+          "budget_mbits": 100000,
+          "price_per_bit": "1000",
+          "reserved_mbits": 0,
+          "spent_mbits": 0,
+          "sub_budget_mbits_per_identity": 0,
+          "verified_reserve_bps": 0
+        },
+        "licence_class": 1,
+        "max_copies": 0,
+        "privacy_default": "Open",
+        "rule": {
+          "Posted": {
+            "ask": "400000000"
+          }
+        },
+        "schema": {
+          "component_alphabets": [
+            16,
+            16
+          ],
+          "fields": [
+            {
+              "alphabet": 8,
+              "id": 1,
+              "name": "sector"
+            }
+          ],
+          "judge_scale": 11
+        },
+        "token": "musdc.marginal-demo.testnet",
+        "value_class": "M"
+      },
+      "name": "listing spec: a spec with no copies is refused before gas is paid",
+      "op": "validate_spec"
+    },
+    {
+      "expect": {
+        "ok": "0707070707070707070707070707070707070707070707070707070707070707080808080808080808080808080808080808080808080808080808080808080809090909090909090909090909090909090909090909090909090909090909090c000e00000073656c6c65722e746573746e6574"
+      },
+      "input": {
+        "ciphertext": {
+          "sha256": "0909090909090909090909090909090909090909090909090909090909090909",
+          "size_class": 12,
+          "uri_hash": "0808080808080808080808080808080808080808080808080808080808080808"
+        },
+        "good_commitment": "0707070707070707070707070707070707070707070707070707070707070707",
+        "payout": {
+          "NearAccount": "seller.testnet"
+        }
+      },
+      "name": "publish spec: the commitment, the ciphertext and the payout route",
+      "op": "publish_spec_encode"
+    },
+    {
+      "expect": {
+        "ok": "010101010101010101010101010101010101010101010101010101010101010102020202020202020202020202020202020202020202020202020202020202020a"
+      },
+      "input": {
+        "sha256": "0202020202020202020202020202020202020202020202020202020202020202",
+        "size_class": 10,
+        "uri_hash": "0101010101010101010101010101010101010101010101010101010101010101"
+      },
+      "name": "blob ref: a snapshot's object",
+      "op": "blob_ref_encode"
+    },
+    {
+      "expect": {
+        "ok": "030000000000000001000000000065cd1d0000000000000000000000000000020b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b000c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c03000000010203000000"
+      },
+      "input": {
+        "budget": "500000000",
+        "compliance_pk": null,
+        "context_auth_pk": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "delivery_pk": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "listing_id": 3,
+        "listing_version": 1,
+        "mode": "Blind",
+        "n_judges": 2,
+        "nullifier": null,
+        "nullifier_sig": null,
+        "privacy": "Open",
+        "refund_to": "Balance",
+        "sealed_context_key": "010203",
+        "snapshot_id": null
+      },
+      "name": "appraisal request: a buyer's request_appraisal argument",
+      "op": "appraisal_request_encode"
+    },
+    {
+      "expect": {
+        "ok": true
+      },
+      "input": {
+        "budget": "500000000",
+        "compliance_pk": null,
+        "context_auth_pk": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "delivery_pk": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "listing_id": 3,
+        "listing_version": 1,
+        "mode": "Blind",
+        "n_judges": 2,
+        "nullifier": null,
+        "nullifier_sig": null,
+        "privacy": "Open",
+        "refund_to": "Balance",
+        "sealed_context_key": "010203",
+        "snapshot_id": null
+      },
+      "name": "appraisal request: core's own checks pass it",
+      "op": "validate_request"
+    },
+    {
+      "expect": {
+        "err": "E_RULE_PARAMS"
+      },
+      "input": {
+        "budget": "500000000",
+        "compliance_pk": null,
+        "context_auth_pk": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+        "delivery_pk": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+        "listing_id": 3,
+        "listing_version": 1,
+        "mode": "Blind",
+        "n_judges": 9,
+        "nullifier": null,
+        "nullifier_sig": null,
+        "privacy": "Open",
+        "refund_to": "Balance",
+        "sealed_context_key": "010203",
+        "snapshot_id": null
+      },
+      "name": "appraisal request: more judges than the schema allows is refused",
+      "op": "validate_request"
+    },
+    {
+      "expect": {
         "ok": "8c028ae5d383537b11f409d801167880cd7197a08561ccf7362b140d39f3a304902f7bb4232f27807acd5e449306e62cf8c7ab22d1a0c580a82cf9217dae360c00add47fe8d14fcd9244886a7eb72cf42a46b99bd9928b07fe2b7c5698ae9b153a896a9dd33027b0c8d7c3c3b1c10d09594d1b7441b68aed4e5316cea765a126e17f0f1f783fc878189dd2a8dd5b2e15ea8bcbfaa347972476ffb8b799694e16daa4a3619dd67509c10f77a4d49d1859de5ca7dd5101f6ea06b31187c92e5322edf692d95cbdde46ddda5ef7d422436779445c5e66006a42761e1f12efde0018c212f3aeb785e49712e7a9353349aaf1255dfb31b7bf60723a480d9293938e19aa7dfa6601cce64c7bd3430c69e7d1e38f40cb8d8071ab4aeb6d8cdba55ec8125b9722d1dcdaac55f38eb37033314bbc95330c69ad999eec75f05f58d0890609694e32f34b1aef237ed7a95f035e599597219d4aac6493a8071184d3abf2a32abfa0a1cf39a1913f1994a63f4bd2979a4b8f40354ad13b9a5b4e55e01a50b8100224165767e0993696de289676295e49bb6e16ae0d80f583d861dbdbf666820f55809cee55e3bbd1f0df0aaf53d84518ef836f223d91105084b06310f2b87b10d53908b3f621e766891291fd0068a0691095468e8b2f8b7b680f394867bcbe294541201f80a0bd95eab063e9d5692ea624b9ed875339c9f4a5c0335d7014d6185e4178b3333bb2ca4a5c7449724f9f88c390552a89c1fbb5d292533938ac5815e1d5065c617159df9ff869e5c1b0cbfabcd1773530562eeeb4b87591450d8c1009267713233b7c9193c77572dabe3cb1aab9bad3c406561d17be250ab181bf07061062bfb4105756f82b96e8ac47c68a59b3c679881d76f2b077c43e3ed6bf1c3e7837744405099c97e788e289646ee9f0667431504d19f89ce2a401e5707d25aa2b4dc779e29c5cb80481f5d16f2a3b94c2cfe68e936ad74516b79ae7d8f40aa3874e251b44a4c73c8cae335a264ac5394126be6cdb006028e6ade00ba46023f376c692fac7ac848eba4cabea952c0756491803805ffb57de5c2b654fc1c0053c198c9aa159a713b74bc3a23aa52aba6bb3ae28da5b278a536495a94298821dd3602ecb1c70874801251aa03c17f17e32f633c3cc232627d78310cc588b43120cb4f2b9a3a66e05535e893b578c9f12818d1964c0ebe7466c57eddaad92980c336116c3ee75c651015d4cfb2fd0956f8698a34a7df0425745701e3f32755c11c1fd6514bdbd8c118b5bf5e7fcd9058f327604df5954f13ef792e97ba2f97e1ee71c67168d920a7ac00932f06fef67c91169f784e2352284d6a330cff1ca5713f4b66410e2187b5ec6b8a94021550a5b31eafcf0e97f4055cf9cfab2bb913228932ae75fd325f985e0937ccfcb0cf36e130fe77b1cb39299bb5fbd2aa674281c"
       },
       "input": {

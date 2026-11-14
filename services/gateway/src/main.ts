@@ -7,6 +7,7 @@ import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 
 import { fromEnv, portFrom, reporter, stdout } from "@marginal/service-common";
+import { chainClient, replayer } from "@marginal/replay-ts";
 
 import { serve } from "./index.js";
 
@@ -21,7 +22,22 @@ export async function main(
     env.MARGINAL_UPLOAD_SECRET === undefined
       ? new Uint8Array(randomBytes(32))
       : new Uint8Array(Buffer.from(env.MARGINAL_UPLOAD_SECRET, "hex"));
-  const started = await serve({ directory, secret, onError: reporter(log) }, portFrom(env, 8081));
-  log(`gateway on ${started.port}, objects in ${directory}`);
+  // `/v1/replay/:id` answers once the gateway is told where the chain and the clearing contract
+  // are. The verifier is `@marginal/replay-ts`, the same code the web app and a shell run, so the
+  // gateway adds nothing to it and cannot change what it finds (E12.2).
+  const rpc = env.MARGINAL_RPC_URL;
+  const clearing = env.MARGINAL_CLEARING;
+  const replay =
+    rpc === undefined || clearing === undefined
+      ? undefined
+      : replayer(chainClient(rpc), clearing);
+  const started = await serve(
+    { directory, secret, replay, onError: reporter(log) },
+    portFrom(env, 8081),
+  );
+  log(
+    `gateway on ${started.port}, objects in ${directory}` +
+      (replay === undefined ? ", replay not configured" : `, replay against ${clearing}`),
+  );
   return started;
 }

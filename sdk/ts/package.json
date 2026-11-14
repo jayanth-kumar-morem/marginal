@@ -11,8 +11,12 @@
     "test": "node --import tsx --test src/*.test.ts"
   },
   "devDependencies": {
+    "@marginal/core-wasm": "workspace:*",
     "@types/node": "22.19.17",
     "tsx": "4.23.15",
     "typescript": "5.9.3"
+  },
+  "dependencies": {
+    "libsodium-wrappers": "0.8.4"
   }
 }

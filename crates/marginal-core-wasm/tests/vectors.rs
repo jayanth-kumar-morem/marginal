@@ -10,8 +10,10 @@
 use marginal_core::attest::{evaluate_quote, room_report_data, RegisterRoomRequest};
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::json::to_hex;
+use marginal_core::listing::PublishSpec;
+use marginal_core::request::AppraisalRequest;
 use marginal_core::verifier::{Collateral, VerificationResult};
-use marginal_core::RoomClass;
+use marginal_core::{BlobRef, DisplayMode, PayoutRoute, RefundRoute, RoomClass, VerdictPrivacy};
 use marginal_core_wasm::call;
 use serde_json::{json, to_value, Value};
 use sha2::{Digest, Sha256, Sha512};
@@ -22,8 +24,8 @@ use std::path::PathBuf;
 mod common;
 use common::{
     audit_entry, binding, certificate, delivery, h, job_core, key_request, nullifier,
-    payout_approval, provisioning, real_events, real_reply_bytes, screening, seller, valid_log,
-    verdict, verified_for, NOW,
+    payout_approval, provisioning, real_events, real_reply_bytes, screening, seller, spec,
+    valid_log, verdict, verified_for, NOW,
 };
 use marginal_core::reports::{ScreeningResult, FLAG_MNPI};
 
@@ -67,6 +69,26 @@ fn err(code: &str) -> Value {
 fn hex_of(op: &str, input: &Value) -> String {
     let reply: Value = serde_json::from_str(&call(op, &input.to_string())).unwrap();
     reply["ok"].as_str().expect("a hex string").to_string()
+}
+
+/// A buyer's request, as `/appraise/[id]` builds one (E13.4).
+fn appraisal_request() -> AppraisalRequest {
+    AppraisalRequest {
+        listing_id: 3,
+        listing_version: 1,
+        snapshot_id: None,
+        budget: 500_000_000,
+        mode: DisplayMode::Blind,
+        privacy: VerdictPrivacy::Open,
+        n_judges: 2,
+        delivery_pk: h(11),
+        compliance_pk: None,
+        context_auth_pk: h(12),
+        sealed_context_key: vec![1, 2, 3],
+        refund_to: RefundRoute::Balance,
+        nullifier: None,
+        nullifier_sig: None,
+    }
 }
 
 fn knowledge() -> Value {
@@ -275,6 +297,94 @@ fn attestation_cases() -> Vec<Case> {
             "ppid_hash",
             json!({"ppid": to_hex(&report.ppid)}),
             ok(json!(sha256_of(&[b"marginal/ppid/v1", &report.ppid]))),
+        ),
+        // What a verifier re-checks a settlement with (E12.2).
+        known(
+            "settlement: the state a deal must end in",
+            "state_for",
+            json!({"outcome": "Deal"}),
+            ok(json!("Deal")),
+        ),
+        known(
+            "settlement: an outcome that is not a first settlement has no end state",
+            "state_for",
+            json!({"outcome": "Revoked"}),
+            err("E_JOB_STATE"),
+        ),
+        known(
+            "settlement: π · d, rounded down, is what the seller is owed",
+            "compensation",
+            json!({"price_per_bit": "6250000", "mbits": 4000}),
+            ok(json!("25000000")),
+        ),
+        // What the SDK sends (E12.1): a seller's spec, a publish and a buyer's request, each as
+        // the Borsh bytes the contract decodes, plus the client-side checks that refuse exactly
+        // what the contract would (SDD §3.4).
+        case(
+            "listing spec: a seller's create_listing argument",
+            "listing_spec_encode",
+            to_value(spec()).unwrap(),
+        ),
+        known(
+            "listing spec: core's own checks pass it",
+            "validate_spec",
+            to_value(spec()).unwrap(),
+            ok(json!(true)),
+        ),
+        known(
+            "listing spec: a spec with no copies is refused before gas is paid",
+            "validate_spec",
+            {
+                let mut bad = to_value(spec()).unwrap();
+                bad["max_copies"] = json!(0);
+                bad
+            },
+            err("E_RULE_PARAMS"),
+        ),
+        case(
+            "publish spec: the commitment, the ciphertext and the payout route",
+            "publish_spec_encode",
+            to_value(PublishSpec {
+                good_commitment: h(7),
+                ciphertext: BlobRef {
+                    uri_hash: h(8),
+                    sha256: h(9),
+                    size_class: 12,
+                },
+                payout: PayoutRoute::NearAccount(seller()),
+            })
+            .unwrap(),
+        ),
+        case(
+            "blob ref: a snapshot's object",
+            "blob_ref_encode",
+            to_value(BlobRef {
+                uri_hash: h(1),
+                sha256: h(2),
+                size_class: 10,
+            })
+            .unwrap(),
+        ),
+        case(
+            "appraisal request: a buyer's request_appraisal argument",
+            "appraisal_request_encode",
+            to_value(appraisal_request()).unwrap(),
+        ),
+        known(
+            "appraisal request: core's own checks pass it",
+            "validate_request",
+            to_value(appraisal_request()).unwrap(),
+            ok(json!(true)),
+        ),
+        known(
+            "appraisal request: more judges than the schema allows is refused",
+            "validate_request",
+            {
+                let mut bad = to_value(appraisal_request()).unwrap();
+                bad["n_judges"] = json!(9);
+                bad
+            },
+            err("E_RULE_PARAMS"),
         ),
         // Groth16's wire format (SDD §3.17, E10.2), against the dev ceremony's own artefacts.
         case(

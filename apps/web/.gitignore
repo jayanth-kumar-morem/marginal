@@ -1,0 +1,7 @@
+# The Next.js app's own build output and local environment. Everything else this package ignores is
+# covered by the repository's root .gitignore.
+/.next/
+/out/
+/coverage
+next-env.d.ts
+*.tsbuildinfo

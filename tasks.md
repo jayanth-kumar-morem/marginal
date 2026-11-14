@@ -8,39 +8,44 @@ Source: [`SDD.md`](SDD.md) (SDD-001 v0.2, 2026-11-12). Every task cites the SDD 
 - All eleven demo surfaces (D1–D11) and every readiness check (DRC-1 to DRC-12) are unchanged.
 - The cut work moves to M2. [What M1 cuts](#what-m1-cuts) lists each cut and why no demo surface loses anything.
 
-## Where this stands (2026-11-14, 13:30 UTC)
+## Where this stands (2026-11-14, 15:30 UTC)
 
-**42 of M1's 69 tasks are closed: every contract, the room's supervisor and its worker, the judges,
-the Sealed path and the three host services.** E1–E6 are complete — the deploy, `marginal-core`, the
-immutable KeyPolicy, and clearing from a listing through a funded job, a key release, a priced
-verdict, settlement, delivery and a claim. E7 adds the room's reproducible build and its job loop;
-E8 the worker, the sealed-box crypto, MPC CKD recovery, the appraisal pipeline, `knowledge@1` with a
-real MiniLM from the measured image, and `dataset-lite@0`; E9 the judges, with the API key outside
-the room; E10 Sealed verdicts end to end — the circuit, Groth16 verification on chain, and the
-room's prover; E11 the gateway, the operator agent and the compliance service.
+**49 of M1's 69 tasks are closed: every contract, the room, the judges, the Sealed path, the three
+host services — and the web app.** E1–E6 are complete (the deploy, `marginal-core`, the immutable
+KeyPolicy, and clearing from a listing through a funded job, a key release, a priced verdict,
+settlement, delivery and a claim); E7 the room's reproducible build and job loop; E8 the worker, the
+sealed-box crypto, MPC CKD recovery, the appraisal pipeline, `knowledge@1` from the measured image
+and `dataset-lite@0`; E9 the judges with the API key outside the room; E10 Sealed verdicts end to
+end; E11 the gateway, operator agent and compliance service; **E13 all seven pages**, with E12's
+verifier and the SDK's browser crypto built underneath them.
 
-**What is left is the surface the demo is seen through:** E12 (the SDK and `replay-ts`), E13 (the web
-app, 7 tasks), E14 (the cross-contract suite, the demo corpus and the scripts) and E15 (the testnet
-deploy, DRC-1 to DRC-12, the README, the video and the submission). Nothing in that list is blocked
-by anything but time.
+**What is left is the demo itself:** E12's two **Done:** lines (a testnet settlement to replay, the
+SDK's remaining builders), E14 (the cross-contract suite, the demo corpus, the red-team and
+room-kill scripts) and E15 (the testnet deploy, DRC-1 to DRC-12, the README, the video and the
+submission).
 
 **Nothing has yet run on real hardware or on testnet.** The room has never booted in a CVM (E7.1,
 [P-1](#paid-and-account-gated-steps-jay)), no key has been derived through the real MPC network
 (E8.2), no NEAR AI receipt is real (E9.1, [P-2](#paid-and-account-gated-steps-jay)) and nothing is
-deployed to testnet ([P-3](#paid-and-account-gated-steps-jay), free). Every room-side proof today is
-against a guest agent, an operator agent and an RPC built for the tests — on real sockets and real
-forked processes, but not real hardware.
+deployed to testnet ([P-3](#paid-and-account-gated-steps-jay), free). The web app reads a local
+sandbox today; it cannot write to one, because no browser wallet signs for a sandbox.
 
-**Nine tasks are code-complete but cannot be ticked**, because their **Done:** lines name something
-only a live room, a key or another task can show: E3.2, E3.3, E3.6, E7.2, E7.4, E8.2 (a live room or
-testnet), E8.5 (the SDK, E12.1), E8.6 (E14.2's corpus) and E9.1 (a NEAR AI key). Each carries a
-**To close** line with the exact steps.
+**The one thing blocking a live demo is a room.** A job needs an eligible room, and the sandbox
+deploys the real KeyPolicy, which refuses a room without a real TDX quote. So `/listings` and
+`/listing/[id]` show real chain data, every other page shows an honest empty state, and the pages
+that need a settled job were verified against a stub RPC built from the view shapes they are typed
+against. E14.1 (near-workspaces with `keypolicy-sim`) is where that becomes a real end-to-end run,
+and the testnet deploy is where the demo becomes real.
 
-**Order note.** E11 was built before E10 although E10 comes first in this list: E11's services are
-P0 and on every demo surface, E10 is P2 and on one (D10).
+**Ten tasks are code-complete but cannot be ticked**, because their **Done:** lines name something
+only a live room, a key, a testnet or another task can show: E3.2, E3.3, E3.6, E7.2, E7.4, E8.2,
+E8.5, E8.6, E9.1 and E12.2. Each carries a **To close** line with the exact steps.
 
-**The deadline is 2026-11-14 23:59 UTC.** `make check` passes with 100% coverage on both sides; the
-demo surface is what remains.
+**Order note.** E11 and E13 were built before E12 was finished: the services and the pages are P0
+and on every surface, and the SDK's remaining transaction builders are only needed by the write
+paths, which cannot be exercised until the testnet deploy.
+
+**`make check` passes with 100% coverage on both sides**, and `make web` builds the app.
 
 ## How this list works
 
@@ -106,8 +111,8 @@ Everything only the user can do, in one place: each row is a step I cannot take,
 | [E9](#e9-judges) | NEAR AI judges | 1 | — (built, waiting on a key) | D6 |
 | [E10](#e10-sealed-verdicts-d10) | Sealed verdicts and ZK | 3 | **3** | D10 |
 | [E11](#e11-services) | Gateway, operator agent, compliance | 4 | **4** | all |
-| [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — | all, D2 |
-| [E13](#e13-web-app) | Web app | 7 | — | all |
+| [E12](#e12-sdk-and-verifier) | SDK and `replay-ts` | 2 | — (both built in part: the SDK's crypto and the verifier) | all, D2 |
+| [E13](#e13-web-app) | Web app | 7 | **4** (shell, listings, jobs, verify and rooms) | all |
 | [E14](#e14-tests-fixtures-and-demo-scripts) | Tests, fixtures, demo scripts | 3 | — | D4, D5, D6, D11 |
 | [E15](#e15-demo-and-submission) | Demo and submission | 5 | — | all |
 | [E16–E19](#m2-v1-mainnet-canary) | Mainnet canary | — | — | — |
@@ -198,6 +203,8 @@ To fix in SDD v0.3.
 | 36 | §3.18 requires every forget certificate to carry an `Outcome`, but §3.9.2's outcome table is about appraisals. A provisioning or screening job has no outcome in it, and the enum has no value for "the job ran and nothing was priced" | M1 writes `NoDeal`, which is literally true of both — no value changed hands — and says so in the code. Either give §3.18 a `Completed` outcome for non-appraisal kinds or state that `NoDeal` is the value; `replay-ts` (E12.2) has to accept whichever it is | SDD v0.3 |
 | 37 | §3.17 specifies phase 1 from PSE's perpetual powers of tau (`ppot_0080_13.ptau`). That file's host answers **403** (checked 2026-11-14) and PSE's own mirror is a torrent of the 2^28 file, so the ceremony as written cannot be run | `circuits/build.sh` generates phase 1 locally with deterministic entropy and labels the whole setup `dev`, which is what §3.17's own "M1 runs a dev setup" allows. Name a reachable phase-1 source in §3.17, or say that M1's phase 1 is local | SDD v0.3 |
 | 38 | §3.17's Sealed mode has no path for a verdict with no price. A restricted good or an unreadable input has nothing to prove, but the mode as written requires a sealed body with an outcome bit, so such a job could only ever time out and its funds would sit until `refund_expired` | A Sealed verdict may carry a status (`Restricted`, `InputRejected`, `InputError`) with **no** body and no proof, and settles like the Open one does. `check_sealed` does that (E10.2) and `a_sealed_job_can_end_without_a_price` pins it. Say so in §3.17 | SDD v0.3 |
+| 39 | `get_listing` returns `schema_hash` but not the `OutputSchema` it hashes, so a client cannot compute `max_debit` for Open mode — the one number §3.8 says "the UI must show". Recomputing the hash client-side would mean re-implementing a Borsh layout in TypeScript, which this repo forbids | Either return the schema from `get_listing` (it is small and already public), or add a `schema_hash` op to `marginal-core-wasm` so a client can pin a local table against the chain's hash. `/appraise/[id]` does the latter by hand today: a table of the two shipped appraisers' schemas, used only when its hash matches | SDD v0.3 |
+| 40 | Clearing's appraiser registry (`set_appraiser`) has no view, so a buyer cannot see the `compute_fee` their deposit must cover, and `/appraise/[id]` has to label its escrow figure as excluding it | Add `get_appraiser(id, version)` to `views.rs`. It is read-only and the entry is already public | SDD v0.3 |
 
 ---
 
@@ -288,7 +295,7 @@ To fix in SDD v0.3.
     - **No new tooling.** The module has zero imports and exports only `memory`, `alloc`, `dealloc` and `call_raw`; the TypeScript wrapper is about 50 lines. It builds with plain `cargo build` (`make wasm-core`, 6 s, 586 KB), so there is no `wasm-bindgen` or `wasm-pack` to install or keep in step.
     - **Both consumers reproduce the vectors.** `room/src/vectors.test.ts` and `verifiers/replay-ts/src/vectors.test.ts` each load the wasm through `@marginal/core-wasm` and require every one of the 47 cases to match, with the shared check in the package (`reproduceVectors`) so it is written once. The package's own tests also cover a 1 MB input that makes the module grow its memory mid-call (the wrapper must not keep a stale view), 3,000 calls in a row, and every refusal and failure path.
     - **Coverage** stays at 100%: Rust 1,236 regions and 732 lines including the unsafe pointer functions (driven natively with real pointers); TypeScript 64 tests.
-    - **Not done:** a browser build. The SDK (E12.1) will need `core.wasm` loaded without `node:fs`; the module itself is already portable. Typed TypeScript interfaces for the JSON model are also left to the consumers (E8, E12), because they would duplicate the Rust types; the vectors are what keep the two sides in step.
+    - **Not done:** a browser build, and E13 found it is not needed: the web app keeps `marginal-core` on the server and the browser reaches it through a route handler (`/api/encode`, `/api/appraise`, `/api/replay`), which also keeps plaintext out of every request. The wasm itself is portable, so a browser build stays available if a client ever has no server. What E13 did change is **how the file is found**: `wasm.ts` holds `import.meta.url` in a variable and reads a string path, because webpack rewrites the literal `new URL(…, import.meta.url)` into an asset that is not on disk and a wrapped `node:fs` refuses a `URL` from another realm. Typed TypeScript interfaces for the JSON model are also left to the consumers (E8, E12), because they would duplicate the Rust types; the vectors are what keep the two sides in step.
 
 ## E3. KeyPolicy (immutable)
 
@@ -1120,15 +1127,29 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E12. SDK and verifier
 
-- [ ] **E12.1 SDK** · P0 · §3.23
+- [ ] **E12.1 SDK** · P0 · §3.23 · **the browser half is built (E13.2 needed it)**
   - Crypto: `canonicalise` (`.md`, `.txt`); DEK, AEAD and salted commitments; seal `DEK_g` to `pk_L` and `DEK_c` to `box_pk`; delivery keys in IndexedDB.
   - Transaction builders: listing, provisioning, pins, publish, snapshot, deposit, request, approve, claim, withdraw.
   - Also:
     - `watchJob`, by polling `get_job`;
     - `openDelivery`, which checks the good's commitment;
     - Chain Signatures address derivation and the 1Click dry quote, ported from LETHE.
+  - **Built 2026-11-14, the browser half.** `sdk/ts/src/crypto.ts`: `canonicalise` (`.md`/`.txt`,
+    documented byte for byte because the commitment is taken over its output), a local-only `claims`
+    preview that mirrors the room's own rule, `dek`/`salt`/`aeadSeal` in the room's exact format
+    (`nonce ‖ XChaCha20-Poly1305`), `sealTo` (libsodium sealed box) and `wrapKey` for the
+    `DEK_g ‖ salt` bundle the room opens, `goodCommitment` over WebCrypto, and the delivery keys in
+    IndexedDB with an in-memory fallback so it is testable. It is **browser-safe on purpose**: no
+    `node:*`, and nothing from `@marginal/core-wasm`, which loads its wasm through `node:fs`.
+  - **`goodCommitment` is pinned to core**, not merely consistent with it: a test computes the same
+    commitment with `marginal-core`'s own `good_commitment` op and asserts the two are equal, which
+    is what lets a seller publish a commitment the contract and the room will both accept.
+  - **Still to build:** the transaction builders as a package (the pages build their arguments
+    through `/api/encode`'s allow-list today, which is the same `@marginal/core-wasm` call in the
+    same process — but the SDK is where a second client would find them), `watchJob`, `openDelivery`,
+    and the Chain Signatures address derivation and 1Click dry quote ported from LETHE.
   - **From the contracts (E4, E5).** Every argument that carries a `marginal-core` type is **Borsh in base64**, built through `@marginal/core-wasm`, never hand-rolled JSON: `ListingSpec` for `create_listing`, `PublishSpec` for `publish_listing`, `BlobRef` for `anchor_snapshot`, `AppraisalRequest` for `request_appraisal`, `MeasurementSet` for `approve_measurement_set`. A deposit is `ft_transfer_call` with `msg = {"Deposit":{"account":"<id>"}}`. Run core's own checks before paying gas: `validate_spec` and `validate_request` refuse exactly what the contract will. Amounts come back from views as decimal strings.
-- [ ] **E12.2 `replay-ts`** · P0 · D2 · §3.18
+- [ ] **E12.2 `replay-ts`** · P0 · D2 · §3.18 · **built, and honest about what views cannot give**
   - Checks, per settlement:
     - signatures;
     - the Open recompute, or the Sealed proof;
@@ -1137,29 +1158,155 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - the audit chain, via `get_audit`.
   - It follows each certificate to its quote with the `dcap-qvl` CLI, compares against the current approved set, and counts `simulated_flags`.
   - **Done:** DRC-2; flipping any stored byte makes it fail.
+  - **Built 2026-11-14.** `verifiers/replay-ts` recomputes, with `marginal-core` itself: the state
+    an outcome must end in, the buckets settlement leaves behind, the debit against its reservation
+    (DRC-2's "debit = `max_debit`", DRC-10's exactly 1,000 mbits), π · d, the certificate anchor,
+    and the whole audit hash chain against `audit_head()`. One flipped byte in the log fails it, and
+    a test proves that. It is wired into the gateway's `/v1/replay/:id` (which answered 503 until
+    now) and into the web app's own route handler, so a reader gets the same answer from either.
+  - **What it cannot do from four views, and says so in the report:** a verdict's components, judge
+    factors, room signature and Groth16 proof are in the transaction that carried them, not in a
+    view, so the Open recompute of `m` and the signature check are **named as unchecked** rather
+    than implied. Closing that needs the verdict bytes — a transaction read or an indexer (E18).
+  - **To close:** DRC-2 needs a testnet settlement to run against, the `dcap-qvl` walk, and the
+    verdict bytes for the recompute. Two core ops were added for it (`state_for`, `compensation`),
+    each with a vector.
   - **From the contracts (E2–E6).** Everything it needs to recompute is a `@marginal/core-wasm` operation with a vector in `fixtures/vectors.json` (84 cases): the verdict and certificate signing bytes, `measured_index` and `apply_rule` for the Open recompute, `max_debit` for the debit, `settle` for the outcome table, `check_conservation` for AC-4, `audit_step` for the chain, and the judge rules (`parse_relevance`, `binds_body`, `personal_sign_preimage`) for each receipt. Read the chain with `get_settlement`, `get_job`, `get_listing` and `get_audit(from, limit)` (capped at 100 entries a call).
 
 ## E13. Web app
 
-- [ ] **E13.1 Shell** · P0 · §6.3
+- [x] **E13.1 Shell** · P0 · §6.3, §3.23
   - Next.js, wallet selector, manifest-driven configuration, strict CSP. A banner for simulated elements, driven by on-chain flags (DRC-12).
+  - **Done:** the shell renders on every route from a fresh browser, reads which deployment it is
+    talking to from the deploy manifest, offers the viewer's own wallet, and carries the simulated
+    banner the profile's on-chain flags produce.
+  - **Completed 2026-11-14.** `apps/web` is a Next.js 15 app started from
+    `7blocklabs-products/eu-ai-act-gov/app` rather than from scratch: its theme (the four brand
+    tokens, Geist + Space Grotesk + Geist Mono) and its 88 vendored `components/ui` files came over
+    untouched, and everything of the previous product — Clerk, Stripe, Prisma, the AI SDKs, 160 API
+    routes, 15 domain component directories — was removed. Two bugs came with the copy and were
+    fixed: its dark tokens were dead code (no `ThemeProvider` existed) and `ui/sonner.tsx` pinned
+    itself to light.
+  - `src/lib/config.ts` reads `deploy/manifest.<profile>.json` at run time (it is gitignored, so it
+    is never imported) with an environment override per field; `src/lib/simulated.ts` turns the
+    `SIM_*` bits into the words on the banner and on each record, which is the same function E15.3's
+    README table will be generated from. `src/components/wallet.tsx` is wallet-selector with
+    MyNearWallet, and it signs **descriptors** the SDK builds — the server holds no key.
+  - **Verified:** every page returns 200 and renders real view data from a local sandbox; the banner
+    reads "This is the sandbox profile on sandbox…"; a per-record card on `/jobs/[id]` names a
+    simulated attestation and a simulated judge with what each one means (DRC-12).
+  - **Not verified:** the CSP has not been exercised by a browser (it is set in `next.config.ts` on
+    top of the four headers that came with the copy), and no wallet has signed anything, because
+    MyNearWallet cannot sign for a local sandbox — that needs the testnet deploy
+    ([P-3](#paid-and-account-gated-steps-jay)).
 - [ ] **E13.2 `/sell`** · P0 (payout: P1, D7)
   - Wizard: file → canonicalise → parameters → provision → seal and upload → pins → publish.
   - The payout step shows the derived Solana address and a live dry quote, which is not stored.
-- [ ] **E13.3 `/listings` and `/listing/[id]`** · P0 · D1, D4
+- [x] **E13.3 `/listings` and `/listing/[id]`** · P0 · D1, D4
   - Rule, leakage meter (spent / reserved / budget), pins, screening status.
-- [ ] **E13.4 `/appraise/[id]`** · P0 · D1
+  - **Done:** the market lists every published listing from contract views alone, and a listing's
+    page shows the rule, the leakage meter, the pins and why it can or cannot be appraised.
+  - **Completed 2026-11-14.** There is no indexer in M1, so the market is enumerated the only way a
+    view allows: `config()` says how many listings exist and each is read by id, newest first, with
+    a gap skipped rather than treated as an error. The meter counts **reserved** bits against the
+    budget as the contract does, which is why a listing can refuse an appraisal while its spent
+    total still looks small.
+  - **Verified live** against a local sandbox with a real listing: ask 400 mUSDC under R1, floor
+    10%, 32 bits of budget at π = 6.25 mUSDC a bit, the real key-path hash, `FollowGovernance`
+    pins, "listing key: not provisioned yet", and the status note explaining that a `Draft` cannot
+    be appraised yet.
+  - **Not verified:** the screening status of a `Held` listing (D8 needs the MNPI fixture, E14.2)
+    and an `Exhausted` one (D4 needs the red-team script, E14.3).
+- [x] **E13.4 `/appraise/[id]`** · P0 · D1, D8, D10
   - Notes, or a restricted list (D8); the stated need; budget.
   - Privacy: Open, or Sealed once D10 is on, with the debit and cost shown. Seal, then request.
-- [ ] **E13.5 `/jobs/[id]`** · P0 · D1, D5, D11
+  - **Done:** a buyer can see what an appraisal will cost them in bits and in tokens before they
+    sign, choose the mode, and send a request the contract accepts.
+  - **Completed 2026-11-14.** The cost preview is core's own: `max_debit` for the mode and the
+    judge count, π × d ÷ 1000 for what the seller is owed, and `validate_request` before anything is
+    signed, all through `/api/appraise` because `marginal-core` is a wasm module that cannot run in
+    a browser. Open and Sealed are shown side by side, so "one bit" is a number the buyer can
+    compare rather than a claim.
+  - **Verified:** the page renders listing 1 from the live sandbox with its ask, floor and leakage
+    meter, and refuses to offer a form for a `Draft` (`statusNote`'s reason is shown instead); the
+    route answers `open` 16,706 mbits / 104.4125 mUSDC and `sealed` 1,000 mbits / 6.25 mUSDC against
+    the real wasm, encodes the Borsh argument, and refuses an unknown op with `E_DECODE`. 21 tests,
+    100% of the two `.ts` files.
+  - **The appraisable path was then verified** against a stub RPC serving an `Active` listing: the
+    stated need, the context and restricted-list fields, the budget defaulted to the ask with the
+    escrow balance beside it, both modes with their debit, the judge count, and the two honest notes
+    the build needs — that the context envelope is not sealed yet (E12.1) and that no browser wallet
+    knows a sandbox.
+  - **Not verified:** the signature path and the hop to `/jobs/<id>`, because no wallet can sign for
+    a sandbox and no `Active` listing exists on one.
+  - **Two view gaps it had to work around**, both recorded as SDD issues 39 and 40: the listing's
+    `OutputSchema` is not in `get_listing` (only its hash), so the Open debit comes from a local
+    table that is used **only when its own hash matches the listing's**; and the appraiser
+    registry's `compute_fee` has no view, so the escrow figure is shown as excluding it.
+- [x] **E13.5 `/jobs` and `/jobs/[id]`** · P0 · D1, D5, D6, D11
   - State, outcome, refund, certificate verification (gateway replay), delivery decrypt-and-check.
   - An approve button for `PendingApproval` (D5).
-- [ ] **E13.6 `/verify` and `/rooms`** · P0 · D2, D3
+  - **Done:** a job's page shows its state against §3.5's machine, the money to the unit, the
+    simulated flags its settlement carries, and the two calls a viewer can make on it.
+  - **Completed 2026-11-14.** `jobActions` decides what is offered from the state and the **block
+    height**, not the clock, because a deadline is a height: `approve_parked` appears only on
+    `PendingApproval` (D5's button, which exists here because M1 cut `/agents`), and
+    `refund_expired` only once the deadline has passed and the job is still running (D11 — anyone
+    may call it). Both are signed by the viewer's own wallet.
+  - **Verified:** `/jobs` renders from `config().next_job_id` against the live sandbox, and
+    `/jobs/[id]` was rendered against a settled job served by a stub RPC built from the view shapes
+    these pages are typed against — the Deal path shows the outcome sentence, the buckets, the
+    price, the refund, the debit in bits, the certificate, and the DRC-12 card naming a simulated
+    attestation and a simulated judge.
+  - **Not verified against a real settled job**, because a job needs a registered room and the
+    sandbox deploys the real KeyPolicy, which refuses a room without a real TDX quote
+    (`E_NO_ELIGIBLE_ROOM`). E14.1's near-workspaces suite deploys `keypolicy-sim` and is where this
+    becomes a real end-to-end check; D6's clamped-judge display and the delivery
+    decrypt-and-commitment-check (E12.1's `openDelivery`) are waiting on the same thing.
+- [x] **E13.6 `/verify` and `/rooms`** · P0 · D2, D3
   - `/verify`: the replay explorer and the certificate → quote walk.
   - `/rooms`: PPID, TCB status, RTMR3 events and the measurement.
-- [ ] **E13.7 `/compliance`** · P1 · D8
+  - **Done:** `/verify` re-checks every settlement from public chain data and walks one certificate
+    back to its quote; `/rooms` shows each eligible room's attestation record.
+  - **Completed 2026-11-14.** `/verify` runs E12.2's verifier through `/api/replay/[jobId]` and
+    shows every check by name, with the checks four views **cannot** give marked with a dash rather
+    than counted as passes. `/rooms` lists the rooms `eligible()` reports — which is the honest
+    list, since an expired room is not one a good can be opened by — with the PPID hash, the TCB
+    status, the measurement, the RTMR3 event order that proves `key_provider: none`, and
+    `check_room`'s deny reasons.
+  - **Verified:** both pages render against the live sandbox (empty: no room is registered) and
+    against a stub RPC carrying a settled job and a simulated attestation, where the replay reported
+    8 checks passed and 2 named as unavailable, and the walk showed settlement → certificate → room
+    key → mode → quote → collateral → measurement → compose hash.
+  - **Not verified:** DRC-2's native `dcap-qvl` leg and a real TDX quote (E7.1,
+    [P-1](#paid-and-account-gated-steps-jay)), and DRC-3's reproducible rebuild from a git tag.
+- [x] **E13.7 `/compliance`** · P1 · D8
   - Compliance-copy decrypt.
   - Audit export, built in the browser from `get_audit`, settlements and certificates, and re-verified on load.
+  - **Done:** the page shows what compliance holds and what it screened, and an audit export built
+    from chain data alone that re-verifies when it is loaded back.
+  - **Completed 2026-11-14.** The export is a zip built in the browser from `get_audit`, the
+    settlements, the listings' public metadata and the certificate hashes, with a manifest naming
+    the chain, the clearing account, the published head and the head the walk recomputed. Loading
+    one back re-folds the chain with core's `audit_step` and compares every entry against the chain
+    — which is why it needs no signature from us (that is what M1 cut, and why it can be cut).
+  - **A race found and fixed while building it:** `get_audit`'s window is a range of *sequences*,
+    not a page of entries, so the last page reaches past the head that was just read. On a live
+    chain an entry landing in between would be folded into the digest and a sound chain would be
+    reported broken. The walk now drops anything past the head it started from.
+  - **Verified live** against the sandbox: 2 of 2 entries walked and the recomputed head equal to
+    the contract's `0f6f02da…151b75`; the browser loop export → zip → load → re-verify answered
+    "holds"; and the tamper cases are caught by sequence and by field (an edited `payload_hash`
+    gives "seq 2: payload_hash differs from the chain", a removed entry "seq 2: the export is
+    missing this entry", a foreign zip a 400). 62 tests, 100% of both `.ts` files, plus 7 mutation
+    checks on the audit logic — every one of them fails the tests.
+  - **Not verified:** the compliance-copy decrypt itself. The delivery is not a sealed box: it is
+    HKDF over X25519 with XChaCha20-Poly1305 and a derived nonce, with the job commitment as AAD
+    (§3.19), so opening it belongs to E12.1's `openDelivery` and is behind a `TODO(E12.1)` naming
+    that function. Everything around it is wired: the sealed bundle is fetched and decoded, the
+    compliance entry is identified against `job.compliance_pk`, and the pasted key never leaves the
+    component. Nor is the sanctions panel verified against a running compliance service, and no
+    `Held` listing or `Restricted` job exists yet (E14.2's fixtures).
 
 ## E14. Tests, fixtures and demo scripts
 

@@ -26,22 +26,24 @@ use marginal_core::credential::{
     nullifier_signing_bytes, payout_approval_signing_bytes, NullifierCredential, PayoutApproval,
 };
 use marginal_core::delivery::{delivery_hash, DeliveryV1};
-use marginal_core::funding::{fund, total};
+use marginal_core::funding::{compensation, fund, total};
 use marginal_core::json::{dec, hex, to_hex};
 use marginal_core::judge::{binds_body, has_reasoning, parse_relevance, personal_sign_preimage};
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
 use marginal_core::lifecycle::transition;
+use marginal_core::listing::{validate_spec, ListingSpec, PublishSpec};
 use marginal_core::pricing::{apply_rule, ceiling, judgement_factor, measured_index, valuation};
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningV1,
 };
+use marginal_core::request::{validate_request, AppraisalRequest};
 use marginal_core::settle::{settle, state_for, FeeShares};
 use marginal_core::verdict::{verdict_signing_bytes, VerdictV1};
 use marginal_core::verifier::VerificationResult;
 use marginal_core::{
-    AccountId, Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, JobState, OutputSchema,
-    PricingRule, VerdictPrivacy,
+    AccountId, BlobRef, Buckets, CoreError, DisplayMode, FormulaId, FormulaParams, JobState,
+    OutputSchema, PricingRule, VerdictPrivacy,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -118,6 +120,17 @@ struct ConservationIn {
     buckets: Buckets,
     #[serde(with = "dec")]
     moved_out: u128,
+}
+
+#[derive(Deserialize)]
+struct OutcomeIn {
+    outcome: marginal_core::Outcome,
+}
+
+#[derive(Deserialize)]
+struct CompIn {
+    price_per_bit: Dec,
+    mbits: u64,
 }
 
 #[derive(Deserialize)]
@@ -301,12 +314,31 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
         "valuation" => run(input, |i: ValuationIn| valuation(i.budget, i.m).map(Amount)),
         "apply_rule" => run(input, |i: ApplyRuleIn| apply_rule(&i.rule, i.budget, i.m)),
         "mbits" => run(input, |i: MbitsIn| mbits(i.n)),
+        // What a verifier needs to re-check a settlement from views alone (E12.2): the state an
+        // outcome must end in, and the compensation a debit owes the seller.
+        "state_for" => run(input, |i: OutcomeIn| state_for(i.outcome)),
+        "compensation" => run(input, |i: CompIn| {
+            compensation(i.price_per_bit.0, i.mbits).map(Dec)
+        }),
         "max_debit" => run(input, |i: MaxDebitIn| {
             max_debit(&i.schema, &i.mode, &i.rule, i.privacy, i.n_judges)
         }),
         "job_commitment" => run(input, |c: JobCore| Ok(Hex(job_commitment(&c)))),
         "good_commitment" => run(input, |i: GoodIn| {
             Ok(Hex(good_commitment(&i.salt, &i.good)))
+        }),
+        // What a seller's and a buyer's transactions carry (E12.1, E13.2, E13.4). The SDK builds
+        // every argument through these, so a client cannot hand-roll a layout the contract would
+        // read differently, and it runs core's own checks before anything is paid for.
+        "listing_spec_encode" => encode::<ListingSpec>(input),
+        "publish_spec_encode" => encode::<PublishSpec>(input),
+        "appraisal_request_encode" => encode::<AppraisalRequest>(input),
+        "blob_ref_encode" => encode::<BlobRef>(input),
+        "validate_spec" => run(input, |spec: ListingSpec| {
+            validate_spec(&spec).map(|()| true)
+        }),
+        "validate_request" => run(input, |r: AppraisalRequest| {
+            validate_request(&r).map(|()| true)
         }),
         "verdict_encode" => encode::<VerdictV1>(input),
         "verdict_decode" => decode::<VerdictV1>(input),

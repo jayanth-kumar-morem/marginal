@@ -9,7 +9,17 @@ interface Exports {
   call_raw(op: number, opLen: number, input: number, inputLen: number): number;
 }
 
-const wasm = new WebAssembly.Instance(new WebAssembly.Module(readFileSync(new URL("../core.wasm", import.meta.url))), {}).exports as unknown as Exports;
+// Finding `core.wasm` has to survive a bundler as well as plain node, which takes two pieces of
+// care. The module's own location goes through a variable, because webpack rewrites the literal
+// `new URL("…", import.meta.url)` into an emitted asset URL that does not exist on disk; and the
+// result is handed to `readFileSync` as **text**, because a bundler that wraps `node:fs` sees a
+// `URL` instance from another realm and refuses it.
+const here = import.meta.url;
+const wasmPath = decodeURIComponent(new URL("../core.wasm", here).pathname);
+const wasm = new WebAssembly.Instance(
+  new WebAssembly.Module(readFileSync(wasmPath)),
+  {},
+).exports as unknown as Exports;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
