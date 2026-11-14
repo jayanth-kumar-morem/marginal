@@ -16,3 +16,5 @@ deploy/.keys/
 claude-spec-run.log
 # the wasm build of marginal-core, made by `make wasm-core`
 crates/marginal-core-wasm/core.wasm
+# the room image build: assembled context, compose file, app-compose and the image tar
+room/image/out/

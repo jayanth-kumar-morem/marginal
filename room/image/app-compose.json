@@ -1,0 +1,17 @@
+{
+  "allowed_envs": [],
+  "docker_compose_file": "",
+  "gateway_enabled": false,
+  "key_provider": "none",
+  "key_provider_id": "",
+  "kms_enabled": false,
+  "local_key_provider_enabled": false,
+  "manifest_version": 2,
+  "name": "marginal-room",
+  "no_instance_id": true,
+  "public_logs": false,
+  "public_sysinfo": false,
+  "public_tcbinfo": true,
+  "runner": "docker-compose",
+  "secure_time": false
+}

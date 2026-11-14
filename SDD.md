@@ -356,7 +356,8 @@ marginal/
 │   ├── src/cert/  src/zk/  src/chain/
 │   ├── models/                     model weights and tokenizers, pinned by SHA-256, baked into the image
 │   ├── corpus/                     public-novelty snapshot (hash in measurement)
-│   ├── image/                      Dockerfile, app-compose.json (dstack), nftables.conf, build.sh, MEASUREMENTS.md
+│   ├── image/                      Dockerfile, docker-compose.tmpl.yaml, app-compose.json (dstack), nftables.conf,
+│   │                               build.sh, MEASUREMENTS.md; build.sh assembles out/ (not committed)
 │   └── test/
 ├── services/
 │   ├── gateway/                    REST + WebSocket API; presigned blob upload; read models

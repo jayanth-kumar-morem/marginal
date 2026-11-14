@@ -1,0 +1,32 @@
+# The room's compose file (SDD §3.13). `build.sh compose` substitutes the `@@...@@` pins and embeds
+# the result verbatim as `docker_compose_file` in `app-compose.json`, so every line here is measured.
+#
+# There is no `env_file` and no port: the gateway is disabled, so nothing reaches the room from
+# outside, and dstack drops every host-supplied variable (`allowed_envs: []`). What the room is
+# configured with is therefore exactly what is written here, and changing any of it changes the
+# compose hash — which is the point (§3.14.3, DR-9: security-relevant configuration comes only from
+# the measured image or from chain state).
+services:
+  room:
+    image: "@@ROOM_IMAGE@@"
+    init: true
+    restart: always
+    # No writes anywhere but a small tmpfs, and no swap: a job's state cannot outlive its process.
+    read_only: true
+    user: "1000:1000"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+    # The guest agent, which is where the room asks for its quote (§3.13 step 5).
+    volumes:
+      - "/var/run/dstack.sock:/var/run/dstack.sock"
+    environment:
+      MARGINAL_RPC_URL: "@@RPC_URL@@"
+      MARGINAL_OPERATOR_URL: "@@OPERATOR_URL@@"
+      MARGINAL_CHAIN_ID: "@@CHAIN_ID@@"
+      MARGINAL_CLEARING: "@@CLEARING@@"
+      MARGINAL_KEYPOLICY: "@@KEYPOLICY@@"
+      MARGINAL_ROOM_CLASS: "Kcpu"
