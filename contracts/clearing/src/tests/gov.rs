@@ -132,7 +132,9 @@ fn only_gov_sets_policy() {
         ),
         (
             "set_ai_signer",
-            Box::new(|c: &mut Clearing| c.set_ai_signer(to_hex(&[1u8; 32]), NOW + 60)),
+            Box::new(|c: &mut Clearing| {
+                c.set_ai_signer(to_hex(&[1u8; 20]), "Qwen/Qwen3.8-27B".into(), NOW + 60)
+            }),
         ),
         (
             "set_fees",
@@ -234,21 +236,31 @@ fn a_key_must_be_thirty_two_bytes_of_hex() {
 #[test]
 fn an_ai_signer_is_added_with_an_expiry_and_removed_when_it_passes() {
     let mut c = contract();
-    let key = [0xcc; 32];
+    let key = [0xcc; 20];
     call_as(GOV, no_deposit());
-    c.set_ai_signer(to_hex(&key), NOW + 3_600);
+    c.set_ai_signer(to_hex(&key), "Qwen/Qwen3.8-27B".into(), NOW + 3_600);
     assert_eq!(
-        crate::store::get::<u64>(crate::store::Table::Signer, &key),
-        Some(NOW + 3_600)
+        crate::store::get::<crate::gov::AiSigner>(crate::store::Table::Signer, &key)
+            .map(|s| (s.model, s.expires_at)),
+        Some(("Qwen/Qwen3.8-27B".to_string(), NOW + 3_600))
     );
 
     call_as(GOV, no_deposit());
-    c.set_ai_signer(to_hex(&key), NOW);
+    c.set_ai_signer(to_hex(&key), "Qwen/Qwen3.8-27B".into(), NOW);
     assert_eq!(
-        crate::store::get::<u64>(crate::store::Table::Signer, &key),
+        crate::store::get::<crate::gov::AiSigner>(crate::store::Table::Signer, &key),
         None,
         "expired: removed"
     );
+    // A live entry must name the model it signs for: that name is the allow-list (§3.16).
+    call_as(GOV, no_deposit());
+    expect_panic("model id", || {
+        c.set_ai_signer(to_hex(&key), String::new(), NOW + 60)
+    });
+    call_as(GOV, no_deposit());
+    expect_panic("E_DECODE", || {
+        c.set_ai_signer(to_hex(&[1u8; 32]), "m".into(), NOW + 60)
+    });
 }
 
 #[test]

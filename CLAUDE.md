@@ -106,7 +106,8 @@ SDD §3.1 is the layout authority. Keep to it.
 - **Borsh gotcha.** A `Vec` of a single-variant (zero-sized) enum fails to serialise ("Cannot serialize the contract state"). Give such enums a second variant, or store something else.
 - **Events.** Anything that changes token supply or balances emits a NEP-297 event (`near_contract_standards::...::events`).
 - **Contract interface types are local to the contract.** `cargo near` generates an ABI and needs JSON and Borsh schemas for every type in a contract's public interface, which `marginal-core`'s types do not have. Host tests and clippy cannot see this: only `make wasm-dev` (run by `make check` when Rust changed) does.
-- **Avoid `unstable` near-sdk features** unless a task needs one. If one does, enable it per crate.
+- **Avoid `unstable` near-sdk features** unless a task needs one. If one does, enable it per crate. Clearing enables it for exactly one host function, `env::ecrecover` (NEAR AI judge receipts, §3.16), which **aborts** on a recovery byte outside 0..=3 instead of returning `None`: validate it first, or one malformed receipt kills the whole call.
+- **Money is checked arithmetic, and settlement checks itself.** Every amount goes through `marginal-core` (`funding`, `settle`), and `settle` runs AC-4's conservation check on every settlement, not only in test builds. A contract-side `expect` is only for an invariant an earlier check in the same function already guarantees, and its message must say which one; anything that depends on a caller's input returns a `CoreError` code.
 - **Tests.**
   - Unit tests live in `#[cfg(test)]` and use the `unit-testing` dev feature.
   - Behaviour across contracts, or that needs real gas or storage, goes in near-workspaces tests under `<crate>/tests/`.

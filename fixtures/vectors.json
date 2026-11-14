@@ -1966,6 +1966,203 @@
     },
     {
       "expect": {
+        "ok": 7000
+      },
+      "input": {
+        "body": "{\"relevance\":7}"
+      },
+      "name": "judge: the strict parse of a relevance answer",
+      "op": "parse_relevance"
+    },
+    {
+      "expect": {
+        "ok": 0
+      },
+      "input": {
+        "body": "{\"relevance\":7}, because the memo says so"
+      },
+      "name": "judge: anything else scores zero, which resolves to the floor",
+      "op": "parse_relevance"
+    },
+    {
+      "expect": {
+        "ok": false
+      },
+      "input": {
+        "body": "{\"reasoning_content\":\"...\",\"relevance\":7}"
+      },
+      "name": "judge: a body with reasoning in it is refused (DR-13)",
+      "op": "judge_body_ok"
+    },
+    {
+      "expect": {
+        "ok": true
+      },
+      "input": {
+        "body": "{\"relevance\":7}",
+        "text": "chat-1 response=43ad71e95d271ba5f0f888b4fe9e000549e2b705971b75cb41d966b3554e9677"
+      },
+      "name": "judge: a receipt commits to the body it signs for",
+      "op": "receipt_binds_body"
+    },
+    {
+      "expect": {
+        "ok": "19457468657265756d205369676e6564204d6573736167653a0a33616263"
+      },
+      "input": {
+        "text": "abc"
+      },
+      "name": "judge: the personal_sign envelope the signature covers",
+      "op": "personal_sign_preimage"
+    },
+    {
+      "expect": {
+        "ok": {
+          "buckets": {
+            "budget": "0",
+            "comp_reserved": "0",
+            "compute": "0",
+            "fee_reserved": "0",
+            "held": "400000000",
+            "refund": "601500000",
+            "storage": "0"
+          },
+          "ends_in": "Deal",
+          "fees": {
+            "assurance_pool": "200000",
+            "compute": "0",
+            "operator_pool": "300000",
+            "treasury": "500000"
+          },
+          "held": "400000000",
+          "leakage_debit_mbits": 2400,
+          "operator_compute": "10000000",
+          "refund": "601500000",
+          "seller_comp": "120000"
+        }
+      },
+      "input": {
+        "buckets": {
+          "budget": "1000000000",
+          "comp_reserved": "120000",
+          "compute": "10000000",
+          "fee_reserved": "2500000",
+          "held": "0",
+          "refund": "0",
+          "storage": "0"
+        },
+        "clearing_fee_buyer_bps": 25,
+        "outcome": "Deal",
+        "price": "400000000",
+        "price_per_bit": "50000",
+        "reserved_mbits": 2400,
+        "shares": {
+          "assurance_pool_bps": 2000,
+          "operator_pool_bps": 3000,
+          "treasury_bps": 5000
+        }
+      },
+      "name": "settlement: a deal holds the price and refunds the rest",
+      "op": "settle"
+    },
+    {
+      "expect": {
+        "ok": {
+          "buckets": {
+            "budget": "0",
+            "comp_reserved": "0",
+            "compute": "0",
+            "fee_reserved": "0",
+            "held": "0",
+            "refund": "1012620000",
+            "storage": "0"
+          },
+          "ends_in": "Timeout",
+          "fees": {
+            "assurance_pool": "0",
+            "compute": "0",
+            "operator_pool": "0",
+            "treasury": "0"
+          },
+          "held": "0",
+          "leakage_debit_mbits": 0,
+          "operator_compute": "0",
+          "refund": "1012620000",
+          "seller_comp": "0"
+        }
+      },
+      "input": {
+        "buckets": {
+          "budget": "1000000000",
+          "comp_reserved": "120000",
+          "compute": "10000000",
+          "fee_reserved": "2500000",
+          "held": "0",
+          "refund": "0",
+          "storage": "0"
+        },
+        "clearing_fee_buyer_bps": 25,
+        "outcome": "Timeout",
+        "price": "0",
+        "price_per_bit": "50000",
+        "reserved_mbits": 2400,
+        "shares": {
+          "assurance_pool_bps": 2000,
+          "operator_pool_bps": 3000,
+          "treasury_bps": 5000
+        }
+      },
+      "name": "settlement: a timeout returns everything",
+      "op": "settle"
+    },
+    {
+      "expect": {
+        "err": "E_JOB_STATE"
+      },
+      "input": {
+        "buckets": {
+          "budget": "1000",
+          "comp_reserved": "0",
+          "compute": "0",
+          "fee_reserved": "0",
+          "held": "0",
+          "refund": "0",
+          "storage": "0"
+        },
+        "clearing_fee_buyer_bps": 0,
+        "outcome": "DeliveryFailure",
+        "price": "0",
+        "price_per_bit": "0",
+        "reserved_mbits": 0,
+        "shares": {
+          "assurance_pool_bps": 0,
+          "operator_pool_bps": 0,
+          "treasury_bps": 10000
+        }
+      },
+      "name": "settlement: a delivery failure is not a first settlement",
+      "op": "settle"
+    },
+    {
+      "expect": {
+        "ok": "6d617267696e616c2f7061796f75742d617070726f76616c2f76316d617267696e616c2f7061796f75740007000000746573746e65741e000000636c656172696e672e6d617267696e616c2d64656d6f2e746573746e65740e00000073656c6c65722e746573746e657405050505050505050505050505050505050505050505050505050505050505050606060606060606060606060606060606060606060606060606060606060606070707070707070707070707070707070707070707070707070707070707070700b80b000000000000"
+      },
+      "input": {
+        "blocked": false,
+        "chain_id": "testnet",
+        "clearing": "clearing.marginal-demo.testnet",
+        "domain": "6d617267696e616c2f7061796f757400",
+        "expiry_height": 3000,
+        "list_version": "0606060606060606060606060606060606060606060606060606060606060606",
+        "route_hash": "0505050505050505050505050505050505050505050505050505050505050505",
+        "screening_id": "0707070707070707070707070707070707070707070707070707070707070707",
+        "subject": "seller.testnet"
+      },
+      "name": "payout approval: what compliance signs about a route",
+      "op": "payout_approval_signing_bytes"
+    },
+    {
+      "expect": {
         "ok": "Deal"
       },
       "input": {

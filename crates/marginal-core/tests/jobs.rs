@@ -30,6 +30,7 @@ const ALL: [JobState; 12] = [
 fn every_pair_of_states_is_decided() {
     let allowed: &[(JobState, JobState)] = &[
         (JobState::PendingApproval, JobState::Requested),
+        (JobState::PendingApproval, JobState::Timeout),
         (JobState::Requested, JobState::Assigned),
         (JobState::Requested, JobState::Timeout),
         (JobState::Assigned, JobState::Computing),

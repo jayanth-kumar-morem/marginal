@@ -410,6 +410,17 @@ pub enum BuyerRef {
     Nullifier([u8; 32]),
 }
 
+impl BuyerRef {
+    /// The buyer's account, when the buyer has one. A nullifier-only buyer is the v2 private mode
+    /// (§3.25); in M1 every job carries an account.
+    pub fn account(&self) -> Option<&AccountId> {
+        match self {
+            BuyerRef::Account(id) => Some(id),
+            BuyerRef::Nullifier(_) => None,
+        }
+    }
+}
+
 /// A job's funds, in named buckets (§3.9.1). Moving value between buckets is the only way funds
 /// move inside clearing.
 #[derive(
@@ -512,12 +523,18 @@ pub enum Outcome {
 }
 
 /// Fees assessed at settlement, by recipient.
-#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq, Default)]
+#[derive(
+    BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default,
+)]
 pub struct FeeSplit {
     /// Compute pass-through to the operator that ran the room.
+    #[serde(with = "dec")]
     pub compute: u128,
+    #[serde(with = "dec")]
     pub treasury: u128,
+    #[serde(with = "dec")]
     pub operator_pool: u128,
+    #[serde(with = "dec")]
     pub assurance_pool: u128,
 }
 

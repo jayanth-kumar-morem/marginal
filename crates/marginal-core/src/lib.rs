@@ -14,6 +14,8 @@
 //! - [`lifecycle`]: the job state machine (SDD §3.5). [`funding`]: what a job costs (SDD §3.9.1).
 //! - [`credential`]: the nullifier credential compliance signs (SDD §3.20).
 //! - [`request`]: what a buyer sends to `request_appraisal` (SDD §3.4).
+//! - [`judge`]: the receipt checks that need no host functions (SDD §3.16).
+//! - [`settle`]: where a job's money goes when it ends (SDD §3.9.2).
 //! - [`verdict`], [`certificate`], [`delivery`]: the signed and hashed messages (SDD §3.17-§3.19),
 //!   with their signing bytes and hashes.
 //! - [`audit`]: the audit hash chain step (SDD §3.10).
@@ -35,6 +37,7 @@ pub mod delivery;
 pub mod error;
 pub mod funding;
 pub mod json;
+pub mod judge;
 pub mod keyrelease;
 pub mod leakage;
 mod leakage_lut;
@@ -44,6 +47,7 @@ pub mod math;
 pub mod pricing;
 pub mod reports;
 pub mod request;
+pub mod settle;
 pub mod types;
 pub mod verdict;
 pub mod verifier;

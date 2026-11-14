@@ -15,6 +15,7 @@ use marginal_core::attest::{ppid_hash, SimRoom};
 use marginal_core::certificate::measurement_hash;
 use marginal_core::codec::to_bytes;
 use marginal_core::json::to_hex;
+use marginal_core::judge::personal_sign_preimage;
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, AppKey, KeyRequest};
 use marginal_core::listing::PublishSpec;
 use marginal_core::reports::{
@@ -22,6 +23,9 @@ use marginal_core::reports::{
     ScreeningV1, FLAG_MNPI,
 };
 use marginal_core::request::AppraisalRequest;
+use marginal_core::verdict::{
+    verdict_signing_bytes, JudgeFactor, ModelProof, OpenBody, VerdictStatus, VerdictV1,
+};
 use marginal_core::{
     BlobRef, DisplayMode, PayoutRoute, RefundRoute, RoomClass, ValueClass, VerdictPrivacy,
 };
@@ -110,7 +114,10 @@ async fn world() -> Result<World> {
                 "profile": "sandbox",
                 "gov_profile": "demo",
                 "cooling_blocks": 0,
-                "challenge_window_secs": 600,
+                // The sandbox clock advances about 0.3 s a block, so a ten-minute window would
+                // cost thousands of blocks to wait out. The window's length is a profile value,
+                // and what the test needs to exercise is that it is enforced at all.
+                "challenge_window_secs": 5,
                 "rules_enabled": ["R1"],
                 "asset_classes_enabled": ["Knowledge", "Dataset"],
             },
@@ -727,6 +734,112 @@ async fn a_flagged_listing_is_held_and_a_report_cannot_be_forged() -> Result<()>
     Ok(())
 }
 
+/// A token the buyer has funded a balance with, and a listing priced in it.
+async fn funded_world() -> Result<(World, Contract, u64)> {
+    let w = world().await?;
+    seed_policy(&w).await?;
+    register_room(&w).await?.into_result()?;
+    let token = w
+        .root
+        .create_subaccount("musdc")
+        .initial_balance(NearToken::from_near(20))
+        .transact()
+        .await?
+        .into_result()?
+        .deploy(&wasm("musdc", "musdc"))
+        .await?
+        .into_result()?;
+    token
+        .call("new")
+        .args_json(json!({ "faucet": w.gov.id() }))
+        .transact()
+        .await?
+        .into_result()?;
+    call(
+        &w.gov,
+        &w.clearing,
+        "set_tokens",
+        json!({ "tokens": [token.id()] }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    let listing_id = active_listing(&w, token.id().as_str()).await?;
+    call(
+        &w.gov,
+        &token,
+        "mint",
+        json!({ "account_id": w.buyer.id(), "amount": "10000000000" }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.buyer,
+        &token,
+        "storage_deposit",
+        json!({ "account_id": w.clearing.id() }),
+        NearToken::from_millinear(10),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.buyer,
+        &token,
+        "ft_transfer_call",
+        json!({
+            "receiver_id": w.clearing.id(),
+            "amount": "10000000000",
+            "msg": json!({"Deposit": {"account": w.buyer.id()}}).to_string(),
+        }),
+        NearToken::from_yoctonear(1),
+    )
+    .await?
+    .into_result()?;
+    Ok((w, token, listing_id))
+}
+
+/// The buyer asks for an appraisal of `listing_id`, funded from its balance.
+async fn request_appraisal(w: &World, listing_id: u64, budget: u128) -> Result<u64> {
+    let request = AppraisalRequest {
+        listing_id,
+        listing_version: 1,
+        snapshot_id: None,
+        budget,
+        mode: DisplayMode::Blind,
+        privacy: VerdictPrivacy::Open,
+        n_judges: 2,
+        delivery_pk: [0x11; 32],
+        compliance_pk: None,
+        context_auth_pk: [0x22; 32],
+        sealed_context_key: vec![7, 7, 7],
+        refund_to: RefundRoute::Balance,
+        nullifier: None,
+        nullifier_sig: None,
+    };
+    let answer: Value = call(
+        &w.buyer,
+        &w.clearing,
+        "request_appraisal",
+        json!({ "request": b64(&to_bytes(&request)) }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json()?;
+    assert_eq!(answer["status"], "Created", "{answer}");
+    Ok(answer["job_id"].as_str().unwrap().parse()?)
+}
+
+async fn balance(w: &World, token: &Contract, account: &Account) -> Result<u128> {
+    let raw: String = w
+        .clearing
+        .view("get_balance")
+        .args_json(json!({ "account": account.id(), "token": token.id() }))
+        .await?
+        .json()?;
+    Ok(raw.parse()?)
+}
+
 /// The whole buyer path on built wasm, ending in a key release the **real** KeyPolicy asks for
 /// (E5.5, E5.6). KeyPolicy's wasm is fixed, so this is the test that clearing's `check_room` and
 /// `authorize_release` are the two calls it actually makes, with its gas and its 1 yocto.
@@ -909,4 +1022,370 @@ async fn a_buyer_funds_a_job_and_keypolicy_releases_its_key() -> Result<()> {
         .json()?;
     assert!(sealed.is_some(), "the room can fetch its context key");
     Ok(())
+}
+
+/// DRC-11, on built wasm: the room is killed mid-job, and after the deadline anyone can call
+/// `refund_expired` and the buyer is made whole, to the unit.
+#[tokio::test]
+async fn the_room_is_killed_and_the_buyer_is_made_whole() -> Result<()> {
+    let (w, token, listing_id) = funded_world().await?;
+    let before = balance(&w, &token, &w.buyer).await?;
+    let job_id = request_appraisal(&w, listing_id, 500_000_000).await?;
+    let funded = before - balance(&w, &token, &w.buyer).await?;
+    assert!(
+        funded > 500_000_000,
+        "the budget plus the compute fee and the leakage reserve"
+    );
+
+    let job = view(
+        &w.clearing,
+        "get_job",
+        json!({ "job_id": job_id.to_string() }),
+    )
+    .await?;
+    let deadline = job["deadline_height"].as_u64().unwrap();
+
+    // Before the deadline, nobody can take the job away from the room.
+    let early = call(
+        &w.seller,
+        &w.clearing,
+        "refund_expired",
+        json!({ "job_id": job_id.to_string() }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?;
+    assert_refused(&early, "E_JOB_STATE");
+
+    // The room never answers. Past the deadline, anyone ends the job.
+    w.worker
+        .fast_forward(deadline + 2 - w.worker.view_block().await?.height())
+        .await?;
+    let answer: Value = call(
+        &w.seller,
+        &w.clearing,
+        "refund_expired",
+        json!({ "job_id": job_id.to_string() }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json()?;
+    assert_eq!(answer["status"], "Timeout");
+    assert_eq!(
+        balance(&w, &token, &w.buyer).await?,
+        before,
+        "made whole, to the unit"
+    );
+
+    // The leakage reservation is released, so the listing can sell again, and the room's queue is
+    // clear.
+    let leakage = view(
+        &w.clearing,
+        "get_leakage",
+        json!({ "listing_id": listing_id.to_string() }),
+    )
+    .await?;
+    assert_eq!(leakage["reserved_mbits"], 0);
+    assert_eq!(leakage["spent_mbits"], 0);
+    assert_eq!(
+        view(
+            &w.clearing,
+            "get_jobs_for_room",
+            json!({ "room_key": to_hex(&room_key()) })
+        )
+        .await?,
+        json!([])
+    );
+    let record = view(
+        &w.clearing,
+        "get_settlement",
+        json!({ "job_id": job_id.to_string() }),
+    )
+    .await?;
+    assert_eq!(record["outcome"], "Timeout");
+    assert_eq!(record["refund"], funded.to_string());
+    Ok(())
+}
+
+/// A deal from end to end on built wasm: the room's verdict is priced by clearing, the good is
+/// delivered, the window passes, the seller is paid and claims it as real tokens.
+#[tokio::test]
+async fn a_deal_is_settled_delivered_released_and_claimed() -> Result<()> {
+    let (w, token, listing_id) = funded_world().await?;
+    // Governance registers the judge's signer and the compliance key, and sets a fee.
+    call(
+        &w.gov,
+        &w.clearing,
+        "set_ai_signer",
+        json!({
+            "address": to_hex(&judge_address()),
+            "model": "Qwen/Qwen3.8-27B",
+            "expires_at": now_secs(&w).await? + 3_600,
+        }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.gov,
+        &w.clearing,
+        "set_compliance_key",
+        json!({ "key": to_hex(&compliance_key().verifying_key().to_bytes()) }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+
+    let job_id = request_appraisal(&w, listing_id, 500_000_000).await?;
+    // KeyPolicy authorises the release, which is what starts the work.
+    let job = view(
+        &w.clearing,
+        "get_job",
+        json!({ "job_id": job_id.to_string() }),
+    )
+    .await?;
+    let seller_id = w.seller.id().to_string();
+    let key_request = KeyRequest {
+        chain_id: CHAIN_ID.into(),
+        keypolicy: w.keypolicy.id().to_string(),
+        room_key: room_key(),
+        job_id,
+        path: listing_path(&seller_id, listing_id, 1),
+        app_key: AppKey {
+            pk1: [5; 48],
+            pk2: [6; 96],
+        },
+        job_commitment: marginal_core::json::parse_hex(job["job_commitment"].as_str().unwrap())
+            .unwrap(),
+        value_class: ValueClass::M,
+    };
+    call(
+        &w.seller,
+        &w.keypolicy,
+        "set_pins",
+        json!({
+            "listing_id": listing_id.to_string(),
+            "version": 1,
+            "pins": [to_hex(&measurement_hash(&measurement(false)))],
+        }),
+        fee(keypolicy::PINS_FEE),
+    )
+    .await?
+    .into_result()?;
+    call(
+        &w.operator,
+        &w.keypolicy,
+        "authorize",
+        json!({
+            "request": b64(&to_bytes(&key_request)),
+            "room_sig": b64(&room_signing_key().sign(&key_request_signing_bytes(&key_request)).to_bytes()),
+        }),
+        fee(keypolicy::TICKET_FEE),
+    )
+    .await?
+    .into_result()?;
+
+    // The room reports a verdict with two real judge receipts.
+    let verdict = verdict_for(&w, job_id, listing_id, &job);
+    let settled: Value = call(
+        &w.operator,
+        &w.clearing,
+        "submit_verdict",
+        json!({
+            "verdict": b64(&to_bytes(&verdict)),
+            "sig": b64(&room_signing_key().sign(&verdict_signing_bytes(&verdict)).to_bytes()),
+        }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json()?;
+    assert_eq!(settled["status"], "Settled", "{settled}");
+    assert_eq!(settled["outcome"], "Deal");
+    assert_eq!(settled["price"], "400000000", "the listing's ask");
+
+    // The good is delivered, and the window has to pass before the seller is paid.
+    call(
+        &w.operator,
+        &w.clearing,
+        "submit_delivery_receipt",
+        json!({ "job_id": job_id.to_string(), "delivery_hash": to_hex(&[0xd1; 32]) }),
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .into_result()?;
+    let approval = marginal_core::credential::PayoutApproval {
+        domain: marginal_core::credential::PayoutApproval::DOMAIN,
+        chain_id: CHAIN_ID.into(),
+        clearing: w.clearing.id().to_string(),
+        subject: seller_id.clone(),
+        route_hash: marginal_core::codec::hash_of(&PayoutRoute::NearAccount(seller_id.clone())),
+        list_version: [0x11; 32],
+        screening_id: [0x22; 32],
+        blocked: false,
+        expiry_height: w.worker.view_block().await?.height() + 1_000,
+    };
+    let approval_args = json!({
+        "job_id": job_id.to_string(),
+        "approval": b64(&to_bytes(&approval)),
+        "sig": b64(&compliance_key()
+            .sign(&marginal_core::credential::payout_approval_signing_bytes(&approval))
+            .to_bytes()),
+    });
+    let early = call(
+        &w.buyer,
+        &w.clearing,
+        "release_held",
+        approval_args.clone(),
+        NearToken::from_yoctonear(0),
+    )
+    .await?;
+    assert_refused(&early, "E_JOB_STATE");
+
+    // The sandbox's clock follows its blocks, so ten minutes is about 600 blocks.
+    // Wait the window out: about 0.3 s a block in the sandbox.
+    w.worker.fast_forward(40).await?;
+    let released: Value = call(
+        &w.buyer,
+        &w.clearing,
+        "release_held",
+        approval_args,
+        NearToken::from_yoctonear(0),
+    )
+    .await?
+    .json()?;
+    assert_eq!(released["status"], "Released");
+    assert_eq!(
+        view(
+            &w.clearing,
+            "get_job",
+            json!({ "job_id": job_id.to_string() })
+        )
+        .await?["state"],
+        "Final"
+    );
+
+    // The seller claims it as real tokens.
+    call(
+        &w.seller,
+        &token,
+        "storage_deposit",
+        json!({ "account_id": w.seller.id() }),
+        NearToken::from_millinear(10),
+    )
+    .await?
+    .into_result()?;
+    let owed: String = w
+        .clearing
+        .view("get_claimable")
+        .args_json(json!({ "account": w.seller.id(), "token": token.id() }))
+        .await?
+        .json()?;
+    let owed: u128 = owed.parse()?;
+    assert!(owed >= 400_000_000, "the price, plus leakage compensation");
+    let claimed = call(
+        &w.seller,
+        &w.clearing,
+        "claim",
+        json!({ "token": token.id() }),
+        NearToken::from_yoctonear(1),
+    )
+    .await?;
+    assert!(claimed.is_success(), "{}", failures(&claimed));
+    let on_chain: String = token
+        .view("ft_balance_of")
+        .args_json(json!({ "account_id": w.seller.id() }))
+        .await?
+        .json()?;
+    assert_eq!(
+        on_chain.parse::<u128>()?,
+        owed,
+        "the seller holds the tokens"
+    );
+    assert_eq!(
+        w.clearing
+            .view("get_claimable")
+            .args_json(json!({ "account": w.seller.id(), "token": token.id() }))
+            .await?
+            .json::<String>()?,
+        "0"
+    );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// What the room and the compliance service sign, for the two tests above
+
+fn compliance_key() -> SigningKey {
+    SigningKey::from_bytes(&[4; 32])
+}
+
+fn judge_key() -> secp256k1::SecretKey {
+    secp256k1::SecretKey::from_slice(&[0x42; 32]).unwrap()
+}
+
+fn judge_address() -> [u8; 20] {
+    let secp = secp256k1::Secp256k1::new();
+    let public = secp256k1::PublicKey::from_secret_key(&secp, &judge_key());
+    let digest = near_sdk::env::keccak256_array(&public.serialize_uncompressed()[1..]);
+    digest[12..].try_into().unwrap()
+}
+
+/// A receipt the provider's TEE could have signed for `relevance`.
+fn judged(relevance: u32, chat: u64) -> JudgeFactor {
+    let body = format!("{{\"relevance\":{relevance}}}");
+    let text = format!(
+        "chat-{chat} model=Qwen/Qwen3.8-27B response={}",
+        to_hex(&marginal_core::codec::sha256(&[body.as_bytes()]))
+    );
+    let secp = secp256k1::Secp256k1::new();
+    let hash = near_sdk::env::keccak256_array(&personal_sign_preimage(&text)[..]);
+    let (recovery, signature) = secp
+        .sign_ecdsa_recoverable(
+            &secp256k1::Message::from_slice(&hash).unwrap(),
+            &judge_key(),
+        )
+        .serialize_compact();
+    let mut sig65 = [0u8; 65];
+    sig65[..64].copy_from_slice(&signature);
+    sig65[64] = recovery.to_i32() as u8;
+    JudgeFactor {
+        model_id: "Qwen/Qwen3.8-27B".into(),
+        factor_bps: relevance * 1_000,
+        proof: ModelProof::NearAiReceipt {
+            text,
+            sig65,
+            response_body: body,
+        },
+    }
+}
+
+fn verdict_for(w: &World, job_id: u64, listing_id: u64, job: &Value) -> VerdictV1 {
+    VerdictV1 {
+        domain: VerdictV1::DOMAIN,
+        chain_id: CHAIN_ID.into(),
+        clearing: w.clearing.id().to_string(),
+        job_id,
+        job_commitment: marginal_core::json::parse_hex(job["job_commitment"].as_str().unwrap())
+            .unwrap(),
+        listing_id,
+        listing_version: 1,
+        appraiser: spec().appraiser,
+        status: VerdictStatus::Ok,
+        privacy: VerdictPrivacy::Open,
+        open: Some(OpenBody {
+            components: vec![10_000, 10_000],
+            factors: vec![judged(10, 1), judged(10, 2)],
+            shown: vec![],
+        }),
+        sealed: None,
+        delivery_commitment: Some([0xd1; 32]),
+        cert_hash: [0xce; 32],
+        room_key: room_key(),
+        nonce: [0x5b; 16],
+        t_start: 0,
+        t_end: 1,
+    }
+}
+
+async fn now_secs(w: &World) -> Result<u64> {
+    Ok(w.worker.view_block().await?.timestamp() / 1_000_000_000)
 }

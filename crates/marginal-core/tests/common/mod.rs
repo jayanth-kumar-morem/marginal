@@ -10,7 +10,7 @@ use marginal_core::certificate::{
     ForgetCertificateV1, Measurement, Scope, NP_PROCESS_EXIT, NP_TEE_MEMORY,
 };
 use marginal_core::commit::JobCore;
-use marginal_core::credential::NullifierCredential;
+use marginal_core::credential::{NullifierCredential, PayoutApproval};
 use marginal_core::delivery::{DeliveryEntry, DeliveryV1};
 use marginal_core::keyrelease::{listing_path, AppKey, KeyRequest};
 use marginal_core::listing::ListingSpec;
@@ -487,5 +487,20 @@ pub fn nullifier() -> NullifierCredential {
         epoch: 7,
         nullifier: h(4),
         expiry_height: 2_000,
+    }
+}
+
+/// What the compliance service signs about a payout route (SDD §3.9.4).
+pub fn payout_approval() -> PayoutApproval {
+    PayoutApproval {
+        domain: PayoutApproval::DOMAIN,
+        chain_id: "testnet".into(),
+        clearing: "clearing.marginal-demo.testnet".into(),
+        subject: seller(),
+        route_hash: h(5),
+        list_version: h(6),
+        screening_id: h(7),
+        blocked: false,
+        expiry_height: 3_000,
     }
 }

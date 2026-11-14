@@ -13,12 +13,16 @@ use marginal_core::certificate::Measurement;
 use marginal_core::codec::to_bytes;
 use marginal_core::credential::{nullifier_signing_bytes, NullifierCredential};
 use marginal_core::json::to_hex;
+use marginal_core::judge::personal_sign_preimage;
 use marginal_core::listing::{ListingSpec, PublishSpec};
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningResult,
     ScreeningV1, FLAG_MNPI,
 };
 use marginal_core::request::AppraisalRequest;
+use marginal_core::verdict::{
+    verdict_signing_bytes, JudgeFactor, ModelProof, OpenBody, VerdictStatus, VerdictV1,
+};
 use marginal_core::*;
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde_json::{json, Value};
@@ -358,6 +362,125 @@ fn caps() -> AgentCaps {
     }
 }
 
+/// The NEAR AI judge's signing key, and the Ethereum address it recovers to.
+fn judge_key() -> secp256k1::SecretKey {
+    secp256k1::SecretKey::from_slice(&[0x42; 32]).unwrap()
+}
+
+fn judge_address() -> [u8; 20] {
+    let secp = secp256k1::Secp256k1::new();
+    let public = secp256k1::PublicKey::from_secret_key(&secp, &judge_key());
+    let uncompressed = public.serialize_uncompressed();
+    let digest = near_sdk::env::keccak256_array(&uncompressed[1..]);
+    digest[12..].try_into().unwrap()
+}
+
+/// Chat ids, so each receipt is its own: one receipt may be used once (§3.16).
+static CHAT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// A receipt the provider's TEE could have signed: the text commits to the body, and the signature
+/// is `personal_sign` over the text (SDD §3.16).
+fn receipt(body: &str) -> ModelProof {
+    let chat = CHAT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let text = format!(
+        "chat-{chat} model=Qwen/Qwen3.8-27B response={}",
+        to_hex(&marginal_core::codec::sha256(&[body.as_bytes()]))
+    );
+    sign_receipt(&text, body)
+}
+
+fn sign_receipt(text: &str, body: &str) -> ModelProof {
+    let secp = secp256k1::Secp256k1::new();
+    let hash = near_sdk::env::keccak256_array(&personal_sign_preimage(text)[..]);
+    let message = secp256k1::Message::from_slice(&hash).unwrap();
+    let (recovery, signature) = secp
+        .sign_ecdsa_recoverable(&message, &judge_key())
+        .serialize_compact();
+    let mut sig65 = [0u8; 65];
+    sig65[..64].copy_from_slice(&signature);
+    sig65[64] = recovery.to_i32() as u8;
+    ModelProof::NearAiReceipt {
+        text: text.to_string(),
+        sig65,
+        response_body: body.to_string(),
+    }
+}
+
+/// Registers the judge's signer so its receipts are accepted.
+fn register_judge(c: &mut Clearing) {
+    call_as(GOV, no_deposit());
+    c.set_ai_signer(
+        to_hex(&judge_address()),
+        "Qwen/Qwen3.8-27B".into(),
+        NOW + 3_600,
+    );
+}
+
+/// A judge factor backed by a real receipt for `relevance`.
+fn judged(relevance: u32) -> JudgeFactor {
+    let body = format!("{{\"relevance\":{relevance}}}");
+    JudgeFactor {
+        model_id: "Qwen/Qwen3.8-27B".into(),
+        factor_bps: relevance * 1_000,
+        proof: receipt(&body),
+    }
+}
+
+/// The verdict a room signs for a job, with components that price it at the listing's ask.
+fn verdict_for(
+    c: &Clearing,
+    job_id: u64,
+    status: VerdictStatus,
+    factors: Vec<JudgeFactor>,
+) -> VerdictV1 {
+    let job: Job = crate::store::get(crate::store::Table::Job, &crate::store::num(job_id)).unwrap();
+    let listing = c.listing(job.listing_id);
+    VerdictV1 {
+        domain: VerdictV1::DOMAIN,
+        chain_id: "sandbox".into(),
+        clearing: CLEARING.into(),
+        job_id,
+        job_commitment: job.job_commitment,
+        listing_id: job.listing_id,
+        listing_version: job.listing_version,
+        appraiser: listing.appraiser.clone(),
+        status,
+        privacy: VerdictPrivacy::Open,
+        open: Some(OpenBody {
+            components: vec![10_000, 10_000],
+            factors,
+            shown: vec![],
+        }),
+        sealed: None,
+        delivery_commitment: Some([0xd1; 32]),
+        cert_hash: [0xce; 32],
+        room_key: room_key(),
+        nonce: [0x5b; 16],
+        t_start: HEIGHT,
+        t_end: HEIGHT + 1,
+    }
+}
+
+fn sign_verdict(v: &VerdictV1) -> Base64VecU8 {
+    sign(&verdict_signing_bytes(v))
+}
+
+/// A job that has been authorised and is waiting for its verdict.
+fn computing(c: &mut Clearing) -> (u64, u64) {
+    let listing_id = ready(c);
+    register_judge(c);
+    call_as(BUYER, no_deposit());
+    let job_id = created(&c.request_appraisal(b64(&request(listing_id))));
+    let commitment = c.get_job(U64(job_id)).unwrap()["job_commitment"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let path = to_hex(&c.listing(listing_id).key_path_hash);
+    call_as(KEYPOLICY, no_deposit());
+    c.authorize_release(job_id, to_hex(&room_key()), path, commitment, json!("M"));
+    (listing_id, job_id)
+}
+
 mod agents;
 mod audit;
 mod escrow;
@@ -365,5 +488,7 @@ mod gov;
 mod identity;
 mod jobs;
 mod listings;
+mod payouts;
 mod registry;
+mod verdicts;
 mod views;

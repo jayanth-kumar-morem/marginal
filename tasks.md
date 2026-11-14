@@ -153,6 +153,9 @@ To fix in SDD v0.3.
 | 27 | §3.4 gives `request_appraisal` its checks but no input type, and §3.20 defines credentials without signing bytes or a chain binding | `AppraisalRequest` and `validate_request` in `marginal_core::request`; `NullifierCredential` in `marginal_core::credential` with its own domain, binding chain, contract, subject, listing and epoch. Both implemented and vectored in E5 | SDD v0.3 |
 | 28 | §3.5 draws the job lifecycle but gives no transition function, so each caller would re-read the diagram | `marginal_core::lifecycle::transition`, one table, with an exhaustive test over every pair of M1 states (E5.1) | SDD v0.3 |
 | 29 | §3.4 says `authorize_release` is "`keypolicy-v1` only" and the deposit convention is left open. KeyPolicy (immutable, already built) sends `job_id` as a JSON **number** and attaches **no deposit** | Clearing takes `job_id: u64` and is not payable; the predecessor check is the authorisation, since a receipt from the KeyPolicy contract cannot be forged by an access key. Found by running the real KeyPolicy against the real clearing (E5.6) | SDD v0.3 |
+| 30 | §3.9.2 gives `Restricted` a "screening-only share" of the compute fee without saying what the share is | M1 pays the whole compute fee: the room did the work either way, and a fraction nobody has defined would be a number invented in code. Fix the table in §3.9.2 or drop the distinction | SDD v0.3 |
+| 31 | §3.16 says a body with a reasoning field is "rejected with factor 0", as a rule of its own. With the strict parse of DR-2, such a body already scores 0: the rule is unreachable on chain | Keep the rule in `marginal_core::judge` for the room and `replay-ts` (which must not publish such a body), and say in §3.16 that on chain the strict parse subsumes it (E6.2) | SDD v0.3 |
+| 32 | §3.5's job lifecycle has no way out of `PendingApproval` except approval, so a parked job nobody approves could never be refunded and its funds would be locked for good | `PendingApproval → Timeout` is allowed, and `refund_expired` ends a parked job like any other (E6.4) | SDD v0.3 |
 
 ---
 
@@ -456,24 +459,52 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
 
 ## E6. Clearing: verdicts, settlement, claims
 
-- [ ] **E6.1 `submit_verdict` (Open)** · P0 · §3.17
+**Status 2026-11-14: built and closed. Clearing is now complete for M1.** All five tasks are done, verified natively and as built wasm on a local chain: a deal now runs end to end — the room's verdict is priced by clearing, the good is delivered, the window passes, the seller is paid and claims real tokens. 100% coverage holds; 51 injected bugs, 49 caught and 2 that found redundant checks (below).
+
+- [x] **E6.1 `submit_verdict` (Open)** · P0 · §3.17
   - Checks: room signature, assignment, binding (domain, chain, job, version, nonce, commitment) and schema.
   - Then: recompute with core; a deal requires `delivery_commitment`; the certificate hash must be present.
   - A rejection emits `verdict_rejected`, and the job stays open.
-- [ ] **E6.2 Judge receipts** · P1 · D6 · §3.16
+  - **Completed 2026-11-14.** `verdict.rs`. **Clearing works out the price itself** from the components and factors the room published (`measured_index`, `apply_rule`): the room's own `price` is never read. The two kinds of refusal are kept apart, which is the heart of this task:
+    - **Refused outright** (the call fails, nothing changes): a bad signature, a room the job was not given to, a room whose attestation has lapsed, a job that is not `Computing`, a verdict naming another chain, contract, listing or version, and a commitment that is not the job's.
+    - **Rejected** (the call succeeds, `verdict_rejected` is emitted, **the job stays open** until its deadline so the room can fix it and try again): a missing delivery commitment or certificate, an appraiser that is not the listing's, a schema the formula cannot price, shown fields (M1 is blind), a sealed verdict (E10), and every receipt failure. A test walks each one and asserts the job is still `Computing` with no settlement.
+    - **A rejected verdict spends nothing.** The first version recorded judge receipts before the certificate check, so a rejected verdict burnt its own receipts and the room could never retry. A test caught it; receipts now enter the replay set only when the verdict is accepted.
+- [x] **E6.2 Judge receipts** · P1 · D6 · §3.16
   - LETHE's checks: `resp_hash`, `ecrecover` against an unexpired signer from the gov-set list, the model allow-list and the replay set.
   - Also: a strict parse reproduces the factor, and the body has no reasoning field.
-- [ ] **E6.3 Settlement** · P0 · §3.9.2
+  - **Completed 2026-11-14, against a signature made the way the provider's TEE makes one; not against a real NEAR AI receipt, which needs [P-2](#paid-and-account-gated-steps-jay).** The rules that need no host functions live in `marginal_core::judge`, so `replay-ts` re-checks a published verdict exactly as the contract did: the strict parse, the body binding (`sha256(body)` must appear in the signed text), and the `personal_sign` envelope. The contract recovers the signer with `env::ecrecover` and checks it against the governance registry (address → model and expiry), the model, and the replay set.
+    - **The strict parse is the whole scoring rule** (DR-2): a body is worth something only if it is exactly `{"relevance":k}` with `k` in 0..=10, whitespace aside. Anything else scores 0, which resolves to the listing's floor (AC-41).
+    - **`has_reasoning` turned out to be redundant in the contract** (a mutation survived until I saw why): any body carrying a reasoning field already fails the strict parse, so it already scores 0. The rule stays in core with its own test, because the room must not publish such a body at all; the contract no longer re-checks it.
+    - **`env::ecrecover` aborts** on a recovery byte outside 0..=3 rather than returning `None`, which would have killed the whole call instead of rejecting one receipt. The byte is checked first.
+    - **Not done:** the attester-maintained signer registry (§3.16: entries added and refreshed by k-of-n attesters). M1's `gov` sets the list directly, with an expiry (E18).
+- [x] **E6.3 Settlement** · P0 · §3.9.2
   - The outcome table produces a `SettlementRecord` with `simulated_flags`.
   - The buyer's refund goes to their balance. The seller's compensation goes to claimable. `held_until` is now + W.
-- [ ] **E6.4 Receipt, release, timeout** · P0 · D11 · §3.4
+  - **Completed 2026-11-14.** The table is `marginal_core::settle` — money, so core — and `settle.rs` applies it. Every outcome has a test of its own, and **every settlement is checked against AC-4's conservation invariant as it happens**, not only in test builds: if the arithmetic ever disagreed with the deposit, the call stops.
+    - `Deal` holds the price for the window, pays the room for what it leaked and for its compute, takes the fee on the **actual price** and refunds the rest. `NoDeal` still pays compensation and compute. `Restricted` compensates one bit. `InputRejected` releases the reservation but still pays compute. `Timeout` returns everything.
+    - The debit rules E5.3 states are implemented here, where their caller is: a listing whose remaining budget cannot pay for the cheapest job becomes `Exhausted`, and a deal counts its copy and goes `SoldOut` at the last one.
+    - `simulated_flags` records what was simulated (attestation, judge), so a record always says which toggles produced it (§6.3 rule 2).
+    - **Not done:** `screening-only share` for `Restricted`'s compute fee (§3.9.2 gives no fraction, so the whole compute fee is paid; `tasks.md` SDD issue 30).
+- [x] **E6.4 Receipt, release, timeout** · P0 · D11 · §3.4
   - `submit_delivery_receipt`.
   - `release_held` needs the receipt, W passed and a fresh `PayoutApproval`. A match gives `Blocked`; otherwise the proceeds go to the seller's claimable balance.
   - `refund_expired` ends in `Timeout` or `DeliveryFailure`.
   - **Done:** DRC-11 is exact in sandbox.
-- [ ] **E6.5 Claims and payout route** · P0 (route: P1, D7) · §3.9.4
+  - **Completed 2026-11-14, and the Done line is a sandbox test.** `the_room_is_killed_and_the_buyer_is_made_whole` funds a real job through a real token, lets the deadline pass with no verdict, calls `refund_expired` from an account that is not the buyer, and asserts the buyer's balance is **exactly** what it was before, the leakage reservation is released and the room's queue is clear (DRC-11).
+    - `release_held` needs the receipt, the window passed, and a `PayoutApproval` signed by the compliance key and bound to this chain, contract, seller and route hash. A sanctions match leaves the payout `Blocked` with its screening reference, paying nothing.
+    - `refund_expired` after a deal, past the delivery deadline with no receipt, gives back the held price **and the fee that was taken on it** (`DeliveryFailure`); a test asserts the fee is reversed out of governance's claimable too.
+    - A parked job nobody approves also times out. The lifecycle table had no `PendingApproval → Timeout` move, so those funds would have been locked for good; the coverage gate found it.
+    - **Not done:** `dispute_delivery` (§3.4) and the `Fault` outcome, both v2.
+- [x] **E6.5 Claims and payout route** · P0 (route: P1, D7) · §3.9.4
   - `claim(token)` uses `ft_transfer`, and its callback restores the balance on failure.
   - The `NearAccount` or `DryQuote` route is stored on the listing and cited in the settlement record.
+  - **Completed 2026-11-14.** Every outgoing transfer is a pull: settlement credits a claimable balance, the owner calls `claim`, and the callback puts the amount back if the token refuses it, so nothing a token does can stop a job from ending. A sandbox test claims a real `musdc` balance and checks `ft_balance_of` on the token afterwards. Agent keys cannot claim.
+    - The route is the listing's `payout`, screened at release through the approval's `route_hash`; the release event cites it. `DryQuote` is stored and cited like `NearAccount`; the live 1Click quote itself is the gateway's (E13), and `IntentsAccount` and `ChainSig` are M2.
+  - **Review of E6 as a whole, 2026-11-14** (no second reviewer):
+    - **Injected bugs: 51. 49 were caught by a failing test**, including an unchecked verdict signature, any room reporting, a trusted room price, a deal with no delivery commitment or certificate, sealed verdicts accepted, every receipt check in turn (signer, expiry, model, body binding, replay, recomputed factor, recovery byte), receipts spent on rejection, a seller or operator not paid, a buyer not refunded, leakage not debited, a window not recorded, a receipt that need not match the commitment or could be replayed, a release with no receipt or before the window, a blocked payout paid anyway, every field of the approval, a timeout ignoring its deadline, a settled job refunded twice, a failed claim keeping the money, an agent claiming, and each row of the outcome table.
+    - **The two that survived found redundant checks, which were removed rather than papered over:** the component-count check (the formula's own arity check answers it with the same code) and `has_reasoning` in the contract (the strict parse already scores such a body 0). Both rules stay in core, with their own tests, because the room and `replay-ts` need them.
+    - **Three bugs the tests found in my own code:** receipts burnt by a rejected verdict; no `PendingApproval → Timeout` move, which would have locked a parked job's funds; and `env::ecrecover` aborting the call on a malformed recovery byte.
+    - **Not verified:** anything on testnet; a real NEAR AI receipt ([P-2](#paid-and-account-gated-steps-jay)); a real room's signatures (E7, E8); Sealed verdicts (E10).
 
 ## E7. Room image and supervisor
 

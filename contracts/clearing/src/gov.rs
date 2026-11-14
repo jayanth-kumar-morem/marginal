@@ -54,6 +54,16 @@ impl FeeTable {
     }
 }
 
+/// A NEAR AI signer governance registered (SDD §3.16): the model it signs for, and when the entry
+/// goes stale. Keyed by the signer's 20-byte Ethereum address, which is what `ecrecover` gives back.
+#[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
+#[borsh(crate = "near_sdk::borsh")]
+pub struct AiSigner {
+    pub model: String,
+    /// Unix seconds. Entries are refreshed every 24 h (§3.16).
+    pub expires_at: u64,
+}
+
 /// A registered appraiser version (SDD §3.4: `id@version` must be registered and enabled).
 #[derive(BorshSerialize, BorshDeserialize, Clone, Debug, PartialEq, Eq)]
 #[borsh(crate = "near_sdk::borsh")]
@@ -122,17 +132,29 @@ impl Clearing {
 
     /// Adds a NEAR AI signer with an expiry, or removes it when `expires_at` is in the past
     /// (SDD §3.16: the signer list is governance-set and every entry expires).
-    pub fn set_ai_signer(&mut self, key: String, expires_at: u64) {
+    ///
+    /// `address` is the signer's 20-byte Ethereum address in hex, because that is what recovering
+    /// a receipt's signature gives back (§3.16, E6.2). The model it signs for is the allow-list:
+    /// a receipt is accepted only for the model its signer is registered against.
+    pub fn set_ai_signer(&mut self, address: String, model: String, expires_at: u64) {
         self.only_gov();
-        let parsed = parse_key(&key);
+        let parsed: [u8; 20] = parse_hex(&address).unwrap_or_else(|| fail(CoreError::Decode));
         if expires_at > now_secs() {
-            store::put(Table::Signer, &parsed, &expires_at);
+            require!(!model.is_empty(), "model id");
+            store::put(
+                Table::Signer,
+                &parsed,
+                &AiSigner {
+                    model: model.clone(),
+                    expires_at,
+                },
+            );
         } else {
             store::remove(Table::Signer, &parsed);
         }
         self.policy_changed(
             "ai_signer_set",
-            json!({ "key": to_hex(&parsed), "expires_at": expires_at }),
+            json!({ "address": to_hex(&parsed), "model": model, "expires_at": expires_at }),
         );
     }
 

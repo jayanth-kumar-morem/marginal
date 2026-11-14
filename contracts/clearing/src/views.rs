@@ -111,6 +111,8 @@ impl Clearing {
             "assigned": job.assigned.iter().map(|k| to_hex(k)).collect::<Vec<_>>(),
             "requested_height": job.requested_height,
             "deadline_height": job.deadline_height,
+            // Set when a deal settles: the good must arrive by then (§3.4, `refund_expired`).
+            "delivery_deadline_height": job.delivery_deadline_height,
         }))
     }
 

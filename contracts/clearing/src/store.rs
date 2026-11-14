@@ -42,6 +42,10 @@ pub(crate) enum Table {
     AgentSpend = b'w' as isize,
     /// job id (LE) -> the context key sealed to the room's box key (§3.12.4)
     ContextKey = b'x' as isize,
+    /// job id (LE) -> `marginal_core::SettlementRecord` (§3.9.2)
+    Settlement = b'z' as isize,
+    /// receipt id -> () : a judge receipt is used once (§3.16)
+    Receipt = b'y' as isize,
 }
 
 fn key(table: Table, id: &[u8]) -> Vec<u8> {

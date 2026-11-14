@@ -32,7 +32,9 @@ pub fn transition(from: JobState, to: JobState) -> Result<JobState, CoreError> {
             // A deal ends when the good is delivered and the window passes, or it never arrives.
             | (Deal, Final)
             | (Deal, DeliveryFailure)
-            // Nothing arrived in time (§3.4 `refund_expired`).
+            // Nothing arrived in time (§3.4 `refund_expired`). A parked job is included: if no
+            // human ever approves it, its funds must still find their way back to the buyer.
+            | (PendingApproval, Timeout)
             | (Requested, Timeout)
             | (Assigned, Timeout)
             | (Computing, Timeout)

@@ -21,8 +21,9 @@ use std::path::PathBuf;
 #[path = "../../marginal-core/tests/common/mod.rs"]
 mod common;
 use common::{
-    audit_entry, binding, certificate, delivery, h, job_core, key_request, nullifier, provisioning,
-    real_events, real_reply_bytes, screening, seller, valid_log, verdict, verified_for, NOW,
+    audit_entry, binding, certificate, delivery, h, job_core, key_request, nullifier,
+    payout_approval, provisioning, real_events, real_reply_bytes, screening, seller, valid_log,
+    verdict, verified_for, NOW,
 };
 use marginal_core::reports::{ScreeningResult, FLAG_MNPI};
 
@@ -344,6 +345,125 @@ fn attestation_cases() -> Vec<Case> {
                 "clearing_fee_buyer_bps": 0,
             }),
             json!({"err": "E_ARITHMETIC"}),
+        ),
+        known(
+            "judge: the strict parse of a relevance answer",
+            "parse_relevance",
+            json!({"body": r#"{"relevance":7}"#}),
+            ok(json!(7_000)),
+        ),
+        known(
+            "judge: anything else scores zero, which resolves to the floor",
+            "parse_relevance",
+            json!({"body": r#"{"relevance":7}, because the memo says so"#}),
+            ok(json!(0)),
+        ),
+        known(
+            "judge: a body with reasoning in it is refused (DR-13)",
+            "judge_body_ok",
+            json!({"body": r#"{"reasoning_content":"...","relevance":7}"#}),
+            ok(json!(false)),
+        ),
+        known(
+            "judge: a receipt commits to the body it signs for",
+            "receipt_binds_body",
+            json!({
+                "text": format!("chat-1 response={}", sha256_of(&[br#"{"relevance":7}"#])),
+                "body": r#"{"relevance":7}"#,
+            }),
+            ok(json!(true)),
+        ),
+        known(
+            "judge: the personal_sign envelope the signature covers",
+            "personal_sign_preimage",
+            json!({"text": "abc"}),
+            ok(json!(to_hex(b"\x19Ethereum Signed Message:\n3abc"))),
+        ),
+        // Settlement by outcome (SDD §3.9.2). The D1 example: a 400 USDC deal out of a 1,000 USDC
+        // budget, 2.4 bits at 0.05 USDC a bit, a 25 bps buyer fee split 50/30/20.
+        known(
+            "settlement: a deal holds the price and refunds the rest",
+            "settle",
+            json!({
+                "outcome": "Deal",
+                "buckets": {
+                    "budget": (1_000 * USDC).to_string(),
+                    "compute": (10 * USDC).to_string(),
+                    "comp_reserved": "120000",
+                    "fee_reserved": "2500000",
+                    "storage": "0",
+                    "held": "0",
+                    "refund": "0",
+                },
+                "price": (400 * USDC).to_string(),
+                "price_per_bit": (USDC / 20).to_string(),
+                "reserved_mbits": 2_400,
+                "clearing_fee_buyer_bps": 25,
+                "shares": {"treasury_bps": 5_000, "operator_pool_bps": 3_000, "assurance_pool_bps": 2_000},
+            }),
+            ok(json!({
+                "buckets": {
+                    "budget": "0", "compute": "0", "comp_reserved": "0", "fee_reserved": "0",
+                    "storage": "0", "held": (400 * USDC).to_string(), "refund": "601500000",
+                },
+                "fees": {"compute": "0", "treasury": "500000", "operator_pool": "300000", "assurance_pool": "200000"},
+                "seller_comp": "120000",
+                "operator_compute": (10 * USDC).to_string(),
+                "refund": "601500000",
+                "held": (400 * USDC).to_string(),
+                "leakage_debit_mbits": 2_400,
+                "ends_in": "Deal",
+            })),
+        ),
+        case(
+            "settlement: a timeout returns everything",
+            "settle",
+            json!({
+                "outcome": "Timeout",
+                "buckets": {
+                    "budget": (1_000 * USDC).to_string(),
+                    "compute": (10 * USDC).to_string(),
+                    "comp_reserved": "120000",
+                    "fee_reserved": "2500000",
+                    "storage": "0",
+                    "held": "0",
+                    "refund": "0",
+                },
+                "price": "0",
+                "price_per_bit": (USDC / 20).to_string(),
+                "reserved_mbits": 2_400,
+                "clearing_fee_buyer_bps": 25,
+                "shares": {"treasury_bps": 5_000, "operator_pool_bps": 3_000, "assurance_pool_bps": 2_000},
+            }),
+        ),
+        known(
+            "settlement: a delivery failure is not a first settlement",
+            "settle",
+            json!({
+                "outcome": "DeliveryFailure",
+                "buckets": {
+                    "budget": "1000", "compute": "0", "comp_reserved": "0", "fee_reserved": "0",
+                    "storage": "0", "held": "0", "refund": "0",
+                },
+                "price": "0",
+                "price_per_bit": "0",
+                "reserved_mbits": 0,
+                "clearing_fee_buyer_bps": 0,
+                "shares": {"treasury_bps": 10_000, "operator_pool_bps": 0, "assurance_pool_bps": 0},
+            }),
+            json!({"err": "E_JOB_STATE"}),
+        ),
+        known(
+            "payout approval: what compliance signs about a route",
+            "payout_approval_signing_bytes",
+            to_value(payout_approval()).unwrap(),
+            ok(json!(to_hex(
+                &[
+                    b"marginal/payout-approval/v1".as_slice(),
+                    &to_bytes(&payout_approval())
+                ]
+                .concat()
+            ))),
         ),
         known(
             "job state: a verdict can become a deal",
@@ -723,6 +843,12 @@ fn the_cases_cover_every_operation_and_error() {
         "nullifier_signing_bytes",
         "fund",
         "job_transition",
+        "parse_relevance",
+        "judge_body_ok",
+        "receipt_binds_body",
+        "personal_sign_preimage",
+        "settle",
+        "payout_approval_signing_bytes",
     ] {
         assert!(ops.contains(op), "no vector for {op}");
     }

@@ -46,3 +46,41 @@ impl NullifierCredential {
 pub fn nullifier_signing_bytes(credential: &NullifierCredential) -> Vec<u8> {
     domain_bytes(NULLIFIER_SIGNING_DOMAIN, credential)
 }
+
+/// Domain of [`payout_approval_signing_bytes`].
+pub const PAYOUT_APPROVAL_SIGNING_DOMAIN: &[u8] = b"marginal/payout-approval/v1";
+
+/// The compliance service's answer about one payout route (SDD §3.9.4, §3.20, AC-47).
+///
+/// The route is screened when it is set and again at release, so the approval is bound to a route
+/// hash and expires. `blocked` carries a sanctions match: the payout then goes to `Blocked` with
+/// this `screening_id` as its reference, rather than being paid or silently dropped.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct PayoutApproval {
+    /// Always [`PayoutApproval::DOMAIN`].
+    #[serde(with = "hex")]
+    pub domain: [u8; 16],
+    pub chain_id: String,
+    pub clearing: AccountId,
+    /// Who is being paid.
+    pub subject: AccountId,
+    /// `SHA-256(borsh(PayoutRoute))` of the route it screened.
+    #[serde(with = "hex")]
+    pub route_hash: [u8; 32],
+    /// The sanctions list the decision was made against, and the screening it came from.
+    #[serde(with = "hex")]
+    pub list_version: [u8; 32],
+    #[serde(with = "hex")]
+    pub screening_id: [u8; 32],
+    pub blocked: bool,
+    pub expiry_height: u64,
+}
+
+impl PayoutApproval {
+    pub const DOMAIN: [u8; 16] = *b"marginal/payout\0";
+}
+
+/// `"marginal/payout-approval/v1" ‖ borsh(approval)`.
+pub fn payout_approval_signing_bytes(approval: &PayoutApproval) -> Vec<u8> {
+    domain_bytes(PAYOUT_APPROVAL_SIGNING_DOMAIN, approval)
+}

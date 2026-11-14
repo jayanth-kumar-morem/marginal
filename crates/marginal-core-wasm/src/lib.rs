@@ -21,10 +21,13 @@ use marginal_core::certificate::{
 use marginal_core::codec::{from_bytes, to_bytes};
 use marginal_core::commit::{good_commitment, job_commitment, JobCore};
 use marginal_core::conservation::check_conservation;
-use marginal_core::credential::{nullifier_signing_bytes, NullifierCredential};
+use marginal_core::credential::{
+    nullifier_signing_bytes, payout_approval_signing_bytes, NullifierCredential, PayoutApproval,
+};
 use marginal_core::delivery::{delivery_hash, DeliveryV1};
 use marginal_core::funding::{fund, total};
 use marginal_core::json::{dec, hex};
+use marginal_core::judge::{binds_body, has_reasoning, parse_relevance, personal_sign_preimage};
 use marginal_core::keyrelease::{key_request_signing_bytes, listing_path, path_hash, KeyRequest};
 use marginal_core::leakage::{max_debit, mbits};
 use marginal_core::lifecycle::transition;
@@ -32,6 +35,7 @@ use marginal_core::pricing::{apply_rule, ceiling, judgement_factor, measured_ind
 use marginal_core::reports::{
     provisioning_signing_bytes, screening_signing_bytes, ProvisioningV1, ScreeningV1,
 };
+use marginal_core::settle::{settle, state_for, FeeShares};
 use marginal_core::verdict::{verdict_signing_bytes, VerdictV1};
 use marginal_core::verifier::VerificationResult;
 use marginal_core::{
@@ -153,6 +157,46 @@ struct FundIn {
 struct FundOut {
     buckets: Buckets,
     total: Dec,
+}
+
+#[derive(Deserialize)]
+struct BodyIn {
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct TextIn {
+    text: String,
+}
+
+#[derive(Deserialize)]
+struct ReceiptIn {
+    text: String,
+    body: String,
+}
+
+/// A job at the moment it settles (SDD §3.9.2).
+#[derive(Deserialize)]
+struct SettleIn {
+    outcome: marginal_core::Outcome,
+    buckets: Buckets,
+    price: Dec,
+    price_per_bit: Dec,
+    reserved_mbits: u64,
+    clearing_fee_buyer_bps: u32,
+    shares: FeeShares,
+}
+
+#[derive(Serialize)]
+struct SettledOut {
+    buckets: Buckets,
+    fees: marginal_core::FeeSplit,
+    seller_comp: Dec,
+    operator_compute: Dec,
+    refund: Dec,
+    held: Dec,
+    leakage_debit_mbits: u64,
+    ends_in: marginal_core::JobState,
 }
 
 /// A `u128` as the decimal string the JSON model uses (`marginal_core::json::dec`).
@@ -292,6 +336,37 @@ fn dispatch(op: &str, input: &str) -> Result<String, CoreError> {
                 total: Dec(total(&buckets)?),
                 buckets,
             })
+        }),
+        "parse_relevance" => run(input, |i: BodyIn| Ok(parse_relevance(&i.body))),
+        "judge_body_ok" => run(input, |i: BodyIn| Ok(!has_reasoning(&i.body))),
+        "receipt_binds_body" => run(input, |i: ReceiptIn| Ok(binds_body(&i.text, &i.body))),
+        "personal_sign_preimage" => {
+            run(input, |i: TextIn| Ok(Hex(personal_sign_preimage(&i.text))))
+        }
+        "settle" => run(input, |i: SettleIn| {
+            let settled = settle(
+                i.outcome,
+                &i.buckets,
+                i.price.0,
+                i.price_per_bit.0,
+                i.reserved_mbits,
+                i.clearing_fee_buyer_bps,
+                i.shares,
+            )?;
+            Ok(SettledOut {
+                buckets: settled.buckets,
+                seller_comp: Dec(settled.seller_comp),
+                operator_compute: Dec(settled.operator_compute),
+                refund: Dec(settled.refund),
+                held: Dec(settled.held),
+                leakage_debit_mbits: settled.leakage_debit_mbits,
+                fees: settled.fees,
+                // `settle` above refused every outcome that has no end state.
+                ends_in: state_for(i.outcome).expect("a settleable outcome"),
+            })
+        }),
+        "payout_approval_signing_bytes" => run(input, |a: PayoutApproval| {
+            Ok(Hex(payout_approval_signing_bytes(&a)))
         }),
         "measurement_hash" => run(input, |m: Measurement| Ok(Hex(measurement_hash(&m)))),
         "ppid_hash" => run(input, |i: PpidIn| Ok(Hex(ppid_hash(&i.ppid)))),

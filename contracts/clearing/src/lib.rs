@@ -20,9 +20,12 @@ mod identity;
 mod job;
 mod leakage;
 mod listing;
+mod payout;
 pub mod registry;
+mod settle;
 mod snapshot;
 mod store;
+mod verdict;
 mod views;
 
 #[cfg(test)]
@@ -38,6 +41,12 @@ pub const CLEARING_VERSION: u8 = 1;
 /// branch and the compiler keeps the arms honest.
 pub(crate) fn fail(error: CoreError) -> ! {
     env::panic_str(error.code())
+}
+
+/// An account id out of a stored record. Records are written by this contract from ids it was
+/// handed, so this only fires on a record no build of ours could have written.
+pub(crate) fn account_id(id: &str) -> AccountId {
+    id.parse().unwrap_or_else(|_| fail(CoreError::Decode))
 }
 
 /// Block time in whole seconds.
