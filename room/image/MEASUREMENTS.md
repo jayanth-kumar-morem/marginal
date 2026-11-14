@@ -27,6 +27,7 @@ as a **new app** with no pinned `app_id`.
 | Base image | `node:22.23.5-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee` (linux/amd64 manifest `sha256:47725aca53d3295ec2d3be8f62726599b3033cc262edc2c7e429909b3ac599fc`) | `Dockerfile` |
 | pnpm | `pnpm@9.15.4`, through `corepack install` | root `package.json` |
 | JS dependencies | `pnpm install --frozen-lockfile --ignore-scripts` | `pnpm-lock.yaml` |
+| The embedder | `all-MiniLM-L6-v2`: `onnx/model.onnx` `759c3cd2b7fe7e93933ad23c4c9181b7396442a2ed746ec7c1d46192c469c46e`, `tokenizer.json` `da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0`, and the three small config files — all in `room/models/all-MiniLM-L6-v2/SHA256SUMS`, which the room checks every file against before loading it | fetched by `make models`, copied into the image by `build.sh` |
 | `core.wasm` | printed as `core_wasm_sha256` by `build.sh image`; `d2f68f50a7beeb2e41ac0448c26968f731b0351c89514d5ef1b0fbc60e68123a` at commit `7d96482` | built by `make wasm-core`, not committed |
 | Room image | the digest `build.sh image` prints for the commit being deployed; published, then referenced by digest. It is a function of the commit, not only of the room's code: `SOURCE_DATE_EPOCH` is the commit's timestamp, so every commit gives a new digest and the same commit always gives the same one | `--image` |
 | RPC URL, operator agent URL, chain id, clearing and KeyPolicy accounts | written literally into the compose file | `--rpc-url`, `--operator-url`, `--chain-id`, `--clearing`, `--keypolicy` |
@@ -90,8 +91,8 @@ it. `event_log_version` is left unset, because the replay implements V1 digests 
 - **The room image is not published.** The compose file has to name it by digest, and a dstack CVM
   cannot hold registry credentials (`allowed_envs: []`), so the image has to be public. That is the
   user's call, not this repository's: see [P-5](../../tasks.md#paid-and-account-gated-steps-jay).
-- **Model weights and onnxruntime.** `room/models/`, pinned by SHA-256 and loaded with no runtime
-  download, arrive with the appraisers (E8.6). They will change this measurement.
+- **The NLI cross-encoder.** `knowledge@1` in M1 is novelty against the buyer's context only; the
+  borderline-pair NLI model §3.15.1 describes is E17, and adding it will change this measurement.
 - **Egress.** `nftables.conf` and the supervisor's egress proxy are E17.1; M1 does not enforce
   egress (tasks.md, "What M1 cuts").
 - **Whether Phala Cloud deploys our bytes.** The compose hash is the hash of the uploaded

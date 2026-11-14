@@ -19,6 +19,7 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL_SUMS="room/models/all-MiniLM-L6-v2/SHA256SUMS"
 repo="$(cd "$here/../.." && pwd)"
 out="$here/out"
 
@@ -43,9 +44,12 @@ cmd_image() {
   rm -rf "$ctx" && mkdir -p "$ctx"
   # Only committed files, so nothing uncommitted and no key material can reach the image.
   (cd "$repo" && git archive --format=tar HEAD) | tar -x -C "$ctx"
-  # ... plus the wasm build of marginal-core, which is generated and therefore not committed.
-  make -C "$repo" wasm-core >&2
+  # ... plus the two generated things the image needs: the wasm build of marginal-core, and the
+  # embedder's weights, which are fetched and checked against their committed SHA-256s.
+  make -C "$repo" wasm-core models >&2
   cp "$repo/crates/marginal-core-wasm/core.wasm" "$ctx/crates/marginal-core-wasm/core.wasm"
+  mkdir -p "$ctx/room/models/all-MiniLM-L6-v2/onnx"
+  (cd "$repo/room/models/all-MiniLM-L6-v2" && tar -cf - .) | tar -xf - -C "$ctx/room/models/all-MiniLM-L6-v2"
 
   SOURCE_DATE_EPOCH="$epoch" docker buildx build \
     --platform linux/amd64 \
@@ -57,6 +61,7 @@ cmd_image() {
     "$ctx" >&2
 
   echo "core_wasm_sha256=$(shasum -a 256 "$repo/crates/marginal-core-wasm/core.wasm" | cut -d' ' -f1)"
+  echo "models_sha256=$(shasum -a 256 "$repo/$MODEL_SUMS" | cut -d' ' -f1)"
   echo "commit=$commit"
   node -e 'const m=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));console.log(`image_digest=${m["containerimage.digest"]}`)' \
     "$out/image-metadata.json"

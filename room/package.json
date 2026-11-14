@@ -21,6 +21,7 @@
     "libsodium-wrappers": "0.8.4",
     "@noble/curves": "2.4.0",
     "@noble/hashes": "2.4.0",
-    "@scure/base": "2.4.0"
+    "@scure/base": "2.4.0",
+    "onnxruntime-web": "1.31.1"
   }
 }

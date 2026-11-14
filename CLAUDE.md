@@ -49,6 +49,7 @@ The user's standing rules for every task:
 | `make cov` | Just the two coverage gates: `cov-rust` and `cov-node` | when coverage fails |
 | `make wasm-dev` | Fast contract builds into `target/near/<crate>/<crate>.wasm` | sandbox work |
 | `make wasm-core` | Builds marginal-core as `crates/marginal-core-wasm/core.wasm` (plain `cargo build`, rebuilt when Rust changes; `make check` runs it) | working on the room or `replay-ts` |
+| `make models` | Fetches the embedder's weights and tokenizer into `room/models/all-MiniLM-L6-v2/` and checks them against the committed `SHA256SUMS` (about 90 MB, once; `make check` runs it) | working on `knowledge@1` |
 | `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (rebuilds stale dev wasm first) | after contract or deploy changes |
 | `make wasm` | Reproducible docker builds (needs Docker and a clean, committed tree) | before any testnet deploy |
 | `make props` | marginal-core property tests at 10⁶ cases each (~40 s) | after pricing or leakage changes |
@@ -84,7 +85,8 @@ SDD §3.1 is the layout authority. Keep to it.
 | `contracts/tests/` | Cross-contract near-workspaces suites, `sandbox_*.rs` | Created by E14.1 as a workspace member |
 | `crates/marginal-core` | `no_std` shared types, errors, pricing, leakage, commitments, signing bytes, and attestation (`verifier.rs`, `attest.rs`, `keyrelease.rs`: the locked verifier's types, RTMR3 replay, report-data binding, key-request bytes) | There is no `marginal-attest` crate (tasks.md SDD issue 19); `marginal-groth16` arrives with its task |
 | `crates/marginal-core-wasm` | marginal-core as wasm (JSON in, JSON out) and its npm package `@marginal/core-wasm`, which the room and `replay-ts` load | `core.wasm` is built by `make wasm-core` and gitignored |
-| `fixtures/` | `vectors.json`: test vectors every implementation must reproduce. Later: demo corpora (E14.2) | Generated from `marginal-core-wasm`'s test; never edit by hand |
+| `fixtures/` | `vectors.json`: test vectors every implementation must reproduce. `minilm-vectors.json`: the reference implementation's token ids and sentence embeddings, which the room's own tokenizer and embedder must reproduce. Later: demo corpora (E14.2) | `vectors.json` is generated from `marginal-core-wasm`'s test; never edit either by hand |
+| `room/models/` | The embedder's weights and tokenizer, fetched by `make models` and pinned by the committed `SHA256SUMS`. The binaries are gitignored; `room/image/build.sh` copies them into the image, so the compose hash covers them | Only `all-MiniLM-L6-v2` in M1; bge-small and NLI are E17 |
 | `room/`, `services/{gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` | TypeScript workspace packages | `indexer`, `relayer`, `attester`, `replay-py`, `cli/` and `sim/` are M2 |
 | `scripts/` | Deploy tooling (`@marginal/scripts`) behind `deploy/scripts/up.sh` | Not in §3.1; kept as the deploy package. `paths.ts` and `chain.ts` are the shared helpers, `cli.ts` is the command, `up.ts` the entry point, `testing.ts` test support |
 | `deploy/{profiles,scripts}` | Profiles and `up.sh`. Generated manifests and `.keys/` are gitignored | Only `sandbox` and `testnet-demo` profiles in M1 |
@@ -140,6 +142,8 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
 - **Tests.**
   - Use `node:test` with `node:assert/strict`, in `src/*.test.ts`.
   - Tests that need a sandbox node or built wasm go in `src/*.e2e.ts` and run under `make e2e`.
+- **The room's dependencies are part of its measurement.** Prefer one fewer: `dstack.ts` is a direct client rather than `@phala/dstack-sdk`, the WordPiece tokenizer is written out rather than importing a native binding, and the embedder is `onnxruntime-web` (pure wasm, no install script, same kernels on every machine) rather than `onnxruntime-node` (a `postinstall` that downloads a native binary, which an image built with `--ignore-scripts` cannot run). Anything added here changes the compose hash, so a seller who pinned a measurement pinned the dependency list too.
+- **Nothing the room scores with comes off the network at run time.** Weights, tokenizers, lexicons and thresholds come from the measured image and are checked against `SHA256SUMS` before use (DR-9).
 - **marginal-core in TypeScript** is `@marginal/core-wasm`: `call(op, input)` throws a `CoreError` with the stable code. Do not re-implement pricing, hashing or a Borsh layout in TypeScript. The package needs `core.wasm` (`make wasm-core`) and a built `dist/` (`pnpm build`); `make check` does both.
 - **Profile and deploy values.** These come from `deploy/profiles/*.toml` through `scripts/src/profile.ts`, which validates them. Add new profile keys to the validator and its tests, never read raw TOML elsewhere.
 

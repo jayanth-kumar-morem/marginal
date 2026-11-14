@@ -18,3 +18,9 @@ claude-spec-run.log
 crates/marginal-core-wasm/core.wasm
 # the room image build: assembled context, compose file, app-compose and the image tar
 room/image/out/
+# the embedder's weights and tokenizer: fetched by `make models`, pinned by room/models/*/SHA256SUMS
+room/models/**/*.onnx
+room/models/**/tokenizer.json
+room/models/**/config.json
+room/models/**/tokenizer_config.json
+room/models/**/special_tokens_map.json

@@ -8,7 +8,7 @@ CONTRACTS := contracts/clearing contracts/keypolicy contracts/test-tokens/musdc
 TEST_CONTRACTS := contracts/test-mocks/mocks
 NODE := . $$HOME/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1 || true
 
-.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core props wasm wasm-dev e2e ci
+.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core models props wasm wasm-dev e2e ci
 
 hooks:
 	git config core.hooksPath .githooks
@@ -46,8 +46,24 @@ cov-rust:
 
 # TypeScript: unit and end-to-end tests together (deploy.ts and cli.ts are exercised end to end),
 # 100% of lines, branches and functions. Needs built wasm (`make wasm-dev`).
-cov-node: ensure-wasm wasm-core
+cov-node: ensure-wasm wasm-core models
 	$(NODE); pnpm build && pnpm cov
+
+# The embedder's weights and tokenizer (`knowledge@1`). They are not committed — `model.onnx` is
+# 90 MB — but their SHA-256s are, in room/models/all-MiniLM-L6-v2/SHA256SUMS, which is what the room
+# checks every file against before loading it and what the image's measurement covers. Fetched once
+# from the model's own repository; the hashes are what make the download trustworthy.
+MODEL_DIR := room/models/all-MiniLM-L6-v2
+MODEL_URL := https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main
+models: $(MODEL_DIR)/onnx/model.onnx
+
+$(MODEL_DIR)/onnx/model.onnx: $(MODEL_DIR)/SHA256SUMS
+	@mkdir -p $(MODEL_DIR)/onnx
+	@for f in config.json special_tokens_map.json tokenizer.json tokenizer_config.json onnx/model.onnx; do \
+		if [ ! -f $(MODEL_DIR)/$$f ]; then echo "== fetching $$f"; curl -sSLf -o $(MODEL_DIR)/$$f $(MODEL_URL)/$$f || exit 1; fi; \
+	done
+	@cd $(MODEL_DIR) && shasum -a 256 -c SHA256SUMS || { echo "model files do not match SHA256SUMS"; exit 1; }
+	@touch $@
 
 # marginal-core as wasm, for the room and replay-ts (`@marginal/core-wasm` loads it). Rebuilt whenever
 # a Rust source or manifest changes. Needs no extra tools: it is plain `cargo build`.

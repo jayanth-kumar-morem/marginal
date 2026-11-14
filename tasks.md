@@ -783,14 +783,47 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     opens a delivery the room produced.
   - **Not verified:** no delivery has been submitted to clearing, because that happens at the end of
     an appraisal (E8.4).
-- [ ] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15
+- [ ] **E8.6 `knowledge@1` and `screening@1`** · P0 (MNPI: P1, D8) · §3.15 · built; the Done line's D1 fixture is E14.2
   - Port LETHE's `novelty.js`: claims, MiniLM max similarity per claim, τ 0.78 / 0.45, and need weighting. Single-threaded ONNX; `N_pub = 10,000`; 21-level components.
   - Screening: an issuer lexicon and MNPI rules, giving `Flag(reason)` or `Pass`.
   - **Done:** on the D1 fixture, A gets Deal and B gets No deal. The MNPI fixture is flagged.
-  - **From E7.2.** This task brings `room/models/`, so it also carries the pins E7.2 could not: the
-    onnxruntime-node build and every MiniLM weight and tokenizer file pinned by SHA-256 and loaded
-    with no runtime download (§3.14.3, AC-38). Adding them changes the image, so re-run
-    `room/image/build.sh` and update `room/image/MEASUREMENTS.md` with the new compose hash.
+  - **From E7.2.** This task brings `room/models/`, so it also carries the pins E7.2 could not: every
+    MiniLM weight and tokenizer file pinned by SHA-256 and loaded with no runtime download
+    (§3.14.3, AC-38). Adding them changes the image, so re-run `room/image/build.sh` and update
+    `room/image/MEASUREMENTS.md` with the new compose hash.
+  - **Built, 2026-11-14.** `room/src/appraisers/`: `screening/` (landed with E8.3, which cannot run
+    without it) and `knowledge/` — the tokenizer, the embedder, the novelty measurement and the
+    appraiser. `room/models/all-MiniLM-L6-v2/` holds the weights, fetched by `make models` and
+    checked against a committed `SHA256SUMS` before every load; the binaries are gitignored (the
+    ONNX file is 90 MB) and `build.sh` copies them into the image, so the compose hash covers them.
+  - **Two deviations from the task text, both to make the room smaller and more deterministic.**
+    `onnxruntime-web` instead of `onnxruntime-node`: the node package's `postinstall` downloads a
+    native binary, which an image built with `--ignore-scripts` cannot run, and its kernels are
+    chosen by CPU instruction set — the wasm build has no install step and the same kernels
+    everywhere, which is what AC-38 wants. And the BERT WordPiece tokenizer is written out (160
+    lines) rather than imported: `@huggingface/tokenizers` is a native binding and
+    `@huggingface/transformers` drags an image library and a second ONNX runtime in with it, and
+    every dependency inside the room is part of its measurement.
+  - **Both are checked against the reference implementation**, not against themselves.
+    `fixtures/minilm-vectors.json` holds `@huggingface/transformers` 4.3.2's own token ids and
+    sentence embeddings for seven inputs (accents, CJK, punctuation, unknown subwords, empty); the
+    room reproduces every id exactly and every embedding to a cosine above 0.99999. One documented
+    difference: on an input over 126 tokens transformers.js drops `[SEP]` when it truncates and the
+    room keeps it, which is what HF's Python tokenizer does — claims are never that long, and the
+    fixture leaves that case out rather than pretend.
+  - **The novelty measurement is LETHE's `enclave/lib/novelty.js`**, ported with its τ values
+    (0.78 / 0.45) and its padding-resistant need weighting (AC-39), and with the one thing LETHE got
+    wrong fixed: it fetched MiniLM from the network at run time, so it scored with weights the host
+    chose. Components are quantised to 21 levels before they leave, and `N_pub` is a whole because
+    M1 has no in-room corpus.
+  - **The separation the Done line is about, measured:** the buyer's own notes read back scored
+    **under 3,000 bps** and news to the same buyer **over 6,000 bps**, with the same need and
+    context. Run-to-run output is byte-identical (AC-38), and the appraiser's output carries counts
+    but no text — the test checks a distinctive word from the document appears nowhere in it.
+  - **Not verified: the D1 fixture itself**, which is E14.2 (LETHE's Fund A and Fund B corpus). The
+    separation above is on two documents written for the test, not on the demo corpus, so nothing
+    here shows that A gets `Deal` and B gets `No deal` through the rule.
+  - **To close:** E14.2 brings the corpus; run `knowledge@1` on it and check the two outcomes.
 - [ ] **E8.7 `dataset-lite@0`** · P2 · D9 · §3.15.3
   - Integrity checks, then overlap measured with MiniLM.
   - A closed-form ridge, baseline vs augmented.

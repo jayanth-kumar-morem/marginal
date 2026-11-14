@@ -129,4 +129,39 @@ export {
   type Scope,
 } from "./cert/forget.js";
 export { screen, FLAG_MNPI, type Screening, type ScreeningResult } from "./appraisers/screening/index.js";
+export { quantise, type Appraiser, type Appraisal, type AppraisalInput, type JudgeFactor } from "./appraisers/types.js";
+export {
+  knowledgeAppraiser,
+  COMPONENT_LEVELS,
+  N_PUB_WITHOUT_CORPUS,
+  MIN_CONTEXT_CLAIMS,
+} from "./appraisers/knowledge/index.js";
+export {
+  embedder,
+  similarity,
+  readVerified,
+  EMBED_DIMENSIONS,
+  MODEL_DIR,
+  type Embedder,
+} from "./appraisers/knowledge/embed.js";
+export {
+  claims,
+  claimNovelty,
+  novelty,
+  KNOWN,
+  UNSEEN,
+  MIN_WEIGHT,
+  MIN_CLAIM_WORDS,
+  type Novelty,
+  type ClaimScore,
+} from "./appraisers/knowledge/novelty.js";
+export {
+  encode,
+  normalize,
+  preTokenize,
+  wordPiece,
+  MAX_TOKENS,
+  type TokenizerModel,
+  type Encoded,
+} from "./appraisers/knowledge/tokenizer.js";
 export { INSIDER_PHRASES, EVENT_TERMS, ISSUER_LEXICON } from "./appraisers/screening/lexicon.js";
