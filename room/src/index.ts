@@ -24,6 +24,19 @@ export {
   SEAL_OVERHEAD_BYTES,
   type BoxKeys,
 } from "./crypto/sodium.js";
+export {
+  appId,
+  appKey,
+  appKeyFromScalar,
+  parseBlsKey,
+  recoverSigma,
+  strongKey,
+  listingKeys,
+  NEAR_STRONG_KEY_INFO,
+  type AppKey,
+  type CkdResponse,
+  type ListingKeys,
+} from "./crypto/ckd.js";
 
 export { loadConfig, DEFAULTS, type RoomConfig } from "./config.js";
 export { generateRoomKeys, type RoomKeys, type PublicKey } from "./keys.js";

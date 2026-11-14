@@ -668,7 +668,7 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     storage and no swap, and TDX memory protection — which is what the forget certificate states
     (§3.14.2, §3.18).
   - **Not verified:** nothing uses these yet; E8.2 to E8.5 are the callers.
-- [ ] **E8.2 CKD recovery** · P0 · §3.12.3 · **do first (S-1)**
+- [ ] **E8.2 CKD recovery** · P0 · §3.12.3 · **do first (S-1)** · code done; Done line **blocked on [P-3](#paid-and-account-gated-steps-jay)**
   - **First:** call `request_app_private_key` from a dev account on testnet and recover the key.
   - Then, per job:
     - a scalar `a` and app key `A`;
@@ -677,6 +677,31 @@ Clearing follows KeyPolicy's shape (E3): arguments that carry `marginal-core`'s 
     - `K_L`, then `sk_L` and `pk_L`.
   - **Done:** the `ckd-example-cli` vectors pass, and a live derivation succeeds.
   - **From the contracts (E3).** To get a key the room signs `key_request_signing_bytes(KeyRequest{chain_id, keypolicy, room_key, job_id, path, app_key, job_commitment, value_class})` and the relayer sends it to `keypolicy.authorize`; the path is `listing_path(seller, listing_id, version)`. KeyPolicy then asks clearing, and `derive(ticket_id)` is callable by anyone, because the answer is encrypted to the room's app key. Both the bytes and the path are `@marginal/core-wasm` operations.
+  - **Built, 2026-11-14.** `room/src/crypto/ckd.ts`: the per-job scalar and its app key
+    `A = (a·G1, a·G2)`, the app id the room computes itself, σ recovery with the pairing check, and
+    the listing keys derived from σ. The constants are near/mpc's, read from
+    `crates/ckd-example-cli/src/ckd.rs` at release 3.19.0 rather than guessed: the hash-to-curve DST
+    `NEAR BLS12381G1_XMD:SHA-256_SSWU_RO_`, the app-id prefix `near-mpc v0.1.0 app_id derivation:`,
+    and the HKDF salt `near-mpc-ckd-hkdf-v1`.
+  - **The `info` string is ours, and deliberately not near/mpc's.** Their own note says to use a
+    distinct `info` per key purpose, so `K_L` is derived with `marginal/ckd-listing-key/v1` and the
+    X25519 secret under it with `marginal/ckd-listing-x25519/v1`. The test checks the two differ and
+    that neither equals the example CLI's key, which is what that separation is for.
+  - **What the pairing check buys, and why it is not optional.** `app_id` binds KeyPolicy's account
+    and the path, so a σ that passes `e(H(mpc_pk ‖ app_id), G2) = e(σ, G2)` proves KeyPolicy — and
+    therefore clearing — accepted this job's commitment (DR-5). Only then may the room trust job
+    parameters it read over RPC. Every point is checked on-curve, in the prime-order subgroup and
+    non-identity before use, as near/mpc's `verify` does, and a σ at infinity is refused.
+  - **Tested:** the app id against an independently computed SHA3-256 (not against this code);
+    recovery against an MPC side played exactly as near/mpc's own `simulate_ckd_response` does; and
+    a refusal for each of a wrong app id, a wrong scalar, a wrong MPC key, a substituted point, a
+    non-G1 answer, an identity point, and a σ at infinity. A seller sealing `DEK_g` to the derived
+    `pk_L` is shown to reach this room and no other.
+  - **Not verified:** the `ckd-example-cli` vectors and a live derivation — the two things the
+    **Done:** line names. No real MPC answer has been recovered.
+  - **To close:** fund the testnet deployer ([P-3](#paid-and-account-gated-steps-jay)), call
+    `request_app_private_key` on `v1.signer-prod.testnet` (domain 2) from a dev account with an app
+    key from `appKey()`, and recover the key with `recoverSigma`.
 - [ ] **E8.3 Provisioning and screening jobs** · P0
   - Provisioning: derive `K_L` and submit `pk_L` with its certificate.
   - Screening: run `screening@1` and submit `Pass` or `Flag(code)` with its certificate.
