@@ -278,14 +278,10 @@ no diff link to give.
 
 ## Licence
 
-Not chosen yet, and the choice is the author's: `tasks.md` X-2 holds a licence decision open
-alongside a patent decision, which is also why the repository is still private. The rules accept any
+License: TBD. The choice is the author's: `tasks.md` X-2 holds a licence decision open
+alongside a patent decision. The rules accept any
 licence provided there is a LICENSE file, and require the repository to stay public through judging
 (PN-12, Q-014).
-
-TODO(jay) - decide the licence (X-2: MIT or Apache-2.0, after the patent decision), add the LICENSE file, and name it here.
-
-TODO(jay) - paste the LETHE and ChainProof Guard repository links into "The author's other entry" if you want them inline; they are in `SDD.md` §1.1.
 
 ## Status
 
