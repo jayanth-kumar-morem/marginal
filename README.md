@@ -256,26 +256,6 @@ including ten tasks that are code-complete but deliberately not ticked, because 
 real key or a deployment can close them. Nearly every commit carries a `Co-Authored-By: Claude`
 trailer (31 of the 39 commits at the time of writing), so the history shows it too.
 
-## The author's other entry
-
-The rules allow at most two independent projects per person, and ask each README to name the other
-(`SDD.md` §7, PN-12, Q-015). This repository is one of the author's two entries and **replaces
-LETHE**, the v0 hackathon build whose testnet deployment is left untouched; **ChainProof Guard** is
-the other. Both are the author's own earlier projects, and `SDD.md` §1.1 has the repository link for
-each.
-
-Marginal is a new codebase, not a resubmission. `SDD.md` §2.3 lists line by line what carries over
-from LETHE and what changed; in code, the ported parts are the novelty measurement in
-`room/src/appraisers/knowledge/` (its MiniLM similarity, its τ values of 0.78 and 0.45 and its
-padding-resistant need weighting) and the judge prompt in `room/src/judges/`. Everything else —
-the immutable KeyPolicy, attested registration, the leakage ledger, the formula registry, Sealed
-verdicts, the certificate format — is new. ChainProof Guard's two patterns (function-call-key spend
-caps and k-of-n attester corroboration) are **re-implemented** here, not imported.
-
-On the hackathon's window rule: every commit in this repository was made on or after 2026-11-12,
-which is inside the window, so there is no pre-hackathon work to separate by a branch or a tag and
-no diff link to give.
-
 ## Licence
 
 License: TBD. The choice is the author's: `tasks.md` X-2 holds a licence decision open
