@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Account, JsonRpcProvider, KeyPair, actions, baseEncode, type KeyPairString } from "near-api-js";
 import { call } from "@marginal/core-wasm";
 import { issuerKey } from "@marginal/compliance";
-import { NEAR, TERA, accountExists, view } from "./chain.js";
+import { NEAR, TERA, accountExists, borshBase64, view } from "./chain.js";
 import { fullAccounts, simEnv, type FeeTableEntry, type MeasurementSetEntry, type PlatformEntry, type Profile } from "./profile.js";
 
 export interface DeployContext {
@@ -108,14 +108,6 @@ const MILLINEAR = NEAR / 1000n;
  */
 const SET_FEE = 20n * MILLINEAR;
 const PLATFORM_FEE = 10n * MILLINEAR;
-
-/**
- * `marginal-core`'s Borsh of `value`, as the base64 a `Base64VecU8` argument takes. The layout is
- * the core's and only the core's: `op` is one of its `*_encode` operations, which return hex.
- */
-function borshBase64(op: string, value: unknown): string {
-  return Buffer.from(call(op, value) as string, "hex").toString("base64");
-}
 
 /** 32 bytes of hex: what a compliance seed and the upload HMAC key are. */
 const SECRET = /^[0-9a-f]{64}$/;

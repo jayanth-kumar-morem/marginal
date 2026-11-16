@@ -23,7 +23,7 @@ import {
   type Privacy,
   type Quotes,
 } from '@/lib/appraise';
-import { chainClient, errorCode } from '@/lib/chain';
+import { chainClient, errorCode, settled } from '@/lib/chain';
 import { amount, tokens } from '@/lib/format';
 import type { Leakage, Listing } from '@/lib/records';
 import { postedAsk } from '@/lib/records';
@@ -158,7 +158,11 @@ export function AppraiseForm({
       )
       .then((hash) => {
         toast.success('Request signed', { description: hash });
-        return findNewJob(chainClient(rpcUrl), clearing, listing.id, buyer);
+        // Re-asking, because a view trails the write that was just confirmed: looking once said
+        // "no job to open yet" about a job that already existed and had in fact already settled.
+        return settled<number>(() =>
+          findNewJob(chainClient(rpcUrl), clearing, listing.id, buyer).then((ok) => ({ ok })),
+        ).then((found) => ('ok' in found ? found.ok : null));
       })
       .then((id) => {
         if (id === null) {

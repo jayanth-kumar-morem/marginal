@@ -269,16 +269,79 @@ test("the module starts the worker when it is the process, and not otherwise", (
     return Promise.resolve();
   };
 
-  assert.equal(startIfEntryPoint(url, run, ["node", "/app/dist/worker/main.js"]), true);
+  // Every call here passes its own `exit`: the default is the real `process.exit`, and a test that
+  // let it run would take the test runner down with it when `run` resolves.
+  const exit = (): void => {};
+
+  assert.equal(startIfEntryPoint(url, run, ["node", "/app/dist/worker/main.js"], exit), true);
   assert.equal(ran, 1, "forked: it runs");
 
-  assert.equal(startIfEntryPoint(url, run, ["node", "/usr/bin/test-runner"]), false);
+  assert.equal(startIfEntryPoint(url, run, ["node", "/usr/bin/test-runner"], exit), false);
   assert.equal(ran, 1, "imported: it does not");
 
   // With no arguments but the url it reads the real `process.argv` and would run the real `main`.
   // Under the test runner argv[1] is the runner, so this is the false answer — which is the only
   // one that can be asserted here without starting a worker, and it covers both defaults.
-  assert.equal(startIfEntryPoint("file:///not-this-module.js"), false);
+  assert.equal(startIfEntryPoint("file:///not-this-module.js", run, undefined, exit), false);
   assert.equal(isEntryPoint("file:///not-this-module.js"), false);
   assert.equal(ran, 1);
+});
+
+/**
+ * A worker has to **end**, not merely stop working: the supervisor counts a job as finished when
+ * the process exits, so one that lingers holds its slot for ever. After `maxWorkers` of them the
+ * room takes no more work and every later job sits at `Assigned` until it times out — which is
+ * exactly what a live chain showed, with the room reporting itself healthy throughout.
+ */
+test("a worker exits when its job is done, and says so when it fails", async () => {
+  const url = "file:///app/dist/worker/main.js";
+  const argv = ["node", "/app/dist/worker/main.js"];
+
+  const codes: number[] = [];
+  startIfEntryPoint(url, () => Promise.resolve(), argv, (code) => codes.push(code));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(codes, [0], "a finished job exits 0");
+
+  const failed: number[] = [];
+  const written: string[] = [];
+  const realWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((chunk: string) => {
+    written.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    startIfEntryPoint(url, () => Promise.reject(new Error("the job broke")), argv, (code) =>
+      failed.push(code),
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    process.stderr.write = realWrite;
+  }
+  assert.deepEqual(failed, [1], "a failed job exits 1, so the supervisor reports it");
+  assert.match(written.join(""), /the job broke/, "and says what went wrong");
+
+  // Whatever it was thrown with. A worker can reject with something that is not an `Error` — a
+  // string from a library, an object from a native binding — and the supervisor still has to be
+  // told something it can print rather than `[object Object]` or nothing at all.
+  // The last one is an `Error` with no stack — some runtimes strip it — which is the only way the
+  // message is what gets printed.
+  const stackless = new Error("stripped of its stack");
+  Object.defineProperty(stackless, "stack", { value: undefined });
+  for (const thrown of ["a bare string", { code: 500 }, stackless]) {
+    const codes2: number[] = [];
+    const seen: string[] = [];
+    const realWrite2 = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string) => {
+      seen.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      startIfEntryPoint(url, () => Promise.reject(thrown), argv, (code) => codes2.push(code));
+      await new Promise((resolve) => setImmediate(resolve));
+    } finally {
+      process.stderr.write = realWrite2;
+    }
+    assert.deepEqual(codes2, [1], `${String(thrown)} still exits 1`);
+    assert.notEqual(seen.join("").trim(), "", `${String(thrown)} still says something`);
+  }
 });

@@ -42,7 +42,7 @@ import {
   StepperTrigger,
 } from '@/components/ui/stepper';
 import { useWallet } from '@/components/wallet';
-import { errorCode } from '@/lib/chain';
+import { errorCode, settled } from '@/lib/chain';
 import type { KeyMode, Listing } from '@/lib/records';
 import {
   DEFAULT_FORM,
@@ -66,7 +66,6 @@ import {
   type SealTarget,
   type Sealed,
   type SellForm,
-  settled,
 } from '@/lib/sell';
 
 /** What a server action answers: the value, or the reason it could not be had. */

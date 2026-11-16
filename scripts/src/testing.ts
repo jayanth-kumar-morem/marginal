@@ -7,6 +7,7 @@ import type { TestContext } from "node:test";
 import type { KeyPairString } from "near-api-js";
 import { DEFAULT_PRIVATE_KEY, Sandbox } from "near-sandbox";
 import { parse, stringify } from "smol-toml";
+import type { DemoChain } from "./demo.js";
 import { circuitsDir, profilePath, repoRoot, wasmDir } from "./paths.js";
 
 export const SANDBOX_KEY = DEFAULT_PRIVATE_KEY as KeyPairString;
@@ -59,6 +60,56 @@ export function makeRoot(t: TestContext, profiles: Record<string, Record<string,
   git("add", "-A");
   git("commit", "-q", "-m", "test root");
   return root;
+}
+
+/** One signed call a demo script made, as {@link fakeChain} recorded it. */
+export interface FakeCall {
+  readonly as: string;
+  readonly contract: string;
+  readonly method: string;
+  readonly args: Record<string, unknown>;
+  readonly deposit: bigint;
+}
+
+export interface FakeChain {
+  readonly chain: DemoChain;
+  /** Everything the script printed, in order. */
+  readonly lines: string[];
+  readonly log: (line: string) => void;
+  readonly calls: FakeCall[];
+  readonly created: string[];
+}
+
+/**
+ * A {@link DemoChain} the demo scripts can be driven through without a node. The test supplies the
+ * views and, where it matters, what a call answers; everything else is recorded so a test can
+ * assert what was signed, by whom, and with what attached.
+ */
+export function fakeChain(o: {
+  view: (contract: string, method: string, args: Record<string, unknown>) => unknown;
+  call?: (call: FakeCall) => unknown;
+  height?: () => number;
+  agentKey?: string;
+}): FakeChain {
+  const lines: string[] = [];
+  const calls: FakeCall[] = [];
+  const created: string[] = [];
+  const chain: DemoChain = {
+    view: <T>(contract: string, method: string, args: Record<string, unknown> = {}) =>
+      Promise.resolve(o.view(contract, method, args) as T),
+    height: () => Promise.resolve(o.height === undefined ? 1 : o.height()),
+    call: (as, contract, method, args, deposit = 0n) => {
+      const call = { as, contract, method, args, deposit };
+      calls.push(call);
+      return Promise.resolve(o.call === undefined ? null : o.call(call));
+    },
+    create: (id) => {
+      created.push(id);
+      return Promise.resolve();
+    },
+    addAgentKey: () => Promise.resolve(o.agentKey ?? "ab".repeat(32)),
+  };
+  return { chain, lines, log: (line) => lines.push(line), calls, created };
 }
 
 /** Runs `fn` with an environment variable set, then restores it. */

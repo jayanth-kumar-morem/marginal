@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { base64, blockHeight, chainClient, errorCode, type Fetch } from "./chain";
+import { base64, blockHeight, chainClient, errorCode, type Fetch, settled } from "./chain";
 
 /** An RPC that records what it was asked and answers with `reply`. */
 function fakeRpc(reply: unknown, status = 200): { fetch: Fetch; seen: unknown[] } {
@@ -99,4 +99,67 @@ test("the block height comes from the final block, and a reply without one is re
     () => blockHeight("https://rpc.example/", bad.fetch),
     /no block height/,
   );
+});
+
+test("a read-back waits for the chain to catch up with the write", async () => {
+  // The signer returns when a transaction has executed; a view asks for final state, which trails
+  // it. A single look therefore misses what was just created — which is what made the wizard say
+  // "the chain has no listing for this account yet" about a listing that was already on chain.
+  const waits: number[] = [];
+  const sleep = (ms: number): Promise<void> => {
+    waits.push(ms);
+    return Promise.resolve();
+  };
+
+  let look = 0;
+  const late = await settled<string>(
+    () => {
+      look += 1;
+      return Promise.resolve({ ok: look < 3 ? null : "listing 2" });
+    },
+    8,
+    750,
+    sleep,
+  );
+  assert.deepEqual(late, { ok: "listing 2" }, "it keeps asking until the chain agrees");
+  assert.equal(look, 3);
+  assert.deepEqual(waits, [750, 750], "it waits between looks, not before the first");
+
+  // Something that is genuinely absent is still absent, and says so rather than hanging.
+  let tries = 0;
+  const missing = await settled<string>(
+    () => {
+      tries += 1;
+      return Promise.resolve({ ok: null });
+    },
+    4,
+    10,
+    sleep,
+  );
+  assert.deepEqual(missing, { ok: null });
+  assert.equal(tries, 4, "it gives up after the attempts it was given");
+
+  // The default wait is a real timer, and it is what runs in a browser — so it is exercised here
+  // rather than always being replaced by a stub.
+  let real = 0;
+  const waited = await settled<string>(() => {
+    real += 1;
+    return Promise.resolve({ ok: real < 2 ? null : "arrived" });
+  }, 3, 1);
+  assert.deepEqual(waited, { ok: "arrived" });
+  assert.equal(real, 2);
+
+  // An error is not emptiness: it comes back at once, because retrying would only repeat it.
+  let asked = 0;
+  const failed = await settled<string>(
+    () => {
+      asked += 1;
+      return Promise.resolve({ error: "E_DECODE" });
+    },
+    5,
+    10,
+    sleep,
+  );
+  assert.deepEqual(failed, { error: "E_DECODE" });
+  assert.equal(asked, 1, "an error is returned without retrying");
 });

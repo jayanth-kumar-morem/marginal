@@ -5,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  /* Rippner brand palette, these are the source of truth, every other
+  /* Brand palette, these are the source of truth, every other
      semantic colour token below references one of these. */
   --color-brand-primary: var(--brand-primary);
   --color-brand-secondary: var(--brand-secondary);
@@ -163,7 +163,7 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
   /* Brand display font for every headline so dashboards/marketing copy
-     read as Rippner without per-component overrides. */
+     read as the brand without per-component overrides. */
   h1, h2, h3, h4, .font-display {
     font-family: var(--font-display);
     letter-spacing: -0.01em;
@@ -900,7 +900,7 @@ del.waldium-ai-old *,
 }
 
 :root {
-  /* ─── Rippner brand palette ─────────────────────────────────────────── */
+  /* ─── Brand palette ─────────────────────────────────────────────────── */
   --brand-primary: #FF204E;
   --brand-secondary: #A0153E;
   --brand-tertiary: #5D0E41;

@@ -137,10 +137,24 @@ export function startIfEntryPoint(
   moduleUrl: string,
   run: () => Promise<void> = main,
   argv: readonly string[] = process.argv,
+  // `process.exit` itself, not a wrapper around it: a default that is only ever created and never
+  // called is a function the coverage gate can never see, and wrapping a built-in to get one is
+  // exactly the dead code that rule is there to catch.
+  exit: (code: number) => void = process.exit,
 ): boolean {
   if (!isEntryPoint(moduleUrl, argv)) return false;
-  // Nothing catches this: a worker that cannot run its job must die so the supervisor sees it.
-  void run();
+  // **It has to exit.** The supervisor counts a job as finished when its worker's process ends, so
+  // a worker that merely stops working holds its slot for ever: after `maxWorkers` jobs the room
+  // takes no more work and every later job sits at `Assigned` until it times out. The IPC channel
+  // to the supervisor keeps the event loop alive on its own, so draining is not enough — seen on a
+  // live chain, where the third job was never picked up and the room looked perfectly healthy.
+  void run().then(
+    () => exit(0),
+    (error: unknown) => {
+      process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`);
+      exit(1);
+    },
+  );
   return true;
 }
 

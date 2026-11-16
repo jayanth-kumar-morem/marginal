@@ -554,36 +554,6 @@ export async function newestListing(
   return null;
 }
 
-/**
- * Reads back what a signed call just created, asking again while the answer is still empty.
- *
- * A write and a read do not see the same chain at the same moment. The signer broadcasts with
- * `broadcast_tx_commit`, which returns once the transaction has **executed**; a view call asks for
- * **final** state, which trails execution by a block or two. So a single read-back misses what was
- * just made, and the page says it is not there — observed on a live sandbox, where the wizard
- * reported "the chain has no listing for this account yet" about a listing that was already on
- * chain and about to be screened.
- *
- * Retrying is the honest fix: nothing is assumed about what the write did, the chain is simply
- * asked again until it agrees or the attempts run out. An error is returned at once — only
- * emptiness is worth waiting through.
- */
-export async function settled<T>(
-  read: () => Promise<{ ok: T | null } | { error: string }>,
-  attempts = 8,
-  waitMs = 750,
-  sleep: (ms: number) => Promise<void> = (ms) =>
-    new Promise((resolve) => setTimeout(resolve, ms)),
-): Promise<{ ok: T | null } | { error: string }> {
-  let last: { ok: T | null } | { error: string } = { ok: null };
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (attempt > 0) await sleep(waitMs);
-    last = await read();
-    if ("error" in last || last.ok !== null) return last;
-  }
-  return last;
-}
-
 /** What KeyPolicy charges to store a listing version's pins (`contracts/keypolicy/src/fees.rs`). */
 export async function pinsFee(chain: ChainPort, keypolicy: string): Promise<string> {
   const config = await chain.view<{ pins_fee: string }>(keypolicy, "config");
