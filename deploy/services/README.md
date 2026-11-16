@@ -1,6 +1,6 @@
 # The services host
 
-Three services, one image, on the operator's machine (SDD §2.7; tasks.md E11.1).
+Three services and the web app, one image, on the operator's machine (SDD §2.7; tasks.md E11.1).
 
 | Service | Port | Holds | Trusted with |
 | --- | --- | --- | --- |
@@ -28,6 +28,20 @@ MARGINAL_ALLOWED_IDENTITIES=buyer.marginal-demo.testnet \
 The two seeds are the deployment's identity to clearing: `set_issuer_key` and `set_compliance_key`
 take the public keys `GET /v1/health` reports, and changing a seed invalidates every credential
 already issued under it. Keep them out of the shell history on anything but a demo.
+
+## On a host that builds from git
+
+The image builds `core.wasm` itself (a Rust stage), so it does not depend on a `make wasm-core`
+in the working tree, and it carries the web app as a fourth entry point:
+
+```sh
+node apps/web/node_modules/next/dist/bin/next start apps/web    # listens on PORT
+```
+
+[`render.yaml`](render.yaml) is the same four processes as a Render Blueprint, on the free plan.
+Read its header before relying on it: a free instance has **no persistent disk**, so the gateway
+loses every stored object when it stops, and it is stopped after 15 idle minutes. The room is not
+in it and cannot be: it needs a TDX machine.
 
 ## What is not here
 

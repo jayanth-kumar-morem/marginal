@@ -378,7 +378,8 @@ marginal/
 ├── cli/                            `marginal` CLI (seller, buyer, gov, debug)
 ├── sim/                            economic simulation, red-team harness (Sybil probing, injection corpora)
 ├── deploy/                         profiles/{local,sandbox,testnet-demo,mainnet-canary}.toml, scripts/,
-│                                   services/ (the host services' Dockerfile and docker compose)
+│                                   services/ (the host services' and web app's Dockerfile, docker compose,
+│                                   and render.yaml, the same processes as a Render Blueprint)
 ├── fixtures/                       vectors.json: test vectors that marginal-core, the room and replay-ts must all reproduce
 ├── transparency/                   measurements.json, policy-history.json (mirrors on-chain events)
 └── docs/                           SPEC.md, SDD.md, test-plan.md, runbooks/ (incident, revocation drill, deploy)

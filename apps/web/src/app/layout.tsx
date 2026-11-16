@@ -24,8 +24,13 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 };
 
+// The configuration belongs to a deployment, not to a build, so nothing under this layout is
+// prerendered: a static `/` or 404 would carry whatever accounts the build machine happened to
+// have, and `next build` would refuse to run at all on a machine that has none.
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  // Read once, on the server, from the deploy manifest (SDD §3.24).
+  // Read once per request, on the server, from the deploy manifest (SDD §3.24).
   const config = loadConfig();
   return (
     <html lang="en" suppressHydrationWarning>

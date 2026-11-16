@@ -1,0 +1,121 @@
+# The host services and the web app on Render (render.com), as a Blueprint. The same four processes
+# as `docker-compose.yaml` plus the web app, from the same image.
+#
+# Launch it from the Render dashboard: New > Blueprint, this repository, Blueprint path
+# `deploy/services/render.yaml`. The CLI can only check it: `render blueprints validate
+# deploy/services/render.yaml`.
+#
+# **What the free plan costs you.** A free web service has no persistent disk and is stopped after
+# 15 minutes without a request. The gateway keeps sealed goods on its file system, so on `plan:
+# free` **every stored object is lost when the gateway stops**: a listing published before then can
+# no longer be appraised or delivered. For anything meant to stay up, give `marginal-gateway` a paid
+# plan and a `disk` mounted at MARGINAL_BLOB_DIR.
+#
+# **What is not here.** The room: it needs a TDX machine (SDD §3.13), which Render does not have.
+# Its compose file names the operator agent's URL, so that URL is part of the room's measurement:
+# renaming `marginal-agent` means a new measurement for gov to approve.
+#
+# The contract accounts are the ones `deploy/profiles/testnet-demo.toml` creates under its deployer.
+# The host names assume Render gives each service the name asked for; if it appends a suffix because
+# a name is taken, correct the three URLs below.
+
+envVarGroups:
+  - name: marginal-chain
+    envVars:
+      - key: MARGINAL_CHAIN_ID
+        value: testnet
+      - key: MARGINAL_RPC_URL
+        value: https://test.rpc.fastnear.com
+      - key: MARGINAL_CLEARING
+        value: clearing.marginal-demo.testnet
+      - key: MARGINAL_KEYPOLICY
+        value: keypolicy.marginal-demo.testnet
+      # The services' default bind is loopback, which Render's proxy cannot reach.
+      - key: MARGINAL_BIND
+        value: 0.0.0.0
+
+services:
+  - type: web
+    name: marginal-web
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/services/Dockerfile
+    dockerContext: .
+    dockerCommand: node apps/web/node_modules/next/dist/bin/next start apps/web
+    healthCheckPath: /
+    domains:
+      - marginal.7blocklabs.com
+    envVars:
+      - fromGroup: marginal-chain
+      - key: MARGINAL_NETWORK
+        value: testnet
+      - key: MARGINAL_PROFILE
+        value: testnet-demo
+      - key: MARGINAL_TOKEN
+        value: musdc.marginal-demo.testnet
+      - key: MARGINAL_GOV
+        value: gov.marginal-demo.testnet
+      - key: MARGINAL_FAUCET
+        value: faucet.marginal-demo.testnet
+      - key: MARGINAL_GATEWAY_URL
+        value: https://marginal-gateway.onrender.com
+      - key: MARGINAL_COMPLIANCE_URL
+        value: https://marginal-compliance.onrender.com
+
+  - type: web
+    name: marginal-gateway
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/services/Dockerfile
+    dockerContext: .
+    dockerCommand: node -e "import('/app/services/gateway/dist/main.js').then((m) => m.main())"
+    healthCheckPath: /v1/health
+    envVars:
+      - fromGroup: marginal-chain
+      # Not a disk: see the note at the top.
+      - key: MARGINAL_BLOB_DIR
+        value: /tmp/marginal/blobs
+
+  - type: web
+    name: marginal-agent
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/services/Dockerfile
+    dockerContext: .
+    dockerCommand: node -e "import('/app/services/operator-agent/dist/main.js').then((m) => m.main())"
+    healthCheckPath: /v1/health
+    envVars:
+      - fromGroup: marginal-chain
+      - key: MARGINAL_GATEWAY_URL
+        value: https://marginal-gateway.onrender.com
+      - key: MARGINAL_AGENT_ACCOUNT
+        value: agent.marginal-demo.testnet
+      # The agent's function-call key, from `deploy/.keys/testnet-demo.json` once the deploy has run.
+      - key: MARGINAL_AGENT_KEY
+        sync: false
+      # Optional ([P-2]). Without it the judges are simulated and flagged on chain.
+      - key: MARGINAL_NEARAI_KEY
+        sync: false
+
+  - type: web
+    name: marginal-compliance
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./deploy/services/Dockerfile
+    dockerContext: .
+    dockerCommand: node -e "import('/app/services/compliance/dist/main.js').then((m) => m.main())"
+    healthCheckPath: /v1/health
+    envVars:
+      - fromGroup: marginal-chain
+      # The two seeds from `deploy/services/.env.testnet-demo`. They must be the ones whose public
+      # keys the profile carries, or clearing refuses every credential this service signs.
+      - key: MARGINAL_ISSUER_SEED
+        sync: false
+      - key: MARGINAL_COMPLIANCE_SEED
+        sync: false
+      - key: MARGINAL_ALLOWED_IDENTITIES
+        sync: false
