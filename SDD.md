@@ -1135,7 +1135,7 @@ All appraisers follow the four rules in SPEC §4.8: deterministic first; judgeme
 | NLI on borderline pairs | NLI cross-encoder (ONNX, CPU) on pairs with τ_lo < sim < τ_hi. Entailment ≥ threshold sets nᵢ = 0. | **`cross-encoder/nli-deberta-v3-xsmall`** (Apache-2.0; SNLI and MNLI; 87.77% on MNLI-mismatched) in HDP; `-base` (90.04%) in v1. Models trained on ANLI (CC BY-NC) are excluded. Threshold 0.9 (target). |
 | Need weighting | `wᵢ = max(0.05, cos(claimᵢ, need))`, `N_b = Σwᵢnᵢ / Σwᵢ` (LETHE's padding-resistant weighting, AC-39) | — |
 | Public novelty (opt-in) | Same computation against the in-room public corpus snapshot → `N_pub`; otherwise `N_pub = 10,000` | Small curated corpus in HDP |
-| Verifiable share | Share of claims matched to the corpus or, for on-chain claims, checked by block-pinned replay (the Bluprynt pattern) | Display field only; on-chain replay in v1.1 |
+| Verifiable share | Share of claims matched to the corpus or, for on-chain claims, checked by block-pinned replay | Display field only; on-chain replay in v1.1 |
 | Relevance judges | Two judges from different model families, discrete scale 0–10, strict JSON (§3.16) | NEAR AI Cloud, opt-in |
 | Components | `[N_b, N_pub]`, each quantised to 21 levels (5% steps) | — |
 | Shown fields (opt-in, priced) | `novelty` (11), `relevance` (11), `verifiable_share` (11) | — |

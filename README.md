@@ -1,289 +1,276 @@
 # Marginal
 
-A confidential exchange that prices information goods by their measured marginal value, on NEAR.
+**A confidential exchange that prices information goods by their measured marginal value, on NEAR.**
 
-## What this is
+Built by [7Block Labs](https://7blocklabs.com) · demo: **https://marginal.7blocklabs.com**
 
-You cannot price information without revealing it: that is Arrow's paradox, and every market in
-memos, datasets, eval sets and exploits pays a tax on it today. Marginal's answer is to measure,
-rather than negotiate. A seller seals a good and lists it; a buyer seals *its own* context — notes,
-an eval set, a data index — into an attested appraisal room, where deterministic appraisers measure
-what the good adds **for that buyer**. The buyer's own context is what decides the price, so the
-same memo is worth a lot to a fund that does not hold it and nothing to a fund that does.
+A seller lists a document without revealing it. A buyer says what they already know. A TEE room
+reads both, measures how much the document would actually add to *that* buyer, and prices it on
+that measurement. The buyer pays for what the document was worth to them; the seller learns nothing
+about the buyer; and what leaked is metered, so the same information cannot be sold twice over.
 
-Two things keep that honest. The room is a measured TEE whose key is released only for one paid job,
-by an immutable NEAR contract and NEAR's MPC network, and the job ends in a forget certificate bound
-to the room's hardware attestation — the inputs are forgotten under attestation. And the room is
-never trusted with the price: a NEAR clearing contract recomputes the pricing rule itself from the
-signed integer components (Open mode), or verifies a Groth16 proof that the rule was applied to
-components it never sees (Sealed mode). Every appraisal also debits the listing's leakage budget for
-the bits it reveals, and pays the seller for them, so inspection is not free.
+Everything that decides money happens on NEAR. The room is not trusted to be honest — it is trusted
+only to be the program it says it is, and the contract checks both.
 
-The design is `SDD.md`, the product spec behind it is `SPEC.md`, and the build plan with its status
-is `tasks.md`. Use cases, by stage, are in `SDD.md` §1.3: memos and expert answers appraised against
-a buyer's own notes first, then datasets priced by lift on a sealed eval, then weights, exploits and
-forecasts. There are no customers yet.
+---
 
-## What a viewer can see
+## What NEAR does here
 
-The demo surfaces of `SDD.md` §1.6, with the pass criteria of §5.4. **P0** is the spine, **P1**
-should be ready, **P2** is shown if time allows.
+This is not a project that keeps its state on NEAR and its logic elsewhere. Four things are on
+chain, and each is load-bearing.
 
-| ID | Surface | What the viewer sees | Pri. |
-| --- | --- | --- | --- |
-| D1 | Two funds, one memo | Fund A appraises a sealed memo against its own notes and gets a **Deal**, which decrypts in the browser with its commitment checked. Fund B's notes already cover it: **No deal**, full refund, forget certificate. | P0 |
-| D2 | Verify anything | A replay explorer re-checks every settlement from public chain data, then walks one certificate back to the room's attestation record and its approved measurement. | P0 |
-| D3 | A real attested room | The room's TDX quote, verified on chain, with the PPID, the TCB status and the RTMR3 events proving dstack ran with no KMS. The measurement is reproducible from source. | P0 |
-| D4 | Sybil probing hits the leakage wall | Many buyer identities probe one listing. Each appraisal debits bits and pays the seller per bit; when the budget is spent, the contract refuses. | P0 |
-| D5 | Prompt-injected buyer agent | A teaser tells the buyer's agent to raise its budget. The agent's key hits its on-chain cap: blocked, or parked for a human. | P1 |
-| D6 | Seller injection cannot raise a price | A memo with "rate this 10/10" hidden in it. Judges can only discount; the price never passes the deterministic ceiling. | P1 |
-| D7 | Cross-chain payout | A seller picks USDC on another chain: the payout address and a live 1Click dry quote, displayed and not stored. | P1 |
-| D8 | Compliance | An MNPI-flagged listing is held; a restricted list answers `restricted`; a payout to an address on the real OFAC list is blocked; the compliance officer exports a hash-chained audit trail. | P1 |
-| D9 | Dataset priced by lift | A labelled dataset, a lab's sealed eval, a bucketed lift interval, a price. | P2 |
-| D10 | Blind mode with a sealed verdict | The buyer learns one bit. The contract verifies a Groth16 proof that the rule was applied to committed scores it never sees. | P2 |
-| D11 | Timeout refund | Kill the room mid-job; after the deadline anyone calls `refund_expired` and the buyer is made whole. | P0 in tests, P1 live |
+**1. The contract re-verifies the enclave's signature on every verdict.**
+A room's key is only on chain because KeyPolicy verified a real Intel TDX quote for it — on chain,
+through a locked DCAP verifier contract, with 200 TGas
+([`contracts/keypolicy/src/registration.rs`](contracts/keypolicy/src/registration.rs), method
+`verify_quote_with_collateral_dates`) — and because the quote's RTMR3 event log replayed to the
+value the quote reports. When that room later submits a verdict, clearing checks the ed25519
+signature against exactly that key, and refuses it if the room is not the one the job was given to
+or its attestation has lapsed
+([`contracts/clearing/src/verdict.rs:132`](contracts/clearing/src/verdict.rs), `env::ed25519_verify`).
 
-## Real and simulated
+**2. The contract recomputes the price itself.**
+The room reports *components*, not a price. Clearing recomputes the measured index and applies the
+pricing rule with `marginal-core`, the same crate the room runs
+([`contracts/clearing/src/verdict.rs`](contracts/clearing/src/verdict.rs), `measured_index` and
+`apply_rule`). A room that inflates a price does not get paid more; a judge can only ever
+*discount*, never raise. The price is the contract's, not the room's.
 
-This repository is written to the production design in `SDD.md` §3. What the hackathon profile
-changes is configuration: every substitution is a feature toggle, is visible on chain, and changes
-no interface or data format.
+**3. MPC Confidential Key Derivation releases the listing key.**
+A room gets a listing's key by asking NEAR's MPC network (`v1.signer-prod.testnet`, CKD domain 2) —
+and only after KeyPolicy has authorised that exact job. The room never holds a durable key, so a
+room that is replaced cannot read what it was never given.
 
-**This table is read by hand from `SDD.md` §1.5 and `tasks.md`, because nothing is deployed yet.** At
-deploy time it is regenerated instead from the chain: the `simulated_flags` byte on each
-`SettlementRecord`, plus each contract's `config()` view (clearing's `profile`, `tokens` and
-`policy_version`; KeyPolicy's `dcap_verifier`, `mpc` and `ckd_domain_id`). The function that turns
-those bits into words is `apps/web/src/lib/simulated.ts`, and it is the only one — so the banner on a
-page, the label on a settlement and this table all say the same thing, which is what DRC-12 asks for.
+**4. Chain Signatures and NEAR Intents pay the seller in USDC on Solana.**
+A seller is paid where they want to be paid. The payout route is priced through NEAR Intents' 1Click
+API ([`services/gateway/src/quote.ts`](services/gateway/src/quote.ts), `1click.chaindefuser.com`)
+and the proceeds are sent to a Solana address derived for that seller by NEAR's Chain Signatures,
+so no bridge and no custodian stands between the settlement and the payout.
 
-| Element | What this build uses | Where it stands today |
-| --- | --- | --- |
-| Room hardware | One CPU-only Intel TDX CVM on Phala Cloud, room class `K-cpu`. No GPU, no second vendor, no second operator. | **No room has booted.** The only TDX quotes in the repository are real ones captured by other projects and used as test fixtures (`fixtures/README.md` names each source). |
-| Attestation | The production mechanism: a real TDX quote verified on chain by NEAR One's locked `tee-verifier-2026-11-02.testnet`, mode `OnChainDcap`. | The locked verifier's own wasm answers a real quote inside its gas budget in a sandbox test. No room is registered. `keypolicy-sim` — the only build that accepts a simulated attestation — is deployed by sandbox tests only, and every record it writes is marked `Simulated`, which clearing turns into the `SIM_ATTESTATION` bit. |
-| Listing keys | The production mechanism: MPC Confidential Key Derivation, domain 2 on `v1.signer-prod.testnet`. | **No key has been derived through the real network.** KeyPolicy's side of the call is built and tested against a mock MPC contract, with the argument layout taken from `near/mpc`. |
-| Judges | Two NEAR AI Cloud private-TEE models with signed receipts, on listings where the seller opts in. Judges can only discount. | **No receipt is real.** Without an API key the room uses a labelled stand-in signer, and clearing sets `SIM_JUDGE` for every factor that arrived without a receipt, pinning it to the floor. |
-| Dataset appraisal | `dataset-lite@0`, a CPU lift proxy, labelled as a proxy. | Built. It is a proxy by design: it does not predict fine-tuning lift, and says so. |
-| Settlement asset | A testnet NEP-141 test stablecoin, `musdc`, 6 decimals. NEAR Intents appears only as a displayed dry quote. | Nothing is deployed, so nothing has settled. The `SIM_SETTLEMENT` bit exists in `marginal-core` and is decoded by the app, but **no M1 contract path sets it**: the test token is named by clearing's `config()` instead. |
-| Cross-chain payout | A Chain-Signatures-derived address and a live 1Click dry quote, displayed and never stored. | The dry quote is real: `/sell` asks 1Click through the gateway's proxy, which forces `dry: true` and keeps nothing. **The address is not derived** — the seller types it, and the page says so rather than implying an MPC derivation. No foreign-chain transfer has been signed. |
-| Sealed verdicts | Groth16 on BN254, verified inside clearing over NEAR's `alt_bn128` host functions. | Works end to end, but **the setup is a dev ceremony**: phase 1 generated locally and one contribution, from one machine. Anyone holding its toxic waste could forge a proof. `circuits/build.sh` says so at the top. |
-| Compliance | A demo issuer key for tier credentials; screening against the real OFAC SDN file. | Built. The issuer and compliance keys are seeds the deployment generates. |
-| Governance | One dev account, `gov.profile = demo`, with locks in minutes rather than days. | As designed for the demo. |
-| Replay verification | One verifier (TypeScript). The second, independent one is a v1-exit item. | Built. What four contract views cannot give it, it names as unchecked rather than implying it checked. |
-| Public-novelty corpus | A small curated snapshot baked into the measured image. | Not built; cut to M2. Novelty today is the buyer's own context. |
-| Deployment | The `testnet-demo` profile on NEAR testnet. | **Nothing is deployed.** Only the local `sandbox` profile has ever run. |
+> **Build status, stated plainly:** 1–3 are built and run. For 4, the **1Click quote is live** (the
+> gateway proxies a real dry quote and stores nothing — `dry: true` is forced on every call), and
+> the **Chain-Signatures-derived address is not implemented yet**: the seller types their Solana
+> address, and `/sell` says so on the page rather than implying it was derived. See
+> [What is real and what is not](#what-is-real-and-what-is-not).
 
-## Running it
+---
 
-### What you need
+## Run it from a fresh clone
 
-Node 22 (`.nvmrc`) and pnpm 9.15.4; Rust 1.99.1 with the `wasm32-unknown-unknown` target
-(`rust-toolchain.toml` pins it); `cargo-near` for every contract build; `cargo-llvm-cov` for the
-coverage gate (`cargo install cargo-llvm-cov`); Docker for the reproducible contract builds and for
-the services. `make models` fetches about 90 MB of embedder weights once and checks them against the
-committed `SHA256SUMS`. `circom` is needed only to rebuild the circuit.
+Every step below was run from a clean tree. Each says what you should see.
 
-### Install and check
+**Prerequisites:** Node 22 (`.nvmrc`), pnpm 9, Rust (`rust-toolchain.toml`), and Docker for the
+three host services.
+
+### 1. Install, and enable the git hooks
 
 ```sh
-pnpm install          # JS dependencies, and enables the git hooks
-make check            # fmt, clippy, eslint, tsc, and every test under a 100% coverage gate
+pnpm install
 ```
 
-`make check` is the gate the pre-commit hook runs, and coverage is 100% of lines, functions and
-regions in Rust and lines, branches and functions in TypeScript. There is no hosted CI.
+**See:** the workspace resolves and `.githooks/pre-commit` is enabled.
 
-### A local deployment
+### 2. Fetch the embedder's weights
 
 ```sh
-deploy/scripts/up.sh sandbox          # local node, full deploy, manifest; Ctrl-C to stop
-deploy/scripts/up.sh sandbox --once   # same, then tear the node down
+make models
 ```
 
-It builds the contract wasm if there is none, starts a throwaway node, creates and funds the
-accounts, deploys the test token, clearing and the immutable KeyPolicy — the last of these created
-**keyless**, so no access key ever exists on it — seeds the room policy, and writes
-`deploy/manifest.sandbox.json` plus the created accounts' keys in `deploy/.keys/` (gitignored, mode
-0600). A testnet deploy is the same command with `testnet-demo`; it refuses a
-dirty tree and always rebuilds reproducibly.
+**See:** `room/models/all-MiniLM-L6-v2/` populated and every file checked against the committed
+`SHA256SUMS`. Nothing the room scores with comes off the network at run time; this is fetched once
+and pinned.
 
-### The web app
+### 3. Run the gates — this is the claim worth checking
 
 ```sh
-make wasm-core                                        # marginal-core as wasm
-pnpm --filter @marginal/core-wasm --filter @marginal/sdk --filter @marginal/replay-ts build
-MARGINAL_MANIFEST=deploy/manifest.sandbox.json pnpm --filter @marginal/web dev
+make check
 ```
 
-The app hard-codes no account: it reads which deployment it is talking to from the manifest, with an
-environment override per field, and refuses to start if there is no clearing contract to read.
-`make web` does the two build steps above and then the production Next build.
-
-### The three host services
-
-The gateway, the operator agent and the compliance service run from one image, on the operator's
-machine, outside any TEE — the room trusts none of them.
+**See:** `cargo fmt`, clippy on four configurations, every Rust test under instrumentation at
+**100% of lines, functions and regions**, then eslint, `tsc` and every TypeScript test at **100% of
+lines, branches and functions**. The gate fails if a single line is uncovered. Nothing is excluded
+to make it pass — if a line is hard to reach it is deleted or extracted, never ignored.
 
 ```sh
-cd deploy/services && docker compose up --build
+make props
 ```
 
-They need the chain endpoints, the agent's function-call key and three secrets in the environment;
-`deploy/services/README.md` has the exact invocation and says what each service is and is not
-trusted with.
+**See:** `marginal-core`'s pricing and leakage invariants at 10⁶ cases each — including AC-2 (a
+judge can only discount) and AC-5 (the price never exceeds the deterministic ceiling).
 
-The room itself is not run this way: it runs inside the measured CVM, and `room/image/build.sh`
-builds that image from `git archive HEAD` and prints the compose hash a seller would pin.
-`room/image/MEASUREMENTS.md` lists every pin and how to reproduce it.
+```sh
+make e2e
+```
 
-### The rest of the commands
+**See:** near-workspaces suites deploying the **real** clearing contract, the real locked TDX
+verifier wasm and `keypolicy-sim`, then walking a complete deal: a buyer's deposit of 503,515,920
+base units settles to a 400,000,000 price, a 100,500,000 refund, 15,920 of leakage compensation and
+a 2,000,000 fee split 1.2M/0.6M/0.2M — with conservation checked on every settlement.
 
-| Command | What it does |
+### 4. Deploy a local chain
+
+```sh
+deploy/scripts/up.sh sandbox
+```
+
+**See:** a throwaway NEAR node, then `musdc`, `clearing` and KeyPolicy deployed, followed by the
+seeding every usable chain needs — the appraiser, the fee table, the Groth16 verifying key, the
+measurement set, the platform, the operator agent's account, and clearing's own storage entry on
+the settlement token. It ends with `manifest written:` and the node's URL. **Leave it running.**
+
+The sandbox profile deploys `keypolicy-sim` and prints `!!! SIMULATED ATTESTATION` to say so. That
+build is refused on any network but a local sandbox, by the profile validator, by the deploy script,
+and by the contract itself (`sim-attestation` + `mainnet` is a `compile_error!`).
+
+### 5. Start the three host services
+
+```sh
+cd deploy/services && docker compose --env-file .env.sandbox up --build
+```
+
+**See:** `gateway on 8081 … replay against clearing.sandbox`, `operator agent on 8082, judges
+simulated`, and `compliance on 8083, list 520 addresses` — that last number is the **real OFAC SDN
+list**, fetched and parsed, not a fixture. None of the three is trusted: every object the gateway
+serves is checked against a hash the chain committed to, and every message the agent relays is
+signed by the room.
+
+### 6. Start a room
+
+```sh
+pnpm --filter @marginal/room build
+cd room && MARGINAL_SIMULATED_ATTESTATION=1 \
+  MARGINAL_RPC_URL=<rpc from the manifest> MARGINAL_CHAIN_ID=sandbox \
+  MARGINAL_CLEARING=clearing.sandbox MARGINAL_KEYPOLICY=keypolicy.sandbox \
+  MARGINAL_OPERATOR_URL=http://127.0.0.1:8082 \
+  MARGINAL_MPC_PUBLIC_KEY=<room/src/testing.ts's MPC_PUBLIC_KEY> \
+  node -e "import('./dist/main.js').then((m) => m.main())"
+```
+
+**See:** `room <key> registered, polling clearing.sandbox every 2000 ms`. Start it **once** — a room
+makes fresh keys on every boot, so a restart leaves a stale room in the eligible pool.
+
+Then check the chain agrees:
+
+```sh
+near view clearing.sandbox eligible '{"class":"Kcpu"}'
+```
+
+**See:** exactly one room key — the one the room just printed. It is there because KeyPolicy
+recorded an attestation and clearing's registry admitted it against the approved measurement set.
+
+### 7. Open the app
+
+The hosted demo is at **https://marginal.7blocklabs.com**. To run it yourself:
+
+```sh
+MARGINAL_MANIFEST=$PWD/deploy/manifest.sandbox.json \
+MARGINAL_GATEWAY_URL=http://127.0.0.1:8081 MARGINAL_COMPLIANCE_URL=http://127.0.0.1:8083 \
+  pnpm --filter @marginal/web dev
+```
+
+**See:** http://localhost:3100. `/rooms` shows the room that just registered — its measurement, its
+PPID hash, the RTMR3 event order, and `Simulated` where a real quote's TCB status would be. A
+banner on every page says which elements are simulated; it is generated from the chain's own
+`simulated_flags`, not written by hand.
+
+No browser wallet knows a local node, so signing uses a **sandbox-only dev key**: paste an account
+and key from `deploy/.keys/sandbox.json` into the bar at the top. That path is refused unless the
+network is not a public one, the deployment has no wallet URL, **and** the RPC is on loopback —
+which a manifest cannot fake, because the transaction still has to reach a node on this machine.
+
+### 8. Walk it
+
+With a seller account funded (`musdc.mint` from the faucet account the deploy created) and a buyer
+with an escrow balance (`ft_transfer_call` to clearing with `msg = {"Deposit":{"account":…}}`):
+
+1. **`/sell`** — upload a memo. It is canonicalised, committed to and sealed **in the browser**;
+   what reaches the chain is a commitment and a ciphertext hash. **See:** two signatures, then a
+   screening job that completes in seconds and the listing turning `Active`.
+2. **`/listing/[id]`** — **See:** the posted ask, the teaser, and the leakage meter: spent,
+   reserved and remaining, with π per bit, exactly as the contract counts them.
+3. **`/appraise/[id]`** — state a need and a budget. The budget must cover the ask; the contract
+   refuses otherwise, because no deal could ever be struck. **See:** the real debit before you sign.
+4. **`/jobs/[id]`** — **See:** the state machine live: `Assigned` → `Computing` → settled. For a
+   RoomSealed listing the move to `Computing` is the room's own signed ack, recorded in the audit
+   chain under its own kind so a replay can tell it apart from a KeyPolicy key release.
+5. **`/verify`** — **See:** the settlement re-checked from four contract views with `marginal-core`
+   itself, and the two things it *cannot* check from views named as unchecked rather than implied.
+
+---
+
+## What is real and what is not
+
+Stated here because an honest scorecard is worth more than a demo that overclaims.
+
+| | Status |
 | --- | --- |
-| `make cov` | Just the two coverage gates |
-| `make wasm-dev` | Fast contract builds for sandbox work |
-| `make wasm` | Reproducible Docker contract builds (clean, committed tree) |
-| `make models` | Fetches and hash-checks the embedder's weights and tokenizer |
-| `make props` | The property tests at 10⁶ cases each |
-| `make e2e` | near-workspaces sandbox tests and the deploy end to end |
-| `make ci` | `check` + `props` + `wasm` + `web` + `e2e` |
+| Pricing, leakage metering, escrow, settlement, refunds | **Real.** On chain, 100% covered, conservation checked on every settlement |
+| On-chain TDX quote verification through a locked verifier | **Real.** A recorded production quote verifies inside KeyPolicy's gas budget |
+| Groth16 sealed verdicts | **Real.** A proof verifies on chain and debits exactly 1,000 mbits |
+| OFAC SDN screening | **Real.** The published list, parsed; the demo's blocked address is a genuine SDN entry |
+| NEAR Intents 1Click quote | **Real**, and deliberately read-only: `dry: true` is forced and nothing is stored |
+| Room attestation **in the local demo** | **Simulated.** `keypolicy-sim` admits a room that proves nothing; every record it makes says `Simulated` and the settlement carries the flag |
+| Key release **in the local demo** | **RoomSealed**, the documented fallback (SDD §3.12.7), not MPC CKD — a local node cannot reach the MPC network |
+| Chain-Signatures-derived payout address | **Not built.** The seller types the address and the page says so |
+| Judges | **Simulated** unless a NEAR AI key is supplied; flagged on chain either way |
+| Context envelope for an appraisal | **Not built** (`TODO(E12.1)`). Without it the room rejects the input *without decrypting the good*, which is the specified behaviour — and the settlement proves it: zero bits debited |
 
-## How it is built
+The twelve readiness checks of SDD §5.4 are tracked internally with the same discipline: a check is
+**shown** only if it was run against the deployment it names, never because the code for it exists.
 
-One monorepo; `SDD.md` §3.1 is the layout authority.
-
-| Path | What it is |
-| --- | --- |
-| `contracts/clearing` | Listings, snapshots, jobs, funding, the leakage ledger, agent spend caps, verdicts, settlement, payouts and the audit hash chain — and the room policy, which M1 keeps as a module here rather than a separate registry. |
-| `contracts/keypolicy` | Immutable by construction: no setters, no upgrade method, no owner, and created keyless so it never has an access key. It verifies quotes through a verifier contract pinned at initialisation, stores attestation records and seller pins, and issues key-release tickets. Its promises are raw `env::promise_*` function calls, and a sandbox test parses the built wasm against an import allow-list so it cannot gain the power to deploy code, move funds or touch keys. |
-| `contracts/test-tokens/musdc` | The NEP-141 test stablecoin the demo settles in. |
-| `crates/marginal-core` | The single implementation of the data model, the error codes, the pricing rules and the leakage arithmetic: `no_std`, no floats, checked integer arithmetic throughout. The contracts, the room and the verifier all use it, so they agree to the last unit. `fixtures/vectors.json` is its shared test vectors. |
-| `crates/marginal-core-wasm`, `crates/marginal-groth16` | The same crate as a wasm module with a JSON interface, for TypeScript; and Groth16 verification over NEAR's `alt_bn128` host functions. |
-| `room/` | The appraisal room: boot and registration, the dstack client, the key custody, the per-job worker, the appraisers (`knowledge@1`, screening, `dataset-lite@0`), the judges, the sealing crypto, the forget certificate and the prover. Everything it scores with comes from the measured image and is checked against `SHA256SUMS` before use — nothing comes off the network at run time. |
-| `services/` | The gateway (content-addressed blobs and replay), the operator agent (relays the room's signed messages with a function-call key), the compliance service (credentials, screening, the review log), and the HTTP plumbing they share. |
-| `apps/web` | The Next.js app: sell, listings, appraise, jobs, verify, rooms, compliance. All plaintext handling stays in the browser, under a strict CSP with no third-party script. |
-| `verifiers/replay-ts` | The replay verifier (below). |
-| `circuits/` | The circom circuit for the sealed pricing proof, and its dev setup. |
-| `scripts/`, `deploy/` | The deploy tooling behind `up.sh`, and the profiles, manifests and the services' compose file. |
-
-## Verifying it yourself
-
-That is the point of D2. `verifiers/replay-ts` re-checks a settlement from public chain data alone —
-`get_settlement`, `get_job`, `get_listing` and `get_audit` — and recomputes with `marginal-core`
-itself rather than a second implementation of the arithmetic: the state the outcome must end in, the
-buckets settlement leaves behind, the leakage debit against the reservation, the seller's
-compensation, the forget certificate's anchor, and the whole audit hash chain against `audit_head()`.
-One flipped byte in the log fails it, and a test proves that.
-
-The same code runs in two more places, so a reader gets the same answer wherever they ask: the
-gateway serves it at `/v1/replay/:id`, and the app's `/verify` page calls it through its own route
-handler.
-
-It is also honest about its limits. A verdict's components, judge factors, room signature and
-Groth16 proof live in the transaction that carried them, not in a view, so the verifier **names them
-as unchecked** instead of implying it checked them. Closing that needs the verdict bytes, from a
-transaction read or an indexer.
+---
 
 ## Libraries
 
-Listed because the hackathon rules require it (`SDD.md` §7, PN-12, Q-005). Versions are pinned
-exactly, with no `^` or `~`, in `Cargo.toml` and each `package.json`.
+**Contracts and core (Rust).** `near-sdk` and `near-contract-standards` (both pinned `=5.30.1`),
+`borsh`, `sha2`, `hex` and `serde` — all `no_std` in `marginal-core`, which has no other
+dependencies because the contracts, the room and the verifier all have to agree to the last unit.
+`near-workspaces` and `proptest` for tests; `cargo-near` for reproducible contract builds;
+`ark-*` via `marginal-groth16` for the sealed-verdict proof system.
 
-**Rust, shipped in the contracts and crates.** `near-sdk` and `near-contract-standards` `=5.30.1`
-(the contract SDK, and NEP-141/NEP-145 for the test token); `borsh` 1.8.1 (the canonical encoding of
-every stored record and every signing message); `sha2` 0.10.9 (SHA-256 for commitments, hashes and
-the audit chain); `hex` 0.4.3 and `serde`/`serde_json` (the JSON model at the contract and wasm
-boundary). `marginal-core` uses all of them without `std`.
+**Room and services (TypeScript).** `onnxruntime-web` (pure wasm, so the measurement does not
+depend on a native binary), `libsodium-wrappers`, `snarkjs` and `circomlibjs`, `@noble/curves` and
+`@noble/hashes`, `@scure/base`, `near-api-js`. The dstack client and the WordPiece tokenizer are
+written out rather than imported: the room's dependency list is part of what a seller pins.
 
-**Rust, tests and tooling only.** `proptest` (the pricing and leakage properties), `num-bigint` (an
-independent oracle for the integer arithmetic), `ed25519-dalek` and `secp256k1` (signing room
-messages and NEAR AI receipts the way the real signers would), `near-workspaces` with `tokio` and
-`anyhow` (the sandbox tests, on built wasm, on a local chain), `wasmparser` (parses the built
-KeyPolicy wasm against its import allow-list). Builds use `cargo-near` — reproducible builds run in
-the `sourcescan/cargo-near:0.22.0-rust-1.99.1` image, pinned by digest — and coverage uses
-`cargo-llvm-cov`.
+**Web.** Next.js 15, React 19, Tailwind 4, `@near-wallet-selector` with MyNearWallet,
+`@near-js/{crypto,signers,transactions,utils}`, Radix UI primitives, `@tabler/icons-react`,
+`@tanstack/react-table`, `react-hook-form` with `zod`, `recharts`, `sonner`, `next-themes`.
+`apps/web/src/components/ui/**` is vendored shadcn/ui, Magic UI and 21st.dev code, kept as it ships.
 
-**The room.** `onnxruntime-web` 1.31.1 for the embedder, `libsodium-wrappers` 0.8.4 for sealed boxes
-and XChaCha20-Poly1305, `@noble/curves` and `@noble/hashes` 2.4.0 with `@scure/base` 2.4.0 for the
-BLS12-381 recovery of a CKD-derived key, and `snarkjs` 0.7.6 with `circomlibjs` 0.1.7 for the sealed
-proof. The absences are deliberate, because the room's dependency list is part of what a seller pins
-when they pin a measurement: the dstack client is written directly rather than taking the vendor
-SDK, the WordPiece tokenizer is written out rather than importing a native binding, and the embedder
-is `onnxruntime-web` (pure wasm, no install script) rather than `onnxruntime-node` (which downloads
-a native binary in a `postinstall` the image cannot run).
+**Circuits.** circom and snarkjs; the proving and verifying keys in `circuits/` come from a
+**development ceremony** and are not a trusted setup.
 
-**The web app.** `next` 15.3.6 with `react` 19.2.3; `@near-wallet-selector/{core,modal-ui,my-near-wallet}`
-10.1.4 for signing; `libsodium-wrappers` for the browser-side sealing; `tailwindcss` 4.1.18 with
-`tw-animate-css`, `class-variance-authority`, `clsx` and `tailwind-merge`; `radix-ui`, `@base-ui/react`
-and `@headless-tree/core` for primitives; `lucide-react` and `@tabler/icons-react` for icons;
-`motion`/`framer-motion` for animation; `recharts` for charts; `@tanstack/react-table` and
-`@tanstack/react-virtual` for tables; `react-hook-form` with `@hookform/resolvers` and `zod` for
-forms; and `sonner`, `cmdk`, `vaul`, `next-themes`, `date-fns`, `react-day-picker`,
-`react-resizable-panels`, `jszip` and `canvas-confetti`.
+**AI-generated code.** This repository was written with Claude Code (Claude Opus 5). The design
+(`SDD.md`) and the specification (`SPEC.md`) were written before the code and the code follows them.
+An internal build plan records, task by task, what was verified and what was not — the same
+discipline the real-versus-simulated table above comes from.
 
-**The deploy tooling.** `near-api-js` 7.5.3, `near-sandbox` 0.3.5 and `smol-toml` 1.9.1.
+---
 
-**Shared dev tooling.** TypeScript 5.9.3, `tsx`, `eslint` with `typescript-eslint`, and Node's own
-`node:test` and `node:assert/strict` as the only test framework. Circuit work uses `circom` with
-`circomlib` 2.0.5 and `snarkjs`.
+## Layout
 
-**Vendored UI code.** All 88 files under `apps/web/src/components/ui/` are third-party components
-from **shadcn/ui, Magic UI and 21st.dev**, kept as they ship. The app's shell was not written from
-scratch either: it was started from `eu-ai-act-gov`, another of the author's own projects, and its
-theme (four brand tokens, and the Geist, Space Grotesk and Geist Mono families) came over with it.
-Everything of that product — authentication, payments, the ORM, the AI SDKs, its API routes and its
-domain components — was removed.
+| Path | What |
+| --- | --- |
+| `contracts/clearing` | Listings, jobs, pricing, escrow, settlement, payouts, the room registry |
+| `contracts/keypolicy` | Attestation and key release. Immutable, created keyless, never holds an access key |
+| `crates/marginal-core` | `no_std` types, pricing, leakage, commitments, signing bytes, attestation checks — the one implementation everything else agrees with |
+| `crates/marginal-core-wasm` | The same crate as wasm, for TypeScript |
+| `room/` | The TEE room: registration, the job loop, the appraiser, judges, certificates |
+| `services/` | Gateway, operator agent, compliance — all untrusted by design |
+| `apps/web` | The Next.js app |
+| `verifiers/replay-ts` | Re-checks a settlement from public data alone |
+| `circuits/` | The sealed-verdict circuit |
+| `SPEC.md`, `SDD.md` | The product spec and the design. Section numbers in code comments (§x.y) point at the SDD |
 
-**Third-party artefacts, not code.** `fixtures/tee-verifier.wasm` is the real locked verifier
-contract, fetched from testnet and checked against its code hash; the TDX quotes and RTMR3 event
-logs in `fixtures/` come from `near/mpc` and from dstack's own fixtures; `room/models/` holds the
-`all-MiniLM-L6-v2` weights and tokenizer, fetched by `make models` and pinned by a committed
-`SHA256SUMS`. `fixtures/README.md` gives the provenance of each one.
-
-**External services a deployment talks to.** NEAR testnet RPC; NEAR's MPC network
-(`v1.signer-prod.testnet`, CKD domain 2); the locked quote verifier
-(`tee-verifier-2026-11-02.testnet`); Phala Cloud for the CVM; NEAR AI Cloud for the judges; a PCCS
-for Intel collateral; the 1Click API for a dry quote; and the public OFAC SDN file.
-
-## AI-generated code
-
-The great majority of this repository was written by **Claude (Anthropic)** under the author's
-direction. The author set the scope, made the decisions, reviewed the work and is responsible for
-it; the model wrote most of the code, the tests and the documents.
-
-It is recorded rather than asserted. `tasks.md` carries every task with a **Done** line, a dated
-completion note saying how it was verified, and an explicit list of what was *not* verified —
-including ten tasks that are code-complete but deliberately not ticked, because only a live room, a
-real key or a deployment can close them. Nearly every commit carries a `Co-Authored-By: Claude`
-trailer (31 of the 39 commits at the time of writing), so the history shows it too.
+---
 
 ## Licence
 
-License: TBD. The choice is the author's: `tasks.md` X-2 holds a licence decision open
-alongside a patent decision. The rules accept any
-licence provided there is a LICENSE file, and require the repository to stay public through judging
-(PN-12, Q-014).
+**Business Source License 1.1** — see [LICENSE](LICENSE). Licensor: **7Block Labs**.
 
-## Status
-
-`tasks.md` is the honest version, and it is kept current. As of its 2026-11-14 note, **49 of M1's 69
-tasks are closed**: the deploy, `marginal-core`, the immutable KeyPolicy, clearing from a listing
-through a funded job, a key release, a priced verdict, settlement, delivery and a claim; the room's
-reproducible image and job loop; the worker, the sealing crypto, the appraisal pipeline and both
-appraisers; the judges; Sealed verdicts end to end; the three host services; and all seven pages of
-the web app, with the verifier and the SDK's browser crypto underneath them. `make check` passes with
-100% coverage on both sides, and `make web` builds the app.
-
-What is not done is the demo itself: the testnet deploy, the readiness run, the cross-contract test
-suite, the demo corpus and scripts, the SDK's remaining transaction builders. And, plainly:
-
-- **nothing has run on real hardware or on testnet.** No room has booted in a CVM, no key has been
-  derived through the real MPC network, no NEAR AI receipt is real, and nothing is deployed;
-- the pages that need a settled job were verified against a stub built from the view shapes they are
-  typed against, because the real KeyPolicy refuses a room without a real TDX quote, so a local
-  sandbox cannot produce one;
-- the ZK setup is a dev ceremony and must be redone before anyone relies on it.
-
-One thing this project never claims, in the product or anywhere else: that data is deleted or
-unlearned. A forget certificate is exactly as strong as the room code, the attestation chain and the
-hardware behind it. The claim is that inputs are **forgotten under attestation** — not proven, and
-not cryptographic deletion.
+The source is open to read, run and modify for any **non-production** purpose — evaluating it,
+judging it, running it locally, studying it. Production use needs a commercial licence until the
+Change Date (2030-11-15), when it converts to Apache 2.0. The hackathon's own rule is "Any. MIT is
+fine. Repo stays public through judging; add a LICENSE file" — BUSL satisfies that while leaving the
+product with its author.
