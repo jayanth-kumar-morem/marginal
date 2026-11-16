@@ -2,8 +2,9 @@
 # as `docker-compose.yaml` plus the web app, from the same image.
 #
 # Launch it from the Render dashboard: New > Blueprint, this repository, Blueprint path
-# `deploy/services/render.yaml`. The CLI can only check it: `render blueprints validate
-# deploy/services/render.yaml`.
+# `deploy/services/render.yaml`. The CLI can only check it (`render blueprints validate
+# deploy/services/render.yaml`): it cannot launch one, and `render services create` has no flag for
+# a Dockerfile path, so the same fields can also be sent to Render's API (`POST /v1/services`).
 #
 # **What the free plan costs you.** A free web service has no persistent disk and is stopped after
 # 15 minutes without a request. The gateway keeps sealed goods on its file system, so on `plan:
@@ -62,6 +63,12 @@ services:
         value: https://marginal-gateway.onrender.com
       - key: MARGINAL_COMPLIANCE_URL
         value: https://marginal-compliance.onrender.com
+      # The deploy manifest (accounts and public keys only), uploaded to this service as a Render
+      # secret file of this name. The policy version and the on-chain profile come from it: without
+      # it the pages say "policy v 0" whatever the chain says. Upload it again after gov changes
+      # the policy, because it is a snapshot.
+      - key: MARGINAL_MANIFEST
+        value: /etc/secrets/manifest.testnet-demo.json
 
   - type: web
     name: marginal-gateway
