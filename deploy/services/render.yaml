@@ -16,7 +16,13 @@
 # Its compose file names the operator agent's URL, so that URL is part of the room's measurement:
 # renaming `marginal-agent` means a new measurement for gov to approve.
 #
-# The contract accounts are the ones `deploy/profiles/testnet-demo.toml` creates under its deployer.
+# **Which deployment this serves.** `testnet-sim`, the seeded showcase: `keypolicy-sim`, RoomSealed,
+# and a simulated room that runs on the operator's own machine and reaches the chain through
+# `marginal-agent`. Every record it produces is flagged `Simulated`, on chain and on every page. To
+# serve the HDP instead (`testnet-demo`, a real attested room), change the account names and the
+# profile below to that deployment's, and drop the two MARGINAL_SIM_* variables.
+#
+# The contract accounts are the ones `deploy/profiles/testnet-sim.toml` creates under its deployer.
 # The host names assume Render gives each service the name asked for; if it appends a suffix because
 # a name is taken, correct the three URLs below.
 
@@ -28,9 +34,9 @@ envVarGroups:
       - key: MARGINAL_RPC_URL
         value: https://test.rpc.fastnear.com
       - key: MARGINAL_CLEARING
-        value: clearing.marginal-demo.testnet
+        value: clearing.marginal-sim.testnet
       - key: MARGINAL_KEYPOLICY
-        value: keypolicy.marginal-demo.testnet
+        value: keypolicy.marginal-sim.testnet
       # The services' default bind is loopback, which Render's proxy cannot reach.
       - key: MARGINAL_BIND
         value: 0.0.0.0
@@ -52,13 +58,13 @@ services:
       - key: MARGINAL_NETWORK
         value: testnet
       - key: MARGINAL_PROFILE
-        value: testnet-demo
+        value: testnet-sim
       - key: MARGINAL_TOKEN
-        value: musdc.marginal-demo.testnet
+        value: musdc.marginal-sim.testnet
       - key: MARGINAL_GOV
-        value: gov.marginal-demo.testnet
+        value: gov.marginal-sim.testnet
       - key: MARGINAL_FAUCET
-        value: faucet.marginal-demo.testnet
+        value: faucet.marginal-sim.testnet
       - key: MARGINAL_GATEWAY_URL
         value: https://marginal-gateway.onrender.com
       - key: MARGINAL_COMPLIANCE_URL
@@ -68,7 +74,7 @@ services:
       # it the pages say "policy v 0" whatever the chain says. Upload it again after gov changes
       # the policy, because it is a snapshot.
       - key: MARGINAL_MANIFEST
-        value: /etc/secrets/manifest.testnet-demo.json
+        value: /etc/secrets/manifest.testnet-sim.json
 
   - type: web
     name: marginal-gateway
@@ -99,9 +105,15 @@ services:
       - key: MARGINAL_GATEWAY_URL
         value: https://marginal-gateway.onrender.com
       - key: MARGINAL_AGENT_ACCOUNT
-        value: agent.marginal-demo.testnet
-      # The agent's function-call key, from `deploy/.keys/testnet-demo.json` once the deploy has run.
+        value: agent.marginal-sim.testnet
+      # The agent's key, from `deploy/services/.env.testnet-sim` once the deploy has run.
       - key: MARGINAL_AGENT_KEY
+        sync: false
+      # What a simulated room claims in place of a quote (`[room_policy]` in the profile, written to
+      # the same env file). Only a deployment with `keypolicy-sim` accepts a room that claims them.
+      - key: MARGINAL_SIM_MEASUREMENT
+        sync: false
+      - key: MARGINAL_SIM_PPID
         sync: false
       # Optional ([P-2]). Without it the judges are simulated and flagged on chain.
       - key: MARGINAL_NEARAI_KEY
@@ -118,7 +130,7 @@ services:
     healthCheckPath: /v1/health
     envVars:
       - fromGroup: marginal-chain
-      # The two seeds from `deploy/services/.env.testnet-demo`. They must be the ones whose public
+      # The two seeds from `deploy/services/.env.testnet-sim`. They must be the ones whose public
       # keys the profile carries, or clearing refuses every credential this service signs.
       - key: MARGINAL_ISSUER_SEED
         sync: false
