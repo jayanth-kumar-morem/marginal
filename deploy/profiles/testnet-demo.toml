@@ -54,7 +54,8 @@ allowed_identities = []
 mpc = "v1.signer-prod.testnet"
 ckd_domain_id = 2
 dcap_verifier = "tee-verifier-2026-11-02.testnet"
-# No `simulated_rooms` here, ever: the validator and deploy.ts both refuse it off the sandbox.
+# No `simulated_rooms` here, ever: off the sandbox the validator and deploy.ts both refuse it in any
+# profile not named `*-sim`, and this is the HDP. The seeded showcase is `testnet-sim`.
 
 [room_policy]
 # Paste the real platforms here, one per machine: `ppid` is the 16-byte PPID (32 lower-case hex) from

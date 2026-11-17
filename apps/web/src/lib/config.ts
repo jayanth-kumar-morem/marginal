@@ -65,10 +65,11 @@ function text(value: unknown, fallback: string): string {
 /**
  * Which key-release mode a profile's listings use, from SDD §2.7's profile table.
  *
- * `Ckd` is the real mode and the answer everywhere but two profiles: it needs the MPC signer
+ * `Ckd` is the real mode and the answer everywhere but three profiles: it needs the MPC signer
  * contract, which exists on testnet and mainnet. `local` and `sandbox` have no MPC network to
  * call, so the table gives them the `RoomSealed` fallback (§3.12.7) — the only mode a throwaway
- * node can actually run end to end.
+ * node can actually run end to end. `testnet-sim` has the network but not the room: MPC CKD
+ * releases a key to an attested room, and a simulated room has no attestation to release it to.
  *
  * An unknown profile, or a manifest that carries no profile at all, gets `Ckd`. The mode is a
  * promise to the seller about who can ever open the good, and the weaker promise is never the safe
@@ -76,7 +77,7 @@ function text(value: unknown, fallback: string): string {
  * visible, whereas a RoomSealed listing nobody asked for is bound to one room forever.
  */
 export function keyModeFor(profile: string): KeyMode {
-  return profile === "sandbox" || profile === "local" ? "RoomSealed" : "Ckd";
+  return profile === "sandbox" || profile === "local" || profile === "testnet-sim" ? "RoomSealed" : "Ckd";
 }
 
 /**

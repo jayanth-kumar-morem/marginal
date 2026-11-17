@@ -1,0 +1,82 @@
+# Profile: testnet-sim. The seeded showcase on NEAR testnet: the real clearing and token, with
+# `keypolicy-sim`, so a room registers without a TDX quote. **Nothing here proves an attestation.**
+# Every room, job and settlement it produces is flagged `Simulated` on chain and in the UI, and the
+# profile's name is in clearing's own `config()`, so no record can be read as the HDP's.
+# The HDP is `testnet-demo`: real MPC CKD and real quote verification, and never this.
+profile = "testnet-sim"
+network = "testnet"
+chain_id = "testnet"
+rpc = ["https://test.rpc.fastnear.com"]
+
+[accounts]                            # created as <name>.<deployer>
+# Its key is in ~/.near-credentials/testnet/<deployer>.json (or $NEAR_DEPLOYER_KEY). It needs
+# 19 NEAR: up.sh checks before creating anything.
+deployer = "marginal-sim.testnet"
+gov = "gov"
+faucet = "faucet"
+token = "musdc"
+clearing = "clearing"
+keypolicy = "keypolicy"
+agent = "agent"                       # the operator agent signs with this one
+
+[hdp]
+gov_profile = "demo"
+cooling_blocks = 0
+challenge_window_secs = 600
+rules_enabled = ["R1"]
+asset_classes_enabled = ["Knowledge", "Dataset"]
+
+# The same appraiser and fee split as the other two profiles: they are what the appraiser and the
+# split are, not a convenience of this one.
+[clearing]
+appraisers = [{ id = "knowledge", version = 1, formula = "KnowledgeV1", compute_fee = "1000000", enabled = true }]
+fees = { clearing_fee_buyer_bps = 50, clearing_fee_seller_bps = 100, treasury_bps = 6000, operator_pool_bps = 3000, assurance_pool_bps = 1000 }
+sealed_verdicts = true
+# The compliance service's own public keys. The seeds that produce exactly these two live in
+# `deploy/services/.env.testnet-sim` (mode 0600, gitignored): **changing a seed invalidates every
+# credential issued under it**.
+issuer_key = "b7da22b17ece5d902ef8fdc570895160a6544136bf19c34c8189e8b5d1388692"
+compliance_key = "4bb131ff19c337154dcef4bd521f24d646066c4a715675a40717b3a1efec4b79"
+# No NEAR AI signer ([P-2]), so every judge factor is simulated and flagged on chain.
+
+[services]
+# Who the compliance service may issue an identity credential to (SDD §3.20): the seeded buyers.
+allowed_identities = [
+  "harrowmere-capital.marginal-sim.testnet",
+  "tolgarth-partners.marginal-sim.testnet",
+  "wyndleby-asset-mgmt.marginal-sim.testnet",
+  "brannoch-credit.marginal-sim.testnet",
+  "eskerfield-macro.marginal-sim.testnet",
+  "ormskell-family-office.marginal-sim.testnet",
+  "pendrake-insurance.marginal-sim.testnet",
+  "lorimont-treasury.marginal-sim.testnet",
+  "quenby-pension.marginal-sim.testnet",
+  "strathmoor-ventures.marginal-sim.testnet",
+]
+
+[keypolicy]                           # fixed forever at init (SDD §3.12.2)
+mpc = "v1.signer-prod.testnet"        # never called: a simulated room's listings are RoomSealed
+ckd_domain_id = 2
+dcap_verifier = "tee-verifier-2026-11-02.testnet"   # never called: no quote is ever presented
+# Deploys `keypolicy-sim`. Off the sandbox the validator and deploy.ts allow this only in a profile
+# whose name ends in `-sim`, because that name is what clearing records and the UI shows.
+simulated_rooms = true
+
+# The same **obviously fake** values as the sandbox: no real quote can produce them, and
+# `keypolicy-sim` is the only build that accepts a room claiming them.
+[room_policy]
+platforms = [
+  # "simulatedfakeppi" in ASCII: 16 bytes, which is what a PPID is.
+  { ppid = "73696d756c6174656466616b65707069", operator = "agent.marginal-sim.testnet", cap_per_epoch = "1000000000000" },
+]
+measurement_sets = [
+  { id = "simulated-fake@0.0.0", source_tag = "simulated; no CVM produced this", members = [
+    { mrtd = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+      rtmr0 = "0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de0badc0de",
+      rtmr1 = "f00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeedf00dfeed",
+      rtmr2 = "cafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabecafebabe",
+      compose_hash = "decafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbaddecafbad",
+      key_provider_digest = "feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface",
+      gpu_policy_hash = "" },           # "" is null: a CPU room (Kcpu) has no GPU policy
+  ] },
+]

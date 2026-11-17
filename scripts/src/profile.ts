@@ -117,7 +117,7 @@ export interface Profile {
     dcap_verifier: string;
     /**
      * Deploy `keypolicy-sim` instead of KeyPolicy, so a room can register with no quote at all
-     * (SDD §6.1). Allowed on the sandbox network only, and refused everywhere else.
+     * (SDD §6.1). Allowed on the sandbox, and elsewhere only where {@link simulatedAllowed} says.
      */
     simulated_rooms: boolean;
   };
@@ -311,6 +311,21 @@ function enumList<T extends string>(o: Record<string, unknown>, k: string, path:
   return v as T[];
 }
 
+/** Why {@link simulatedAllowed} is the rule, in the words both refusals end with. */
+export const SIMULATED_RULE =
+  "the name is recorded on chain and shown on every page, so a deployment that admits unproven rooms has to say so in it";
+
+/**
+ * Whether a profile may deploy `keypolicy-sim` (SDD §2.7, §6.1). The sandbox always may: nothing
+ * there is real. On a public network only a profile whose name ends in `-sim` may, because the name
+ * is what clearing's `config()` records and what the UI's banner reads back — so the HDP profile
+ * (`testnet-demo`) can never carry a simulated room, and a deployment that does cannot be mistaken
+ * for it.
+ */
+export function simulatedAllowed(profile: string, network: string): boolean {
+  return network === "sandbox" || profile.endsWith("-sim");
+}
+
 export function validateProfile(raw: unknown): Profile {
   const r = obj(raw, "profile");
   const network = str(r, "network", "profile");
@@ -325,12 +340,13 @@ export function validateProfile(raw: unknown): Profile {
   const rp = obj(r["room_policy"], "room_policy");
   const platforms = list(rp, "platforms", "room_policy").map((x, i) => platformEntry(x, `room_policy.platforms[${i}]`));
   const sets = list(rp, "measurement_sets", "room_policy").map((x, i) => measurementSet(x, `room_policy.measurement_sets[${i}]`));
-  // A room that proves nothing must never reach a real network. `deploy.ts` refuses it a second
-  // time where it picks the wasm, and the contract a third: `sim-attestation` + `mainnet` is a
-  // `compile_error!`. This is the first and cheapest of the three.
+  // A room that proves nothing must never pass for one that proved something. `deploy.ts` refuses
+  // it a second time where it picks the wasm, and the contract a third: `sim-attestation` +
+  // `mainnet` is a `compile_error!`. This is the first and cheapest of the three.
   const simulated = flag(k, "simulated_rooms", "keypolicy");
-  if (simulated && network !== "sandbox")
-    fail(`keypolicy.simulated_rooms is allowed on the sandbox network only, not ${network}: simulated rooms must never reach testnet or mainnet`);
+  const name = str(r, "profile", "profile");
+  if (simulated && !simulatedAllowed(name, network))
+    fail(`keypolicy.simulated_rooms on ${network} needs a profile named *-sim, not ${name}: ${SIMULATED_RULE}`);
   // A simulated room claims a measurement and a platform rather than proving them, so the profile
   // has to say which. Without both, `register_room_simulated` would be refused by the registry.
   if (simulated && (sets.length === 0 || platforms.length === 0))
@@ -345,7 +361,7 @@ export function validateProfile(raw: unknown): Profile {
   for (const [n, v] of subs) if (`${v}.${deployer}`.length > 64) fail(`accounts.${n}: ${v}.${deployer} is longer than 64 characters`);
   const sub = Object.fromEntries(subs) as Record<(typeof subs)[number][0], string>;
   return {
-    profile: str(r, "profile", "profile"),
+    profile: name,
     network,
     chain_id: str(r, "chain_id", "profile"),
     rpc: rpc as string[],

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# One command deploys a profile: ./deploy/scripts/up.sh <sandbox|testnet-demo> [--once]
+# One command deploys a profile: ./deploy/scripts/up.sh <sandbox|testnet-demo|testnet-sim> [--once]
 # Order: token -> clearing -> KeyPolicy (created keyless) -> seed room policy -> write manifest.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,6 +17,8 @@ if [ "$profile" != "sandbox" ]; then
   # Real networks get exactly the committed source: a reproducible build, every time.
   echo "reproducible contract build for $profile (make wasm)"
   make wasm
+  # A `*-sim` profile deploys keypolicy-sim in KeyPolicy's place, which `make wasm` does not build.
+  if grep -Eq '^simulated_rooms *= *true' "deploy/profiles/$profile.toml"; then make wasm-sim; fi
 elif [ ! -f target/near/musdc/musdc.wasm ] || [ ! -f target/near/clearing/clearing.wasm ] ||
      [ ! -f target/near/keypolicy/keypolicy.wasm ] || [ ! -f target/near/keypolicy-sim/keypolicy.wasm ]; then
   echo "no contract wasm yet; dev build for the sandbox (make wasm-dev)"

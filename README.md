@@ -118,9 +118,12 @@ seeding every usable chain needs — the appraiser, the fee table, the Groth16 v
 measurement set, the platform, the operator agent's account, and clearing's own storage entry on
 the settlement token. It ends with `manifest written:` and the node's URL. **Leave it running.**
 
-The sandbox profile deploys `keypolicy-sim` and prints `!!! SIMULATED ATTESTATION` to say so. That
-build is refused on any network but a local sandbox, by the profile validator, by the deploy script,
-and by the contract itself (`sim-attestation` + `mainnet` is a `compile_error!`).
+The sandbox profile deploys `keypolicy-sim` and prints `!!! SIMULATED ATTESTATION` to say so. Off
+the sandbox that build is refused by the profile validator and by the deploy script unless the
+profile is named `*-sim` — the name is recorded in clearing's `config()` and shown on every page —
+and by the contract itself on mainnet (`sim-attestation` + `mainnet` is a `compile_error!`).
+`testnet-sim` is the one such profile: the seeded showcase, where every room and every settlement
+is flagged `Simulated`. `testnet-demo` never carries one.
 
 ### 5. Start the three host services
 

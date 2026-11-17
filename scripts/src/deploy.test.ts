@@ -81,13 +81,19 @@ test("a deploy that was asked to seed and seeded nothing is refused, not shipped
   );
 });
 
-test("simulated rooms are refused on any network but the sandbox, before a single byte is sent", async () => {
+test("simulated rooms off the sandbox are refused unless the profile's name says so, before a single byte is sent", async () => {
   const p = sandbox();
   const onTestnet = { ...p, network: "testnet" as const, profile: "pretend-testnet" };
   // The rpc URL is a closed port on purpose: reaching the network at all would be a failure.
   await assert.rejects(
     deployAll(onTestnet, { rpcUrl: "http://127.0.0.1:9", deployerKey: SANDBOX_KEY, wasmDir: "/nonexistent", circuitsDir: circuitsDir(repoRoot) }),
-    /profile pretend-testnet asks for simulated rooms on testnet: simulated rooms must never reach testnet or mainnet/,
+    /profile pretend-testnet asks for simulated rooms on testnet without being named \*-sim: the name is recorded on chain/,
+  );
+  // Named for what it is, the same profile gets past the guard and fails on the first thing after
+  // it instead: the wasm it would deploy, which is `keypolicy-sim`.
+  await assert.rejects(
+    deployAll({ ...onTestnet, profile: "pretend-sim" }, { rpcUrl: "http://127.0.0.1:9", deployerKey: SANDBOX_KEY, wasmDir: "/nonexistent", circuitsDir: circuitsDir(repoRoot) }),
+    /missing \/nonexistent\/musdc\/musdc\.wasm/,
   );
 });
 

@@ -53,10 +53,12 @@ The user's standing rules for every task:
 | `make e2e` | near-workspaces sandbox tests and the deploy end-to-end (rebuilds stale dev wasm first) | after contract or deploy changes |
 | `make web` | The web app's real build (`next build`), plus the three workspace packages it imports. Not in `make check`: `pnpm build` typechecks the app in a second, a Next build costs a minute and fetches the fonts | before a deploy; `make ci` runs it |
 | `make wasm` | Reproducible docker builds (needs Docker and a clean, committed tree) | before any testnet deploy |
+| `make wasm-sim` | `keypolicy-sim` alone, a plain build (`up.sh` runs it after `make wasm` for a `*-sim` profile) | a `testnet-sim` deploy |
 | `make props` | marginal-core property tests at 10⁶ cases each (~40 s) | after pricing or leakage changes |
 | `make ci` | `check` + `props` + `wasm` + `e2e`: the full gate | before a deploy or closing an epic |
 | `deploy/scripts/up.sh sandbox [--once]` | Local node, full deploy, manifest | demos, manual tests |
 | `deploy/scripts/up.sh testnet-demo` | Testnet deploy (reproducible build, clean tree only) | E15.1 |
+| `deploy/scripts/up.sh testnet-sim` | The showcase's testnet deploy: the same, with `keypolicy-sim` | seeding the public demo |
 
 There is **no hosted CI**. `.githooks/pre-commit` runs `make check-rust` and/or `make check-node`, depending on which paths are staged. It also blocks secret keys, `deploy/.keys/`, manifests and `.env` files. The hook checks the working tree, so stage everything you mean to commit. Never commit with `--no-verify`. If the hook fails, fix the cause.
 
@@ -91,7 +93,7 @@ SDD §3.1 is the layout authority. Keep to it.
 | `room/`, `services/{common,gateway,operator-agent,compliance}`, `apps/web`, `sdk/ts`, `verifiers/replay-ts` | TypeScript workspace packages | `indexer`, `relayer`, `attester`, `replay-py`, `cli/` and `sim/` are M2. `services/common` is the HTTP plumbing the three services share (E11.1); it holds no policy |
 | `apps/web/src/{app,components,lib}` | The Next.js app (App Router). `app/(app)/*` are the pages, `app/api/*` the route handlers, `components/ui/**` is **vendored** shadcn/Magic UI/21st.dev code kept as it ships, and `lib/*.ts` is every piece of logic worth testing | Started from `7blocklabs-products/eu-ai-act-gov/app` (E13), which is where the theme and the 88 `components/ui` files come from |
 | `scripts/` | Deploy tooling (`@marginal/scripts`) behind `deploy/scripts/up.sh` | Not in §3.1; kept as the deploy package. `paths.ts` and `chain.ts` are the shared helpers, `cli.ts` is the command, `up.ts` the entry point, `testing.ts` test support |
-| `deploy/{profiles,scripts,services}` | Profiles, `up.sh`, and the host services' Dockerfile, docker compose and `render.yaml` (the same processes as a Render Blueprint). Generated manifests and `.keys/` are gitignored | Only `sandbox` and `testnet-demo` profiles in M1. `deploy/services` is **not** the room's image: that one is `room/image/`, and it is the one that is measured. Its image builds `core.wasm` itself and also carries the web app, so a host that builds from git needs nothing from the working tree |
+| `deploy/{profiles,scripts,services}` | Profiles, `up.sh`, and the host services' Dockerfile, docker compose and `render.yaml` (the same processes as a Render Blueprint). Generated manifests and `.keys/` are gitignored | Only `sandbox`, `testnet-demo` and `testnet-sim` profiles in M1. `deploy/services` is **not** the room's image: that one is `room/image/`, and it is the one that is measured. Its image builds `core.wasm` itself and also carries the web app, so a host that builds from git needs nothing from the working tree |
 | `SDD.md`, `SPEC.md`, `tasks.md`, `CLAUDE.md` | Docs at the root | §3.1 puts SPEC and SDD in `docs/`; new docs (`demo-readiness.md`, runbooks) go in `docs/` |
 | `*-notes/`, `MOONSHOT.md`, `*-template.md`, `SPEC-PROMPT.md` | Research and planning inputs | Read-only; do not add code here |
 
@@ -158,8 +160,9 @@ The one implementation of the data model, errors, pricing and leakage arithmetic
 
 ## Deploys and secrets
 
-- Profiles: `sandbox` (local, simulated elements allowed) and `testnet-demo` (HDP: real MPC CKD, real quote verification). There is no mainnet profile in M1.
-- **The whole demo runs locally** (E14.4): [`docs/local-demo.md`](docs/local-demo.md) is the runbook. The sandbox profile deploys **`keypolicy-sim`** (`simulated_rooms = true`, refused on any other network by the validator and again by `deploy.ts`), the room registers with no TDX (`MARGINAL_SIMULATED_ATTESTATION=1`), key release is **`RoomSealed`** rather than MPC CKD (SDD §3.12.7 and the §2.7 profile table), and the browser signs with a **sandbox-only dev key** — no browser wallet knows a local node. Every one of those four is flagged on chain and in the UI, and none of them makes §1.6's "ready on testnet from a fresh browser" true.
+- Profiles: `sandbox` (local, simulated elements allowed), `testnet-demo` (HDP: real MPC CKD, real quote verification) and `testnet-sim` (the seeded showcase on testnet: `keypolicy-sim`, RoomSealed, a simulated room on the operator's machine, every record flagged). There is no mainnet profile in M1.
+- **Simulated rooms off the sandbox need a profile named `*-sim`** (`simulatedAllowed` in `scripts/src/profile.ts`, checked by the validator and again by `deploy.ts`). The name is what clearing's `config()` records and the UI's banner shows. Never set `simulated_rooms` in `testnet-demo`.
+- **The whole demo runs locally** (E14.4): [`docs/local-demo.md`](docs/local-demo.md) is the runbook. The sandbox profile deploys **`keypolicy-sim`** (`simulated_rooms = true`), the room registers with no TDX (`MARGINAL_SIMULATED_ATTESTATION=1`), key release is **`RoomSealed`** rather than MPC CKD (SDD §3.12.7 and the §2.7 profile table), and the browser signs with a **sandbox-only dev key** — no browser wallet knows a local node. Every one of those four is flagged on chain and in the UI, and none of them makes §1.6's "ready on testnet from a fresh browser" true.
 - **Changing a compliance seed invalidates every credential issued under it.** `deploy/services/.env.<profile>` (0600, gitignored) holds the seeds; the profile holds their public keys. The deploy preserves existing seeds and prints a `!!!` line naming the key to paste if the two ever disagree.
 - **Sub-accounts.** `up.sh` only does fresh deploys. Sub-accounts are `<name>.<deployer>`, and it refuses if any already exists.
 - **Testnet deploy guards.** A testnet deploy refuses a dirty tree and always rebuilds reproducibly. The manifest records the git commit and each contract's code hash.

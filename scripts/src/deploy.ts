@@ -5,7 +5,7 @@ import { Account, JsonRpcProvider, KeyPair, actions, baseEncode, type KeyPairStr
 import { call } from "@marginal/core-wasm";
 import { issuerKey } from "@marginal/compliance";
 import { NEAR, TERA, accountExists, borshBase64, view } from "./chain.js";
-import { fullAccounts, simEnv, type FeeTableEntry, type MeasurementSetEntry, type PlatformEntry, type Profile } from "./profile.js";
+import { SIMULATED_RULE, fullAccounts, simEnv, simulatedAllowed, type FeeTableEntry, type MeasurementSetEntry, type PlatformEntry, type Profile } from "./profile.js";
 
 export interface DeployContext {
   rpcUrl: string;
@@ -324,10 +324,10 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
 
   // The validator refuses this already; so does this, because a hand-edited profile, a caller that
   // builds a Profile itself or a future refactor must not be able to put a KeyPolicy that admits
-  // unproven rooms on a real network.
+  // unproven rooms on a public network under a name that does not say so.
   const simulated = p.keypolicy.simulated_rooms;
-  if (simulated && p.network !== "sandbox")
-    throw new Error(`profile ${p.profile} asks for simulated rooms on ${p.network}: simulated rooms must never reach testnet or mainnet`);
+  if (simulated && !simulatedAllowed(p.profile, p.network))
+    throw new Error(`profile ${p.profile} asks for simulated rooms on ${p.network} without being named *-sim: ${SIMULATED_RULE}`);
 
   const wasms = {
     musdc: readWasm(ctx.wasmDir, WASM.musdc),
@@ -338,7 +338,7 @@ export async function deployAll(p: Profile, ctx: DeployContext): Promise<{ manif
   };
   log(
     simulated
-      ? `!!! SIMULATED ATTESTATION: deploying ${WASM.keypolicySim}, which admits rooms that prove nothing (sandbox only, SDD §6.1)`
+      ? `!!! SIMULATED ATTESTATION: deploying ${WASM.keypolicySim}, which admits rooms that prove nothing (SDD §6.1)`
       : "attestation: the real keypolicy, which admits a room only against a verified TDX quote",
   );
 

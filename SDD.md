@@ -300,6 +300,7 @@ Interfaces below were verified against source code and live state on 2026-11-12 
 |---|---|---|---|---|---|---|---|---|
 | `local` | none (unit) | Simulated room process | `Simulated` | In-process | `SimJudge` | Mock ledger | Fixtures | None |
 | `sandbox` | near-workspaces | 1–3 simulated rooms (for k-of-n paths) | `Simulated` | RoomSealed | `SimJudge` | `musdc` | Test credentials | Test owner |
+| `testnet-sim` (showcase) | NEAR testnet | 1 simulated room process on the operator's machine | `Simulated` (`keypolicy-sim`; allowed off the sandbox only in a profile named `*-sim`, §6.2) | RoomSealed | `SimJudge` | `musdc` | Demo issuer key; real OFAC file | Dev account |
 | `testnet-demo` (**HDP**) | NEAR testnet | 1 × K-cpu TDX CVM (Phala Cloud dstack, `tdx.large`) | `OnChainDcap` via `tee-verifier-2026-11-02.testnet` | CKD (domain 2) | NEAR AI Cloud Qwen3.8-27B + GLM-5.3-Flash (opt-in) or labelled stand-in | `musdc`; live 1Click dry quote (not stored); Chain Signatures derivation | Demo issuer key; real OFAC file | 2-of-3 dev SputnikDAO; locks in minutes |
 | `mainnet-canary` | NEAR mainnet | ≥ 2 operators, TDX + CC GPU | `OnChainDcap` (own locked verifier) | CKD | Self-hosted (+ opt-in external) | Circle USDC; Intents-account payouts; Chain Signatures (stablecoin only) behind guard | Sumsub, TRM Labs, OFAC file | gov SputnikDAO 5-of-7; 7-day policy lock, 14-day code staging; security council 3-of-5 (deny-only) |
 | `production` | NEAR mainnet | Full fleet; v2 adds SEV-SNP and G-rooms | `OnChainDcap` (+ GPU corroboration) | CKD | Self-hosted | As canary, caps raised per §5 gates | As canary | As canary |
@@ -377,7 +378,7 @@ marginal/
 ├── sdk/ts/                         @marginal/sdk: sealing, tx builders, job watcher
 ├── cli/                            `marginal` CLI (seller, buyer, gov, debug)
 ├── sim/                            economic simulation, red-team harness (Sybil probing, injection corpora)
-├── deploy/                         profiles/{local,sandbox,testnet-demo,mainnet-canary}.toml, scripts/,
+├── deploy/                         profiles/{local,sandbox,testnet-sim,testnet-demo,mainnet-canary}.toml, scripts/,
 │                                   services/ (the host services' and web app's Dockerfile, docker compose,
 │                                   and render.yaml, the same processes as a Render Blueprint)
 ├── fixtures/                       vectors.json: test vectors that marginal-core, the room and replay-ts must all reproduce
@@ -1048,7 +1049,7 @@ SPEC §4.5.6's production fallback is a threshold KMS, not RoomSealed.
 
 **Other modes.**
 - **AttesterQuorum fallback.** Compiled in but disabled. k attesters run the same checks natively and sign an `AttestationClaim`. The attester set is fixed when KeyPolicy is initialised.
-- **Simulated mode.** Exists only in builds with `sim-attestation`. Those builds deploy as `keypolicy-sim`, and every record carries `mode = Simulated`. A build with both `sim-attestation` and `mainnet` fails with `compile_error!` (§6).
+- **Simulated mode.** Exists only in builds with `sim-attestation`. Those builds deploy as `keypolicy-sim`, and every record carries `mode = Simulated`. A build with both `sim-attestation` and `mainnet` fails with `compile_error!` (§6). On testnet the deploy tooling accepts it only in a profile named `*-sim` (`testnet-sim`, §2.7): the profile's name is in clearing's `config()`, so the records of a seeded showcase cannot be read as the HDP's.
 - **GPU evidence [v2].** NVIDIA evidence is bound to the same `report_data`. k attesters verify it with NRAS and post `registry.corroborate`, and dstack records a gpu-policy event in RTMR3. GPU confidential computing never counts as a separate vendor (SPEC §4.11).
 
 **Host (OI-3).**
@@ -1791,7 +1792,7 @@ These remain v1 and v2 gates (SPEC §8.15).
 | Feature | Crates / packages | Production | HDP (`testnet-demo`) | Effect |
 |---|---|---|---|---|
 | `mainnet` | contracts | on | off | Mainnet guards. `compile_error!` if combined with any `sim-*` feature. |
-| `sim-attestation` | keypolicy, room | **never** | off (on only in `local` and `sandbox`) | Simulated registration. Deploys under version string `keypolicy-sim`. |
+| `sim-attestation` | keypolicy, room | **never** | off (on only in `local`, `sandbox` and `testnet-sim`) | Simulated registration. Deploys under version string `keypolicy-sim`. The validator and `deploy.ts` refuse it off the sandbox in any profile not named `*-sim`. |
 | `sim-judge` | room | never | on, used only when no NEAR AI key is set; every factor flagged `Simulated` | LETHE-style stand-in signer |
 | `attester-quorum` | keypolicy | off | compiled in, disabled (fallback only) | Quorum registration path, attester set fixed at init |
 | `ckd` | keypolicy, room | on | **on** (domain 2 is live on testnet) | CKD key release |

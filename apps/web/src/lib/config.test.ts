@@ -103,6 +103,8 @@ test("the key-release mode is the profile's, with one environment override", () 
   assert.equal(keyModeFor("mainnet-canary"), "Ckd");
   assert.equal(keyModeFor("sandbox"), "RoomSealed");
   assert.equal(keyModeFor("local"), "RoomSealed");
+  // The showcase has the MPC network but no attested room to release a key to (SDD §2.7).
+  assert.equal(keyModeFor("testnet-sim"), "RoomSealed");
 
   // A manifest that says nothing about a mode — every manifest today — still works, and a
   // deployment nobody named is CKD rather than the weaker fallback.

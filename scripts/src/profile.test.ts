@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { fullAccounts, loadProfile, simEnv, validateProfile } from "./profile.js";
+import { fullAccounts, loadProfile, simEnv, simulatedAllowed, validateProfile } from "./profile.js";
 import { profilePath, repoRoot } from "./paths.js";
 import { sandboxProfile, setPath } from "./testing.js";
 
@@ -49,7 +49,7 @@ const rejected: [string, (raw: Record<string, unknown>) => unknown, RegExp][] = 
   ["an over-long sub-account", (r) => setPath(r, "accounts.clearing", "c".repeat(60)), /longer than 64/],
   ["room policy that is not a list", (r) => setPath(r, "room_policy.platforms", "x"), /room_policy.platforms must be a list/],
   // Simulated rooms: the one rule this profile section exists for.
-  ["simulated rooms on a testnet profile", (r) => setPath(setPath(r, "network", "testnet"), "rpc", ["https://x.example"]), /simulated rooms must never reach testnet or mainnet/],
+  ["simulated rooms on a testnet profile that is not named for them", (r) => setPath(setPath(r, "network", "testnet"), "rpc", ["https://x.example"]), /simulated_rooms on testnet needs a profile named \*-sim, not sandbox: the name is recorded on chain/],
   ["simulated rooms with no measurement set", (r) => setPath(r, "room_policy.measurement_sets", []), /simulated_rooms needs one room_policy.measurement_sets entry/],
   ["simulated rooms with no platform", (r) => setPath(r, "room_policy.platforms", []), /simulated_rooms needs one room_policy.measurement_sets entry/],
   ["simulated_rooms that is not a boolean", (r) => setPath(r, "keypolicy.simulated_rooms", "yes"), /keypolicy.simulated_rooms must be true or false/],
@@ -106,7 +106,7 @@ test("sub-account ids are qualified with the deployer", () => {
   assert.equal(a.agent, "agent.sandbox");
 });
 
-test("only the sandbox profile runs simulated rooms, and it is the only one with room policy", () => {
+test("simulated rooms run on the sandbox and on a profile named for them, and never on the HDP", () => {
   const sandbox = loadProfile(profilePath(repoRoot, "sandbox"));
   assert.equal(sandbox.keypolicy.simulated_rooms, true);
   assert.equal(sandbox.room_policy.measurement_sets.length, 1);
@@ -118,6 +118,19 @@ test("only the sandbox profile runs simulated rooms, and it is the only one with
   const testnet = loadProfile(profilePath(repoRoot, "testnet-demo"));
   assert.equal(testnet.keypolicy.simulated_rooms, false);
   assert.deepEqual(testnet.room_policy, { platforms: [], measurement_sets: [] });
+
+  // The showcase: on testnet, simulated, and named so. Its room policy is the same obvious fake.
+  const sim = loadProfile(profilePath(repoRoot, "testnet-sim"));
+  assert.equal(sim.network, "testnet");
+  assert.equal(sim.keypolicy.simulated_rooms, true);
+  assert.equal(sim.room_policy.platforms[0]?.operator, "agent.marginal-sim.testnet");
+  assert.deepEqual(sim.room_policy.measurement_sets[0]?.members, sandbox.room_policy.measurement_sets[0]?.members);
+
+  assert.equal(simulatedAllowed("sandbox", "sandbox"), true);
+  assert.equal(simulatedAllowed("testnet-sim", "testnet"), true);
+  assert.equal(simulatedAllowed("testnet-demo", "testnet"), false);
+  // Renaming the HDP profile's network does not get it through: only the name does.
+  assert.equal(simulatedAllowed("testnet-demo", "mainnet"), false);
 });
 
 test("every profile registers the knowledge appraiser and a fee split that adds up", () => {

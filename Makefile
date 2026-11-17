@@ -8,7 +8,7 @@ CONTRACTS := contracts/clearing contracts/keypolicy contracts/test-tokens/musdc
 TEST_CONTRACTS := contracts/test-mocks/mocks
 NODE := . $$HOME/.nvm/nvm.sh >/dev/null 2>&1 && nvm use >/dev/null 2>&1 || true
 
-.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core models props wasm wasm-dev web e2e ci
+.PHONY: hooks check check-rust check-node cov cov-rust cov-node ensure-wasm wasm-core models props wasm wasm-dev wasm-sim web e2e ci
 
 hooks:
 	git config core.hooksPath .githooks
@@ -92,8 +92,13 @@ wasm:
 	@for c in $(CONTRACTS); do echo "== reproducible build: $$c"; (cd $$c && cargo near build reproducible-wasm) || exit 1; done
 
 # Fast local build, same output paths. Sandbox only. Also builds the test doubles and keypolicy-sim.
-wasm-dev:
+wasm-dev: wasm-sim
 	@for c in $(CONTRACTS) $(TEST_CONTRACTS); do echo "== dev build: $$c"; (cd $$c && cargo near build non-reproducible-wasm --locked) || exit 1; done
+
+# `keypolicy-sim` on its own, which is all a `*-sim` profile needs on top of `make wasm`. It is a
+# plain build, not a reproducible one, on purpose: this contract admits rooms that prove nothing, so
+# there is no measurement for anyone to reproduce it against. The manifest still records its hash.
+wasm-sim:
 	@echo "== dev build: contracts/keypolicy (sim-attestation)"; (cd contracts/keypolicy && cargo near build non-reproducible-wasm --locked --features sim-attestation --out-dir ../../target/near/keypolicy-sim) || exit 1
 
 # The web app's real build. It is not part of `make check` on purpose: `pnpm build` typechecks every

@@ -58,7 +58,7 @@ allowed_identities = ["gov.sandbox", "buyer.sandbox"]
 mpc = "v1.signer-prod.testnet"        # never called in the sandbox; E3 tests use a mock MPC
 ckd_domain_id = 2
 dcap_verifier = "tee-verifier-2026-11-02.testnet"
-# Sandbox only, and refused by the validator and by deploy.ts on any other network: deploys
+# Refused by the validator and by deploy.ts off the sandbox unless the profile is named `*-sim`: deploys
 # `keypolicy-sim`, whose `register_room_simulated` admits a room that proves nothing (SDD §6.1).
 # A laptop has no TDX machine, so this is the only way to run the demo locally.
 simulated_rooms = true
