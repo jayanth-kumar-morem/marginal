@@ -4,7 +4,7 @@ import { Row, Rows } from '@/components/listings/detail-rows';
 import { LoadError } from '@/components/load-error';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { height, short, when } from '@/lib/format';
 import { RTMR3_EVENTS, loadRooms, modeNote } from '@/lib/rooms';
@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function RoomsPage() {
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   let rooms: Awaited<ReturnType<typeof loadRooms>> | Error;
   try {
     rooms = await loadRooms(chain, config.clearing, config.keypolicy);

@@ -6,6 +6,10 @@
  * anything else — zero, or a clock — is already in the past on a network that has run for a day.
  * This reads the final block's height from the RPC and keeps it fresh. A reading that is half a
  * minute old is fine, because what is issued is valid for an hour of blocks.
+ *
+ * `rpcUrl` may name several endpoints separated by commas, as it may for the agent and the web app:
+ * a free public RPC refuses a shared host without warning, and one refusal at start must not keep
+ * the service down.
  */
 
 /** How often the height is read again. */
@@ -28,9 +32,14 @@ export interface ChainHeightOptions {
 
 export function chainHeight(rpcUrl: string, options: ChainHeightOptions = {}): ChainHeight {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const urls = rpcUrl
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url !== "");
+  if (urls.length === 0) throw new Error("MARGINAL_RPC_URL names no endpoint");
   let last = 0;
-  const refresh = async (): Promise<number> => {
-    const response = await fetchImpl(rpcUrl, {
+  const read = async (url: string): Promise<number> => {
+    const response = await fetchImpl(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: "compliance", method: "block", params: { finality: "final" } }),
@@ -38,11 +47,22 @@ export function chainHeight(rpcUrl: string, options: ChainHeightOptions = {}): C
     const reply = (await response.json()) as { result?: { header?: { height?: unknown } } };
     const height = reply.result?.header?.height;
     if (typeof height !== "number" || !Number.isInteger(height) || height <= 0) {
-      throw new Error(`the RPC at ${rpcUrl} returned no block height`);
+      throw new Error(`the RPC at ${url} returned no block height`);
     }
-    // A height never goes backwards: an RPC that is behind must not shorten what is issued next.
-    last = Math.max(last, height);
-    return last;
+    return height;
+  };
+  const refresh = async (): Promise<number> => {
+    let failure: unknown;
+    for (const url of urls) {
+      try {
+        // A height never goes backwards: an RPC that is behind must not shorten what is issued next.
+        last = Math.max(last, await read(url));
+        return last;
+      } catch (error: unknown) {
+        failure = error;
+      }
+    }
+    throw failure;
   };
   const timer = setInterval(() => {
     void refresh().catch((error: unknown) => options.onError?.(error as Error));

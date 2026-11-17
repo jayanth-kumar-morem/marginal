@@ -6,7 +6,15 @@
  * something. That is why its key is a funded function-call key and not a full-access one, and why
  * this module can be as thin as it is.
  */
-import { Account, JsonRpcProvider, actions, type KeyPairString, type SerializedReturnValue } from "near-api-js";
+import {
+  Account,
+  FailoverRpcProvider,
+  JsonRpcProvider,
+  actions,
+  type KeyPairString,
+  type Provider,
+  type SerializedReturnValue,
+} from "near-api-js";
 
 /** What the agent needs of a chain, so a test can stand in for one. */
 export interface Relay {
@@ -41,8 +49,27 @@ function valueOf(outcome: { status: unknown }): unknown {
 }
 
 /** The real relay: one account, one provider. */
+/**
+ * The provider for `MARGINAL_RPC_URL`, which may name several endpoints separated by commas.
+ *
+ * One endpoint is used as it is. Several are tried in order, moving on whenever one refuses: a free
+ * public RPC answers 429 to a shared host within minutes of real use, and an agent that cannot
+ * reach the chain strands every job the room has finished. With a list, each endpoint is given two
+ * tries rather than the client's default dozen, so a refusal moves on in a second instead of
+ * holding the room's message for a minute.
+ */
+export function rpcProvider(rpcUrl: string): Provider {
+  const urls = rpcUrl
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url !== "");
+  if (urls.length === 0) throw new Error("MARGINAL_RPC_URL names no endpoint");
+  if (urls.length === 1) return new JsonRpcProvider({ url: urls[0] as string });
+  return new FailoverRpcProvider(urls.map((url) => new JsonRpcProvider({ url }, { retries: 2, wait: 200, backoff: 1.5 })));
+}
+
 export function nearRelay(rpcUrl: string, accountId: string, key: KeyPairString): Relay {
-  const provider = new JsonRpcProvider({ url: rpcUrl });
+  const provider = rpcProvider(rpcUrl);
   const account = new Account(accountId, provider, key);
   return {
     view<T>(contract: string, method: string, args: Record<string, unknown>): Promise<T> {

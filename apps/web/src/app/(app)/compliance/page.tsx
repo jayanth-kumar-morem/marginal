@@ -16,7 +16,7 @@ import { ScreeningLookup } from '@/components/compliance/screening-lookup';
 import { LoadError } from '@/components/load-error';
 import { call } from '@marginal/core-wasm';
 
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import {
   AUDIT_PAGE,
   checkAudit,
@@ -30,7 +30,11 @@ import { loadJobs } from '@/lib/jobs';
 import { loadListings } from '@/lib/listings';
 
 export const metadata = { title: 'Compliance' };
-/** Never cached: a control shown from a cache is a control nobody can rely on. */
+/**
+ * Never cached by Next: a control shown from a cache is a control nobody can rely on. Its views do
+ * come through `pageChain`, which keeps an answer for a few blocks so the audit walk does not spend
+ * a public RPC's allowance on every visit; the heads it compares are read in that same window.
+ */
 export const dynamic = 'force-dynamic';
 
 /** The one hash step, from the implementation the contract itself uses (SDD §3.10). */
@@ -39,7 +43,7 @@ const step: AuditStep = (prevHead, entry) =>
 
 export default async function CompliancePage() {
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   // `allSettled`, so one view that refuses does not blank the other two sections: a page that
   // cannot reach the chain should still say which part of it is missing.
   const [listings, jobs, audit] = await Promise.allSettled([

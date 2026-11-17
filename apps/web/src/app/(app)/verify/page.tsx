@@ -5,7 +5,7 @@ import { LoadError } from '@/components/load-error';
 import { ReplayAll } from '@/components/verify/replay-all';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { height, short, when } from '@/lib/format';
 import { loadJobs } from '@/lib/jobs';
@@ -17,7 +17,7 @@ export const dynamic = 'force-dynamic';
 
 export default async function VerifyPage() {
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   let jobs: Awaited<ReturnType<typeof loadJobs>> | Error;
   try {
     jobs = await loadJobs(chain, config.clearing);

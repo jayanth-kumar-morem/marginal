@@ -78,3 +78,29 @@ test("with no fetch of its own it uses the platform's", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("with several endpoints it asks the next when one refuses", async () => {
+  const asked: string[] = [];
+  const fetchImpl = (async (url: unknown) => {
+    asked.push(String(url));
+    if (String(url).includes("limited")) return new Response(JSON.stringify({ error: { message: "rate limit" } }), { status: 429 });
+    if (String(url).includes("down")) throw new Error("fetch failed");
+    return new Response(JSON.stringify(block(77)));
+  }) as typeof globalThis.fetch;
+  const chain = chainHeight(" http://limited.test , http://down.test,http://good.test,", { fetchImpl });
+  try {
+    assert.equal(await chain.refresh(), 77);
+    assert.deepEqual(asked, ["http://limited.test", "http://down.test", "http://good.test"]);
+  } finally {
+    chain.stop();
+  }
+
+  // When none answers, the last one's reason is the one reported.
+  const none = chainHeight("http://limited.test,http://down.test", { fetchImpl });
+  try {
+    await assert.rejects(() => none.refresh(), /fetch failed/);
+  } finally {
+    none.stop();
+  }
+  assert.throws(() => chainHeight(" , "), /MARGINAL_RPC_URL names no endpoint/);
+});

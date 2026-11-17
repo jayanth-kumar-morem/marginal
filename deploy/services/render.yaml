@@ -31,11 +31,12 @@ envVarGroups:
     envVars:
       - key: MARGINAL_CHAIN_ID
         value: testnet
-      # Not the profile's endpoint. FastNEAR's free tier answers 429 to a shared host: the web app
-      # makes a hundred views to draw `/listings`, and the agent relays every room message, so on
-      # Render both were refused within minutes. Any testnet RPC without that limit will do.
+      # Several endpoints, tried in turn. Every free public RPC answers 429 to a shared host after
+      # a few hundred calls a minute, and without an indexer one page here makes a hundred — so the
+      # web app, the agent and the compliance service each move on from an endpoint that refuses.
+      # One endpoint with an API key is the better answer once there is one.
       - key: MARGINAL_RPC_URL
-        value: https://near-testnet.drpc.org
+        value: https://test.rpc.fastnear.com,https://near-testnet.drpc.org,https://rpc.testnet.near.org,https://archival-rpc.testnet.fastnear.com
       - key: MARGINAL_CLEARING
         value: clearing.marginal-sim.testnet
       - key: MARGINAL_KEYPOLICY
@@ -93,6 +94,10 @@ services:
       # Not a disk: see the note at the top.
       - key: MARGINAL_BLOB_DIR
         value: /tmp/marginal/blobs
+      # One endpoint, not the group's list: the gateway's `/v1/replay` reads through the verifier's
+      # own client, which takes a single URL.
+      - key: MARGINAL_RPC_URL
+        value: https://test.rpc.fastnear.com
 
   - type: web
     name: marginal-agent

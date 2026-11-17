@@ -6,7 +6,7 @@ import { ListingSummary } from '@/components/appraise/listing-summary';
 import { LoadError } from '@/components/load-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { loadListing, statusNote } from '@/lib/listings';
 import type { ClearingConfig } from '@/lib/records';
@@ -30,7 +30,7 @@ export default async function AppraisePage({ params }: { params: Promise<{ id: s
   if (!Number.isInteger(listingId) || listingId < 1) notFound();
 
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   const loaded = await Promise.all([
     loadListing(chain, config.clearing, listingId),
     chain.view<ClearingConfig>(config.clearing, 'config'),

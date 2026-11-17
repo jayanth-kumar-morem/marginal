@@ -4,7 +4,7 @@ import { ListingsTable } from '@/components/listings/listings-table';
 import { LoadError } from '@/components/load-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { loadListings } from '@/lib/listings';
 
@@ -16,7 +16,7 @@ export default async function ListingsPage() {
   const config = loadConfig();
   let rows: Awaited<ReturnType<typeof loadListings>> | Error;
   try {
-    rows = await loadListings(chainClient(config.rpcUrl), config.clearing);
+    rows = await loadListings(pageChain(config.rpcUrl), config.clearing);
   } catch (error) {
     rows = error instanceof Error ? error : new Error(String(error));
   }

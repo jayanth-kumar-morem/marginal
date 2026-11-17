@@ -10,7 +10,7 @@ import { replayer, type Report } from "@marginal/replay-ts";
 
 // Relative, not `@/lib/…`: the coverage gate runs these tests with node from the repository root,
 // where tsx has no tsconfig to read the path alias from.
-import { chainClient, errorCode } from "../../../../lib/chain";
+import { errorCode, pageChain } from "../../../../lib/chain";
 import { loadConfig } from "../../../../lib/config.server";
 
 /** Answers a replay, or says why it could not. Exported so a test can call it with a `Request`. */
@@ -27,7 +27,7 @@ export async function GET(
     // Inside the try: a deployment with no manifest and no environment is a 502 like any other
     // reason the chain cannot be read, not a crashed route.
     const config = loadConfig();
-    const report: Report = await replayer(chainClient(config.rpcUrl), config.clearing)(id);
+    const report: Report = await replayer(pageChain(config.rpcUrl), config.clearing)(id);
     return Response.json(report);
   } catch (error) {
     // An unreachable chain is not a failed check: there is nothing to report either way.

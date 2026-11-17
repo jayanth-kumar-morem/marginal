@@ -9,7 +9,7 @@ import { JobStateBadge } from '@/components/listings/status-badge';
 import { LoadError } from '@/components/load-error';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { blockHeight, chainClient } from '@/lib/chain';
+import { blockHeight, pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { account, bits, height, short, tokens } from '@/lib/format';
 import { buckets, jobActions, loadJob, outcomeNote } from '@/lib/jobs';
@@ -25,7 +25,7 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   if (!Number.isInteger(jobId) || jobId < 1) notFound();
 
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   let loaded: Awaited<ReturnType<typeof loadJob>>;
   try {
     loaded = await loadJob(chain, config.clearing, jobId);

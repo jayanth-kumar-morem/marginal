@@ -7,7 +7,7 @@ import { StatusBadge } from '@/components/listings/status-badge';
 import { LoadError } from '@/components/load-error';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { loadListing, loadPins, pinNote, priceLine, statusNote, teaser } from '@/lib/listings';
 import { account, height, percent, short, tokens } from '@/lib/format';
@@ -21,7 +21,7 @@ export default async function ListingPage({ params }: { params: Promise<{ id: st
   if (!Number.isInteger(listingId) || listingId < 1) notFound();
 
   const config = loadConfig();
-  const chain = chainClient(config.rpcUrl);
+  const chain = pageChain(config.rpcUrl);
   let loaded: Awaited<ReturnType<typeof loadListing>>;
   try {
     loaded = await loadListing(chain, config.clearing, listingId);

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { JobsTable } from '@/components/jobs/jobs-table';
 import { LoadError } from '@/components/load-error';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { chainClient } from '@/lib/chain';
+import { pageChain } from '@/lib/chain';
 import { loadConfig } from '@/lib/config.server';
 import { loadJobs } from '@/lib/jobs';
 
@@ -14,7 +14,7 @@ export default async function JobsPage() {
   const config = loadConfig();
   let rows: Awaited<ReturnType<typeof loadJobs>> | Error;
   try {
-    rows = await loadJobs(chainClient(config.rpcUrl), config.clearing);
+    rows = await loadJobs(pageChain(config.rpcUrl), config.clearing);
   } catch (error) {
     rows = error instanceof Error ? error : new Error(String(error));
   }

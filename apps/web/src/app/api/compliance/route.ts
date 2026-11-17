@@ -15,7 +15,7 @@ import { call } from "@marginal/core-wasm";
 // Relative, not `@/`: these are the only imports in the app that both Next and a bare `node --test`
 // have to resolve. `pnpm cov` runs the tests from the repository root, where tsx finds no tsconfig
 // to read the alias from, so an aliased import here makes this route untestable and ungated.
-import { chainClient } from "../../../lib/chain";
+import { pageChain } from "../../../lib/chain";
 import {
   handleRequest,
   type AuditStep,
@@ -33,7 +33,7 @@ function deps(): ComplianceDeps {
   const config = loadConfig();
   return {
     config,
-    chain: chainClient(config.rpcUrl),
+    chain: pageChain(config.rpcUrl),
     step,
     fetchImpl: globalThis.fetch,
     decodeDelivery: (bytes) => call("delivery_decode", { bytes }) as SealedDelivery,
