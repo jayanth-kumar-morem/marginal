@@ -19,7 +19,7 @@ export const JUDGE_SCALE = 11;
 /**
  * Below this need-similarity the document is irrelevant (factor 0, so the floor); above the upper
  * bound it is wholly relevant. The band between them is what makes the simulated factor vary at
- * all, and the numbers are LETHE's.
+ * all, and the numbers are the v0 thresholds.
  */
 export const SIM_LOW = 0.15;
 export const SIM_HIGH = 0.6;
@@ -39,7 +39,7 @@ export function simJudge(embedder: Embedder, model = "sim/need-similarity"): Jud
         return { model_id: model, factor_bps: 0, proof: { Simulated: { signer: SIM_SIGNER } } };
       }
       const [need, ...good] = await embedder.embed([task.need, ...sentences]);
-      // The three closest claims, as LETHE's stand-in did: one lucky sentence should not carry it.
+      // The three closest claims: one lucky sentence should not carry it.
       const top = good
         .map((vector) => similarity(need as Float32Array, vector))
         .sort((a, b) => b - a)

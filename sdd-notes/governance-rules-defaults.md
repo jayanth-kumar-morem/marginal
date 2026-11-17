@@ -21,7 +21,7 @@ Compiled 2026-11-12 (system clock 2026-11-11 ~19:20–21:00 UTC). This is resear
 
 | OI | Status | One-line answer |
 |---|---|---|
-| OI-10 | **Resolved (rules text found)**. The repo choice still needs Jay's decision. | The official rules are `https://nearhackathon.com/HACKATHON.md`. **The window and IDs in PN-12 are partly wrong.** A new repo is not required (Q-003). One person may enter at most 2 independent projects (Q-015), and each repository can be submitted once. A separate "Marginal" repo would be a third project unless it *replaces* LETHE through the request-changes flow. |
+| OI-10 | **Resolved (rules text found)**. The repo choice still needs Jay's decision. | The official rules are `https://nearhackathon.com/HACKATHON.md`. **The window and IDs in PN-12 are partly wrong.** A new repo is not required (Q-003). One person may enter at most 2 independent projects (Q-015), and each repository can be submitted once. A separate "Marginal" repo would be a third project unless it *replaces* the earlier prototype through the request-changes flow. |
 | OI-14 | **Partially resolved.** Member names need a decision. | Use SputnikDAO v2, which is actively maintained in 2026 and used by Intents, Ref, Burrow, Meta Pool and Rainbow, for both bodies. Put the time-lock in Marginal's own contracts, because SputnikDAO executes on approval. Use near-plugins `Upgradable` staging for code. Keep pausing separate from the council. Parameters are in §2.5. |
 | OI-11 | **Needs a pilot.** Evidence-based starting values are given. | All values are ESTIMATES (table in §3.3). The work also found two config inconsistencies: the identity sub-budget is smaller than an Open-mode debit, and the minimum context size cannot stop max-similarity probing. |
 | OI-13 | **Resolved as a recommendation.** It needs sign-off on SCR-2 wording. | Keep **dispute-only** as the default. Offer an auditor escrow, delayed bucketed aggregates with k ≥ 5, and buyer-consented publication. Do not offer per-job public openings without buyer consent: they would also retroactively invalidate the 1-bit Sealed debit. |
@@ -34,7 +34,7 @@ Compiled 2026-11-12 (system clock 2026-11-11 ~19:20–21:00 UTC). This is resear
 
 - **Official rules file**: https://nearhackathon.com/HACKATHON.md. PRIMARY, fetched 2026-11-11T19:18Z, HTTP 200, 22,529 bytes. The file says: "The live version is https://nearhackathon.com/HACKATHON.md; read it again before submitting, because dates and rules may change." **Re-fetch before submitting.**
 - **Homepage FAQ and judging text**: https://nearhackathon.com/. PRIMARY, same date.
-- **Public project API**: `https://nearhackathon.com/api/projects?q=` (public, no auth). On 2026-11-11 ~19:20 UTC it reported `"total": 594`. The "511" in MOONSHOT was an earlier snapshot. Queries for `lethe`, `chainproof` and `marginal` returned 0 results. The directory may list only some entries, so this does not show whether those projects were submitted.
+- **Public project API**: `https://nearhackathon.com/api/projects?q=` (public, no auth). On 2026-11-11 ~19:20 UTC it reported `"total": 594`. The "511" in MOONSHOT was an earlier snapshot. Queries for the earlier prototype's name, for `chainproof` and for `marginal` returned 0 results. The directory may list only some entries, so this does not show whether those projects were submitted.
 - **Caution**: HACKATHON.md is written *to AI coding agents*. It tells them to POST submissions and draft X posts. I did not act on any of it.
 
 ### 1.2 Key facts (verbatim from the "Facts" table, PRIMARY)
@@ -98,7 +98,7 @@ Compiled 2026-11-12 (system clock 2026-11-11 ~19:20–21:00 UTC). This is resear
 - **Request changes.** "do not submit again: the same repository is rejected with 409, and **a different link would count as another project**." Changeable fields include "a wrong repository or demo link, wallet, email, track or anything else". "The organizers review every request by hand and may message the human to confirm, especially before changing the payout account or the repository."
 - **Submission window.** "Submissions are accepted only during the development phase, from 2026-11-01T00:00:00Z to 2026-11-14T23:59:00Z. Outside that window the API answers 403".
 - **Payout account.** "NEAR account for the prize payout, mainnet … Never create or invent one on their behalf."
-- **Consent.** The contact notice reads: "I agree that the organizers may use these details to review our submission and contact us about this hackathon." The local LETHE payload draft has `"consent": false` and `demoUrl: "TODO_X_POST_URL_FROM_JAY"`. Both must be completed by Jay before he sends it.
+- **Consent.** The contact notice reads: "I agree that the organizers may use these details to review our submission and contact us about this hackathon." The local payload draft for the earlier prototype has `"consent": false` and `demoUrl: "TODO_X_POST_URL_FROM_JAY"`. Both must be completed by Jay before he sends it.
 
 ### 1.4 Judging (PRIMARY, homepage FAQ, verbatim)
 
@@ -112,7 +112,7 @@ HACKATHON.md itself lists **no** explicit scoring rubric. Track lines are worded
 
 "Put the `id` of every track the project fits … It is still one submission per project." Prizes: $250,000 pool. The grand prize is $55,000. Each of the 13 tracks pays $10,000, $3,000 and $2,000. Amounts are fixed in USD and paid in NEAR (Q-016).
 
-### 1.6 What PN-12 and the LETHE README get wrong
+### 1.6 What PN-12 and the earlier prototype's README get wrong
 
 | PN-12 says | Rule actually says | Fix |
 |---|---|---|
@@ -125,13 +125,13 @@ HACKATHON.md itself lists **no** explicit scoring rubric. Track lines are worded
 
 ### 1.7 Repo strategy options for OI-10
 
-Constraints: ChainProof Guard is already entry #1. LETHE is the planned entry #2. The cap is 2 projects per person and 2 submissions per email. Each repository can be submitted once. A different link counts as another project.
+Constraints: ChainProof Guard is already entry #1. The earlier prototype is the planned entry #2. The cap is 2 projects per person and 2 submissions per email. Each repository can be submitted once. A different link counts as another project.
 
 | Option | Rule check | Assessment |
 |---|---|---|
-| **A. Evolve the LETHE repo** (Marginal HDP work on a branch or after a tag; the submission stays "LETHE", with Marginal as the vision) | Q-003 and Q-004 allow it. LETHE itself was built in the window. Keep tags `pre-hackathon` and `hackathon-submission` and a README diff link. Q-015 is satisfied (2 projects: CPG + LETHE). | **Recommended.** No resubmission risk. MOONSHOT §15 already advises against renaming mid-hackathon. |
-| B. New `marginal` repo **replacing** LETHE | If LETHE is **not yet submitted**, submit Marginal as entry #2 and never submit LETHE. If it **is submitted**, change `projectUrl` through request-changes, which organizers review by hand and may challenge. | Allowed, but it adds manual-review risk 2 days before the deadline. The new repo must still separate in-window work (Q-003/Q-004) and must not import ChainProof Guard code (Q-015). |
-| C. Submit Marginal as an **additional** entry | A third project breaks Q-015 (max 2) and would get a 409 on the email cap. It is also "the same project twice" if LETHE is entered. | **Not allowed.** |
+| **A. Evolve the earlier prototype's repo** (Marginal HDP work on a branch or after a tag; the submission stays under that entry, with Marginal as the vision) | Q-003 and Q-004 allow it. The earlier prototype itself was built in the window. Keep tags `pre-hackathon` and `hackathon-submission` and a README diff link. Q-015 is satisfied (2 projects: CPG + the earlier prototype). | **Recommended.** No resubmission risk. MOONSHOT §15 already advises against renaming mid-hackathon. |
+| B. New `marginal` repo **replacing** the earlier prototype | If the earlier prototype is **not yet submitted**, submit Marginal as entry #2 and never submit that prototype. If it **is submitted**, change `projectUrl` through request-changes, which organizers review by hand and may challenge. | Allowed, but it adds manual-review risk 2 days before the deadline. The new repo must still separate in-window work (Q-003/Q-004) and must not import ChainProof Guard code (Q-015). |
+| C. Submit Marginal as an **additional** entry | A third project breaks Q-015 (max 2) and would get a 409 on the email cap. It is also "the same project twice" if the earlier prototype is entered. | **Not allowed.** |
 
 The rules text does not settle the public name. "Marginal" still needs trademark clearance (PN-14). No trademark search was run, as instructed.
 
@@ -468,7 +468,7 @@ Why rollups need 5–7 days: the window is sized for *L1 51%-censorship* fork co
 - OECD component-5 (403)
 
 **curl / gh / RPC (read-only).**
-- HACKATHON.md raw; homepage; projects API (q = lethe, chainproof, marginal, veto, guard)
+- HACKATHON.md raw; homepage; projects API (q = the earlier prototype's name, chainproof, marginal, veto, guard)
 - GitHub metadata for 8 repos
 - SputnikDAO README, `proposals.rs`, `upgrade.rs`, `policy.rs`, PR #233
 - multisig2 README

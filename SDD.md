@@ -14,7 +14,7 @@ AID: SDD-001 (implements SPEC-001) / BUG: n/a
 **Table of Contents**
 
 1. [Introduction](#1-introduction): references, feature recap, use cases, scope, deployment profiles, hackathon trims, demo surfaces, conventions
-2. [High Level Design](#2-high-level-design): block diagram, components, what changes from LETHE v0, design refinements to SPEC-001, scenario table, interface changes, topology
+2. [High Level Design](#2-high-level-design): block diagram, components, design rationale, design refinements to SPEC-001, scenario table, interface changes, topology
 3. [Detailed Design](#3-detailed-design): repository, technology, on-chain data model, Clearing API, lifecycles, execution paths, pricing, leakage ledger, escrow and settlement, audit chain, RoomRegistry, KeyPolicy, attestation, room runtime, appraisers, judges, verdict privacy and ZK proofs, forget certificates, delivery, identity and compliance, agents, off-chain services and database, clients, configuration, v2–v4 extension designs, backward compatibility
 4. [Debugging Support](#4-debugging-support)
 5. [Test Plan](#5-test-plan)
@@ -37,7 +37,6 @@ AID: SDD-001 (implements SPEC-001) / BUG: n/a
 | [`SPEC.md`](SPEC.md) (SPEC-001) | Product specification: problem, goals G1–G12, non-goals NG1–NG13, scenarios SC-1–SC-29, mechanism, trust and threat model, acceptance criteria AC-1–AC-63, test plan, risks | The requirements baseline. "SPEC §x" in this document means a section of SPEC.md. Every design element names the SPEC goals, scenarios or ACs it serves. |
 | [`MOONSHOT.md`](MOONSHOT.md) | Vision and research memo | Background only. Where SPEC §9.6 corrects MOONSHOT, the SPEC wins. |
 | `spec-notes/*.md`, `moonshot-notes/*.md` | Source verification notes | Source of facts about NEAR primitives, TEEs and regulation used below |
-| LETHE v0, [github.com/jayanth-kumar-morem/lethe](https://github.com/jayanth-kumar-morem/lethe) | Hackathon v0 on NEAR testnet (`lethe-380029.testnet`): Rust contract, Node enclave service in local mode, verifier, web console | Code that carries into Marginal is listed in §2.3. Everything else is new. |
 | ChainProof Guard, [github.com/jayanth-kumar-morem/chainproof-guard](https://github.com/jayanth-kumar-morem/chainproof-guard) | Agent spend firewall on NEAR testnet | Source of two *patterns*: function-call-key spend caps and k-of-n attester corroboration. Marginal re-implements both itself (§3.21, §3.13); it does not import this code (§7, PN-12). |
 | `sdd-notes/*.md` | Research notes behind the v0.2 resolutions (2026-11-12): MPC/CKD and Chain Signatures; TEE attestation and hosting; ZK and throughput; Intents and stablecoins; judges, models and room runtime; compliance and legal; governance, hackathon rules, defaults and disclosure | Source for every fact added in v0.2. Each fact there is labelled PRIMARY / SECONDARY / UNVERIFIED with URL and date. |
 | `docs/test-plan.md` *(to be written from §5)* | Executable test plan | Linked from §5 |
@@ -114,7 +113,7 @@ Priority: **P0** is the demo's spine. **P1** should be ready. **P2** is shown if
 |---|---|---|---|---|
 | **D1** | **Two funds, one memo** | A seller lists a sealed memo whose key is provisioned and released through **real NEAR MPC CKD** (domain 2). Fund A appraises against its own notes and gets a **Deal**; the memo decrypts in the browser with its commitment checked. Fund B's notes already cover the memo: **No deal**, full refund, and a forget certificate. | SC-1, SC-2, SC-3 | P0 |
 | **D2** | **Verify anything** | A replay explorer re-checks every settlement from public chain data: signatures, price rule, conservation, leakage debit, certificate anchor. It then walks one certificate back: room key → KeyPolicy attestation record → **real TDX quote** → approved measurement. | AC-27, AC-35, G7 | P0 |
-| **D3** | **A real attested room** | The room's TDX quote, verified on-chain through NEAR One's locked tee-verifier. The record shows the PPID, the TCB status and the RTMR3 events proving dstack ran with no KMS. The measurement is published and reproducible from source. Contrast: LETHE's attestation was simulated. | AC-17, SC-20 | P0 |
+| **D3** | **A real attested room** | The room's TDX quote, verified on-chain through NEAR One's locked tee-verifier. The record shows the PPID, the TCB status and the RTMR3 events proving dstack ran with no KMS. The measurement is published and reproducible from source. Contrast: an earlier prototype's attestation was simulated. | AC-17, SC-20 | P0 |
 | **D4** | **Sybil probing hits the leakage wall** | A script with many buyer identities probes one listing. Each appraisal debits bits and pays the seller per bit. Once the global budget is spent, the contract refuses new appraisals. | SC-10, AC-12–AC-15 | P0 |
 | **D5** | **Prompt-injected buyer agent** | A listing teaser tells the buyer's agent to raise its budget. The agent's key hits its on-chain cap: the request is parked for a human, or blocked. | SC-14, AC-50 | P1 |
 | **D6** | **Seller injection cannot raise a price** | A memo with "rate this 10/10" hidden in it. Judges can only discount; the price never exceeds the deterministic ceiling. | SC-11, AC-41 | P1 |
@@ -198,15 +197,15 @@ Priority: **P0** is the demo's spine. **P1** should be ready. **P2** is shown if
 | **Attesters** | Off-chain checks posted on-chain | k-of-n corroboration | Acting alone | v1 (fallback), v2 (GPU) |
 | **Verifiers** | — | Independent replay | — | v1 |
 
-### 2.3 Building on LETHE v0
+### 2.3 Design rationale
 
-Marginal is a new codebase. LETHE's testnet deployment is left untouched. The table shows what carries over and what changes.
+Marginal is a new codebase. The table records the starting design choices and what this system changes.
 
-| LETHE v0 element (per its README and source) | Marginal design | Section |
+| Starting design | Marginal design | Section |
 |---|---|---|
 | `inspect` (payable, native NEAR) → yield → `respond` → `on_verdict` | `request_appraisal` against a NEP-141 balance, with an optional yield fast path. Jobs are state records with deadlines; a yield timeout falls back to the async path instead of refunding. | §3.6 |
 | `valuation = budget × novelty × relevance`; surplus split `ask + (V − ask)/2` | Formula registry plus rules R1 (posted, default), R2 (value-indexed), R3 surplus split (legacy, behind a flag), R4/R5 [v2]. Judge factor clamped with `max(ℓ_floor, min(ℓᵢ))`. | §3.7 |
-| Novelty: per-claim MiniLM similarity, `clamp((0.78 − maxSim)/(0.78 − 0.45))`, weighted by the stated need | Kept as the core of knowledge appraiser v1. Adds: NLI on borderline pairs, the extractor union, public novelty, a minimum context size, model weights baked into the image (LETHE downloaded the model at runtime), and single-threaded ONNX for determinism. | §3.15.1 |
+| Novelty: per-claim MiniLM similarity, `clamp((0.78 − maxSim)/(0.78 − 0.45))`, weighted by the stated need | Kept as the core of knowledge appraiser v1. Adds: NLI on borderline pairs, the extractor union, public novelty, a minimum context size, model weights baked into the image (an earlier prototype downloaded the model at runtime), and single-threaded ONNX for determinism. | §3.15.1 |
 | On-chain ed25519 verdict check; `ecrecover` of NEAR AI receipts; body-hash binding; replay set | Kept for Open-mode verdicts. Judge output restricted to a discrete scale, because the receipt body becomes public. | §3.16, §3.17 |
 | Verdict as a JSON string | Borsh `VerdictV1` with domain separation, job commitment and nonce | §3.17 |
 | Owner-registered enclave key and codehash (attestation simulated) | Attested room registration in immutable KeyPolicy: TDX quote, `report_data` binding, measurement set, platform ID | §3.12, §3.13 |
@@ -225,7 +224,7 @@ Turning the SPEC into a design surfaced ten points that the SPEC leaves open or 
 |---|---|---|
 | **DR-1** | **Blind mode conflicts with public recomputation.** AC-1 and AC-35 have the contract and public verifiers recompute *V* from signed components. But publishing components on-chain shows the buyer (and everyone) the scores, so blind mode (AC-13, *d* = 1 bit) cannot hold. | Two verdict privacy modes. **Open**: components and factors are public, the contract recomputes them, and the leakage debit counts every published component. **Sealed**: the verdict carries a commitment to the components plus a Groth16 proof that the registered rule maps them to the published outcome and price. The contract verifies the proof using NEAR's alt_bn128 host functions. Blind mode with *d* = 1 bit requires Sealed. §3.17. |
 | **DR-2** | In Open mode, judge **receipt bodies** go on-chain. A free-form or float output leaks more than the field alphabet allows. | Judges must answer on a discrete integer scale with strict JSON (`{"relevance":k}`, k ∈ 0..10). Anything else is a schema failure, so the factor goes to the floor. In Open mode the scale's bits are debited. In Sealed mode receipts are never published. §3.16. |
-| **DR-3** | LETHE publishes the buyer's stated need. | The stated need is part of the sealed job input bundle. It is never on-chain. |
+| **DR-3** | An earlier prototype publishes the buyer's stated need. | The stated need is part of the sealed job input bundle. It is never on-chain. |
 | **DR-4** | SPEC §4.5.3 says governance cannot re-point keys because KeyPolicy is immutable. That holds only if the facts KeyPolicy relies on cannot be forged by upgradeable contracts. | KeyPolicy verifies quotes through a locked (immutable) verifier contract pinned at initialisation, and stores seller-written pin sets. Mutable inputs (registry, clearing) can deny a release. They can grant only within what the immutable checks and the seller's pins already allow. The exception is job existence, read from clearing, whose upgrade path is therefore part of the confidentiality trust base. It is mitigated by the public time-lock queue and a seller-controlled `freeze` in KeyPolicy. §3.12.5. |
 | **DR-5** | A room reads job parameters (delivery key, budget) through an RPC the operator controls. A lying RPC could make genuine room code deliver to an attacker. | **Job-commitment binding.** The room's key request carries `job_commitment`. Clearing releases the key only if the commitment matches the stored job. So receiving the CKD output proves to the room that the job is real. Under the RoomSealed fallback this proof is not available; the room then cross-checks two independent RPC providers. The HDP uses CKD, so the proof holds in the demo too. §3.12.3. |
 | **DR-6** | MPC calls are gas-heavy. One unverified source cites a 300 TGas minimum for `request_app_private_key` (spec-notes). That would leave no gas for checks in the same call chain. | Two-step key release: `authorize` (checks, writes a ticket) then `derive` (MPC call with most of the gas). §3.12.3. |
@@ -235,7 +234,7 @@ Turning the SPEC into a design surfaced ten points that the SPEC leaves open or 
 | **DR-10** | Sealed-box delivery is randomised, so re-delivery cannot reproduce the committed hash (AC-31). | Deterministic delivery sealing: the ephemeral key is derived from the listing key and the job ID (§3.19). |
 | **DR-11** | Intents-funded transfers reach `ft_on_transfer` with `sender_id = intents.near`, so clearing cannot tell which buyer paid. | The buyer signs one batch: `auth_call` (gives clearing an authenticated `signer_id` and a `fund_id`), then `ft_withdraw` with `msg = {fund_id, …}`. Clearing accepts the funds only against a matching `on_auth` record; otherwise it returns the whole amount, which refunds the signer's verifier balance. §3.9.3. |
 | **DR-12** | Escrow is native USDC on NEAR, so a "withdraw to another chain" payout is really a swap, not a verifier withdrawal. | v1 pays sellers into their Intents account (or a NEAR account), and the seller's own wallet signs the 1Click swap. Clearing never originates cross-chain swaps on a seller's behalf: 1Click's ToS bans intermediary wallets that hide the originator. §3.9.4. |
-| **DR-13** | NEAR AI judge signing keys are derived per model from dstack KMS. They do **not** rotate on restart, all instances of a model share them, and a registered signer address does not pin which inference engine is running (this corrects LETHE's README). In Open mode the published response body can also include `reasoning_content` that quotes the good. | Signer-registry entries record the verified attestation configuration, engine image digests and an expiry, refreshed by attesters. Judges run with reasoning disabled or minimal, and in Open mode any receipt whose body has a reasoning field is rejected. §3.16. |
+| **DR-13** | NEAR AI judge signing keys are derived per model from dstack KMS. They do **not** rotate on restart, all instances of a model share them, and a registered signer address does not pin which inference engine is running (this corrects an earlier prototype's README). In Open mode the published response body can also include `reasoning_content` that quotes the good. | Signer-registry entries record the verified attestation configuration, engine image digests and an expiry, refreshed by attesters. Judges run with reasoning disabled or minimal, and in Open mode any receipt whose body has a reasoning field is rejected. §3.16. |
 | **DR-14** | ONNX Runtime picks CPU kernels by instruction set at start-up, so single-threaded inference is reproducible on one CPU model, not across CPU generations. | AC-38 is scoped per CPU model. Rooms log CPU model and flags in the job log. Cross-host tolerance is measured. §3.14.3. |
 | **DR-15** | NEAR congestion control counts *attached* gas. A hot contract rejects new transactions only after about 188 s of queued work, while a yield times out after about 118 s. | Every clearing method attaches tight, measured gas. Groth16 verification runs in a separate stateless verifier contract on another shard. The fast path is best-effort. §3.6, §9.2. |
 | **DR-16** | California's DFAL (in force 2026-07-01) treats the power to "prevent indefinitely" a transaction as *control*. Our compliance hold on payouts can do that, and MiCA's custody definition may catch it too. | A design decision for counsel (OI-19). Interim design: holds expire after a contract-fixed maximum (30 days, estimate) unless renewed with a fresh screening reference. A sanctions match is routed to the issuer's freeze or a licensed partner rather than an open-ended Marginal-held block. §3.9.4. |
@@ -282,7 +281,7 @@ Terminal job states are defined in §3.5. "HDP" says whether the scenario runs i
 
 Interfaces below were verified against source code and live state on 2026-11-12 (`sdd-notes/`).
 
-| System | Interaction | Change versus LETHE v0 |
+| System | Interaction | Change versus the earlier v0 prototype |
 |---|---|---|
 | **NEAR MPC network** (`v1.signer-prod.testnet`, `v1.signer`; contract 3.18.0; 11-of-16) | CKD: `request_app_private_key({"request":{"derivation_path","app_public_key":{"AppPublicKeyPV":{pk1,pk2}},"domain_id":2}})`, ≥ 1 yocto, ≥ 15 TGas, result `{big_y, big_c}` via yield/resume to the caller (§3.12.3). Chain Signatures: `sign({"request":{path, payload_v2, domain_id}})`, 1 yocto, ≥ 15 TGas. Delivery confirmation: `verify_foreign_transaction` (domain 3). | New: CKD and foreign-transaction verification. Chain Signatures moves from address derivation to policy-gated signing (v1 canary). |
 | **NEAR One `tee-verifier`** (locked contract) | `verify_quote_with_collateral_dates(quote, collateral)`, called by KeyPolicy (§3.13) | New |
@@ -292,7 +291,6 @@ Interfaces below were verified against source code and live state on 2026-11-12 
 | **Intel PCS / PCCS** | Collateral fetched by the operator agent, verified inside the tee-verifier call | New |
 | **Compliance vendors** | Sumsub (people and entities), TRM Labs (addresses, incl. NEAR), OFAC SDN file nightly (§3.20) | New |
 | **NVIDIA NRAS** | GPU evidence, checked off-chain by attesters | [v2] |
-| **LETHE contract** | None | No migration; it stays as v0 |
 
 ### 2.7 Deployment profiles and topology
 
@@ -326,7 +324,7 @@ One monorepo, `marginal/`. Paths below are where each change lives.
 
 ```
 marginal/
-├── contracts/                      Rust, near-sdk 5.30 (LETHE's pin), built with `cargo near build reproducible-wasm`
+├── contracts/                      Rust, near-sdk 5.30 (the v0 pin), built with `cargo near build reproducible-wasm`
 │   ├── clearing/                   upgradeable via gov time-lock
 │   │   ├── src/ lib.rs  listing.rs  snapshot.rs  job.rs  verdict.rs  settle.rs  escrow.rs  ft.rs
 │   │   │        leakage.rs  caps.rs  agent.rs  identity.rs  payout.rs  zk.rs  audit.rs  events.rs  gov.rs
@@ -369,7 +367,7 @@ marginal/
 │   ├── attester/                   AttesterQuorum fallback; NEAR AI signer list; [v2] GPU evidence
 │   └── compliance/                 separate deploy: identity, sanctions, credentials, nullifiers, review log
 ├── verifiers/
-│   ├── replay-ts/                  verifier #1 (grows from LETHE's verify.js)
+│   ├── replay-ts/                  verifier #1 (grows from the earlier prototype's verify.js)
 │   └── replay-py/                  verifier #2, written independently from SPEC + this SDD only [v1 exit]
 ├── apps/web/                       Next.js app: sell, appraise, jobs, verify, rooms, compliance, agents
 │   ├── src/app/(app)/              the pages; src/app/api/ the route handlers that hold the server side
@@ -390,9 +388,9 @@ marginal/
 
 | Area | Choice | Reason | Alternative kept open |
 |---|---|---|---|
-| Contracts | Rust, near-sdk 5.30, `cargo near` reproducible WASM | LETHE and ChainProof Guard already use this stack; reproducible builds let verifiers match deployed code to source | — |
+| Contracts | Rust, near-sdk 5.30, `cargo near` reproducible WASM | The earlier v0 prototype and ChainProof Guard already use this stack; reproducible builds let verifiers match deployed code to source | — |
 | Shared logic | `marginal-core`, `no_std` Rust crate | One implementation of formulas, rules and leakage arithmetic, used by the contract, verifier #1 and the room (via wasm) | Verifier #2 deliberately does not use it (AC-36) |
-| Room runtime | **HDP:** TypeScript on Node 22, onnxruntime-node (single-threaded, binary vendored by hash), libsodium, snarkjs; `npm ci --ignore-scripts`; no `@huggingface/transformers`; secrets in `Buffer.alloc` buffers. **v1, before the audit:** the worker and key custody ported to one Rust binary (`ort` with ONNX Runtime built from source, `tokenizers`, `crypto_box`, `zeroize` + `mlock`) | TypeScript reuses LETHE's code for the demo. Rust removes the JS engine and GC copies of secrets, and matches what NEAR MPC, dstack and BuilderNet use (OI-9). | `candle` instead of `ort` |
+| Room runtime | **HDP:** TypeScript on Node 22, onnxruntime-node (single-threaded, binary vendored by hash), libsodium, snarkjs; `npm ci --ignore-scripts`; no `@huggingface/transformers`; secrets in `Buffer.alloc` buffers. **v1, before the audit:** the worker and key custody ported to one Rust binary (`ort` with ONNX Runtime built from source, `tokenizers`, `crypto_box`, `zeroize` + `mlock`) | TypeScript reuses the earlier prototype's code for the demo. Rust removes the JS engine and GC copies of secrets, and matches what NEAR MPC, dstack and BuilderNet use (OI-9). | `candle` instead of `ort` |
 | Quote verification | `dcap-qvl` ≥ 0.6.5 (advisory RUSTSEC-2026-0104) in a **locked verifier contract** called by KeyPolicy: NEAR One's `tee-verifier-*` in HDP, our own locked build of the same source in v1. About 124 TGas per quote, in one call. | The exact path NEAR's mainnet MPC uses. Keeps about 310–420 KB of WASM out of KeyPolicy. | Embed `dcap-qvl` 0.7.x in KeyPolicy; AttesterQuorum |
 | ZK | circom + Groth16 on BN254; on-chain verification with `env::alt_bn128_g1_multiexp`, `env::alt_bn128_g1_sum` and `env::alt_bn128_pairing_check` (about 34–38 TGas per proof, §3.17) | Small circuits; cheap proving and verifying | PLONK/fflonk only after a gas spike. BLS12-381 (NEP-488) lacks circomlib Poseidon and public ptau files. |
 | CVM | dstack on Intel TDX | Measures the app compose hash into RTMR3 (SPEC §4.6.2); reproducible OS images | Plain TDX VM with a custom measured boot |
@@ -485,7 +483,7 @@ Storage is paid by the party that creates the record, through NEP-145 storage de
 
 ### 3.4 Clearing contract API [v1]
 
-"Room" callers are any relayer account. Authority comes from the room's registered ed25519 signature, as in LETHE's `respond`. AC references are SPEC §6.
+"Room" callers are any relayer account. Authority comes from the room's registered ed25519 signature, as in the earlier prototype's `respond`. AC references are SPEC §6.
 
 | Method | Caller | Checks | Effects and events | AC |
 |---|---|---|---|---|
@@ -578,7 +576,7 @@ Every transition is in `contracts/clearing/src/job.rs::transition(from, to)`. Th
 
 ### 3.6 Execution paths
 
-**Fast path (knowledge goods, HDP).** The buyer has a prefunded balance and calls `request_appraisal{fast: true}`. The call creates a yield; LETHE's pattern carries over: the checked settlement is stored in state and the resume carries only a signal, because yield payloads are capped at 1 KiB on testnet. If the 200-block yield window expires, the callback returns `{status: "pending", job_id}` and the job continues on the async path with no refund. This differs from LETHE v0.
+**Fast path (knowledge goods, HDP).** The buyer has a prefunded balance and calls `request_appraisal{fast: true}`. The call creates a yield; the earlier prototype's pattern carries over: the checked settlement is stored in state and the resume carries only a signal, because yield payloads are capped at 1 KiB on testnet. If the 200-block yield window expires, the callback returns `{status: "pending", job_id}` and the job continues on the async path with no refund. This differs from the earlier v0 prototype.
 
 **Congestion (DR-15).** NEAR's congestion control counts attached gas, so under load a hot clearing contract can queue work for about 188 s before rejecting new transactions, longer than the roughly 118 s yield window. Every clearing method therefore attaches tight, measured gas; Groth16 verification runs in a separate verifier contract (§3.17); and the fast path is best-effort, with clients always able to fall back to watching the job.
 
@@ -968,7 +966,7 @@ Verified against `near/mpc` release 3.18.0 and live contract state on both netwo
 
 - **Standing contexts [v1].** `DEK_c` is wrapped under `pk_C`, derived via CKD on path `context/{H(owner‖snapshot_id)}`. Clearing's `authorize_release` allows a context path only when the job's buyer owns the snapshot. The buyer's own `request_appraisal` transaction is therefore the buyer's signature over the job (SPEC §4.5.3, item 2).
 - **Ad-hoc contexts [v1].** After assignment, the buyer client writes `ContextKeyEnvelope{job_id, sealed_box(room_box_pk, DEK_c ‖ job_id), sig_context_auth}` to the blob inbox `jobs/{job_id}/ctxkey`. The room accepts it only if `sig_context_auth` verifies against the `context_auth_pk` inside the job commitment.
-- **HDP.** There is one room, so for ad-hoc contexts the buyer seals `DEK_c` to the room's attested `box_pk` directly in the request arguments, as LETHE did. Listing keys still go through CKD.
+- **HDP.** There is one room, so for ad-hoc contexts the buyer seals `DEK_c` to the room's attested `box_pk` directly in the request arguments, as the earlier prototype did. Listing keys still go through CKD.
 
 #### 3.12.5 Trust analysis: what can grant and what can only deny (DR-4)
 
@@ -1093,7 +1091,7 @@ The worker is a child process with a memory cap and no file-system writes; the r
 
 - **Egress.** nftables policy is default-drop, baked into the image. Allowed destinations are resolved at boot from a host list inside the measured image. The supervisor proxy permits the NEAR AI host only for jobs whose listing has `external_judges_allowed`. Dropped packets are counted in the signed job log (AC-22).
 - **Shape padding.** Ciphertexts are padded client-side to size classes (powers of two, target). Verdict submission waits for the end of the duration class.
-- **Determinism (AC-38, DR-14).** onnxruntime runs with one intra-op and one inter-op thread, the sequential execution mode and fp32. Tokenizers and weights are pinned by SHA-256 and loaded from `room/models/`; no runtime download (LETHE fetched MiniLM from the network at runtime). The Node version is pinned. ONNX Runtime picks kernels by CPU instruction set at start-up, so results are byte-identical per CPU model, not across CPU generations. Rooms record their CPU model and flags in the job log, AC-38 is tested per CPU model, and cross-host tolerance is measured.
+- **Determinism (AC-38, DR-14).** onnxruntime runs with one intra-op and one inter-op thread, the sequential execution mode and fp32. Tokenizers and weights are pinned by SHA-256 and loaded from `room/models/`; no runtime download (an earlier prototype fetched MiniLM from the network at runtime). The Node version is pinned. ONNX Runtime picks kernels by CPU instruction set at start-up, so results are byte-identical per CPU model, not across CPU generations. Rooms record their CPU model and flags in the job log, AC-38 is tested per CPU model, and cross-host tolerance is measured.
 - **RPC providers.** Two independent providers per network for the RPC cross-check. Do not use `rpc.testnet.near.org` for transaction status: it now rejects those calls as deprecated.
 - **Security-relevant configuration** (thresholds, schema, model hashes, corpus hash) comes only from the measured image or from chain state (DR-9).
 
@@ -1130,12 +1128,12 @@ All appraisers follow the four rules in SPEC §4.8: deterministic first; judgeme
 | Step | Implementation | HDP parameters (recalibrated in v1 benchmarks) |
 |---|---|---|
 | Input | Canonical UTF-8 NFC text or Markdown, converted from PDF or DOCX **on the client**, so no document parser enters the room's TCB (T2) | Up to a size class limit (target 20k tokens) |
-| Claim extraction | Union of (a) the deterministic splitter from LETHE `novelty.js::claims()` and (b) an LLM extractor that can only *add* claims (SPEC §4.8.1) | (b) off in HDP; self-hosted in v1 production |
+| Claim extraction | Union of (a) the deterministic splitter from the earlier prototype's `novelty.js::claims()` and (b) an LLM extractor that can only *add* claims (SPEC §4.8.1) | (b) off in HDP; self-hosted in v1 production |
 | Context check | Minimum number of context sentences, before the good is touched (T7) | ≥ 30 sentences (target) |
 | Embeddings | ONNX sentence embedder, normalised | **`BAAI/bge-small-en-v1.5`** (MIT, 33M parameters, official ONNX; MTEB English STS 81.59 against MiniLM's 78.95). `bge-base-en-v1.5` is the v1 quality candidate. Spike S-6 confirms. |
-| Per-claim novelty | `nᵢ = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))` against buyer context sentences | **τ values are per model.** LETHE's 0.78 / 0.45 apply to MiniLM only; bge cosines bunch high. τ is recalibrated on labelled pairs (PAWS, Webis-CPC-11) and baked into the measured image. |
+| Per-claim novelty | `nᵢ = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))` against buyer context sentences | **τ values are per model.** the v0 values 0.78 / 0.45 apply to MiniLM only; bge cosines bunch high. τ is recalibrated on labelled pairs (PAWS, Webis-CPC-11) and baked into the measured image. |
 | NLI on borderline pairs | NLI cross-encoder (ONNX, CPU) on pairs with τ_lo < sim < τ_hi. Entailment ≥ threshold sets nᵢ = 0. | **`cross-encoder/nli-deberta-v3-xsmall`** (Apache-2.0; SNLI and MNLI; 87.77% on MNLI-mismatched) in HDP; `-base` (90.04%) in v1. Models trained on ANLI (CC BY-NC) are excluded. Threshold 0.9 (target). |
-| Need weighting | `wᵢ = max(0.05, cos(claimᵢ, need))`, `N_b = Σwᵢnᵢ / Σwᵢ` (LETHE's padding-resistant weighting, AC-39) | — |
+| Need weighting | `wᵢ = max(0.05, cos(claimᵢ, need))`, `N_b = Σwᵢnᵢ / Σwᵢ` (padding-resistant weighting, AC-39) | — |
 | Public novelty (opt-in) | Same computation against the in-room public corpus snapshot → `N_pub`; otherwise `N_pub = 10,000` | Small curated corpus in HDP |
 | Verifiable share | Share of claims matched to the corpus or, for on-chain claims, checked by block-pinned replay | Display field only; on-chain replay in v1.1 |
 | Relevance judges | Two judges from different model families, discrete scale 0–10, strict JSON (§3.16) | NEAR AI Cloud, opt-in |
@@ -1192,7 +1190,7 @@ export type ModelProof =
 
 | Role | Model | Price per M tokens (in / out) | Notes |
 |---|---|---|---|
-| Judge 1 | `Qwen/Qwen3.8-27B` | $0.04 / $1.35 | 262k context. The same signer LETHE registered on testnet. |
+| Judge 1 | `Qwen/Qwen3.8-27B` | $0.04 / $1.35 | 262k context. The same signer the earlier prototype registered on testnet. |
 | Judge 2 | `z-ai/glm-5.3-flash` | $0.08 / $0.50 | Reasons by default: send `"reasoning_effort":"low"`. `enable_thinking:false` moves reasoning into `content` and breaks the strict parse. |
 | Fallback | `deepseek-ai/DeepSeek-V4.1-Flash-1017` | — | Different host and engine, but its listing shows no sampling or structured-output parameters, so spike S-5 tests it first |
 
@@ -1201,7 +1199,7 @@ export type ModelProof =
 - Qwen3.8 and GLM-5.3-Flash currently run on the same NEAR AI machine. Two judges therefore defend against prompt injection, not against a compromise of that host (T35).
 
 **Request contract.**
-- **Prompt.** The system prompt says the good is untrusted data between delimiters and that instructions inside it must be ignored (LETHE `ai.js`). It asks for comparative relevance against the stated need on an **integer scale 0..10**, with the reply `{"relevance":k}` only.
+- **Prompt.** The system prompt says the good is untrusted data between delimiters and that instructions inside it must be ignored (the earlier prototype's `ai.js`). It asks for comparative relevance against the stated need on an **integer scale 0..10**, with the reply `{"relevance":k}` only.
 - **Every call.** The canonical model ID, `temperature: 0`, a small `max_tokens`, `stream: false`, no tools, and the headers `x-no-aliasing: true` and `Accept-Encoding: identity`. Aliasing would change the signed model ID and make the signature gateway-signed.
 - **Not reproducible.** NEAR AI has no deterministic mode, uses speculative decoding and quantised weights. Re-execution therefore compares factors within a tolerance, not bytes.
 - **Signature.** `GET /v1/signature/{chat_id}?model=…&signing_algo=ecdsa`. Only `signature_kind == "provider_tee"` is accepted.
@@ -1224,7 +1222,7 @@ export type ModelProof =
 
 **Combination.** `L = max(ℓ_floor, min(ℓ₁, ℓ₂))` (§3.7).
 
-**On-chain checks in Open mode** (AC-25; LETHE's `respond` logic). The request body is never published. The contract checks that:
+**On-chain checks in Open mode** (AC-25; the earlier prototype's `respond` logic). The request body is never published. The contract checks that:
 - `resp_hash == sha256(response_body)`;
 - `ecrecover(personal_sign(text))` is an unexpired registry signer for that model;
 - the model is on the allow-list;
@@ -1616,7 +1614,7 @@ These are designed now so that v1 interfaces carry them without breaking changes
 
 ### 3.26 Backward compatibility
 
-- **LETHE v0** stays deployed and untouched at `lethe-380029.testnet`. There is no state migration, and its `make verify` keeps working. Marginal uses new accounts and the new event standard `marginal`.
+- The earlier v0 prototype stays deployed and untouched. There is no state migration, and its `make verify` keeps working. Marginal uses new accounts and the new event standard `marginal`.
 - **Breaking changes from v0, by design:**
   - native NEAR budgets become NEP-141 stablecoins;
   - the JSON verdict becomes Borsh `VerdictV1` with domain separation;
@@ -1767,7 +1765,7 @@ These decide toggles, so they run before feature work that depends on them. S-1 
 
 ### 5.6 Test data
 
-- LETHE's fictional demo corpus (`demo/memo.md`, `notes-buyer-a.md`, `notes-buyer-b.md`) as the D1 fixture.
+- The earlier prototype's fictional demo corpus (`demo/memo.md`, `notes-buyer-a.md`, `notes-buyer-b.md`) as the D1 fixture.
 - A labelled novelty benchmark (verbatim, paraphrased, partial, disjoint-on-topic) for AC-38–AC-40.
 - An injection corpus of ≥ 500 templates (AC-41).
 - An MNPI fixture set built with counsel input [v1]; synthetic for HDP.
@@ -1793,7 +1791,7 @@ These remain v1 and v2 gates (SPEC §8.15).
 |---|---|---|---|---|
 | `mainnet` | contracts | on | off | Mainnet guards. `compile_error!` if combined with any `sim-*` feature. |
 | `sim-attestation` | keypolicy, room | **never** | off (on only in `local`, `sandbox` and `testnet-sim`) | Simulated registration. Deploys under version string `keypolicy-sim`. The validator and `deploy.ts` refuse it off the sandbox in any profile not named `*-sim`. |
-| `sim-judge` | room | never | on, used only when no NEAR AI key is set; every factor flagged `Simulated` | LETHE-style stand-in signer |
+| `sim-judge` | room | never | on, used only when no NEAR AI key is set; every factor flagged `Simulated` | v0-style stand-in signer |
 | `attester-quorum` | keypolicy | off | compiled in, disabled (fallback only) | Quorum registration path, attester set fixed at init |
 | `ckd` | keypolicy, room | on | **on** (domain 2 is live on testnet) | CKD key release |
 | `zk-sealed` | clearing, room | on | per S-3 | Sealed verdicts and the Groth16 verifier |
@@ -1850,14 +1848,14 @@ These remain v1 and v2 gates (SPEC §8.15).
   - **Window:** the hackathon started 2026-11-01, and code from the 2026-10-19 announcement counts (Q-001). Older projects may enter if in-window work is separated by a branch or by `pre-hackathon` / `hackathon-submission` tags, with a README link to the diff (Q-003, Q-004).
   - **Network:** testnet-only entries are eligible in every track (Q-010). For Intents the rules say "Mainnet, separate dev accounts, tiny amounts, dry: true quotes" (Q-007).
   - **README and licence:** libraries and AI-generated code must be listed in the README (Q-005). Any licence is fine with a LICENSE file, and the repo must stay public through judging (Q-014).
-  - **Two-project limit:** at most 2 independent projects per person, each README naming the other, and "not the same project twice" (Q-015). So a separate Marginal repo can only *replace* the LETHE entry (OI-10).
+  - **Two-project limit:** at most 2 independent projects per person, each README naming the other, and "not the same project twice" (Q-015). So a separate Marginal repo can only *replace* the earlier prototype's entry (OI-10).
   - **Dates:** the deadline is **2026-11-14 23:59 UTC**; judging is 11-16, and results are due by 11-18.
   - **Demo post:** the X post must say the project was built at NEAR HACKATHON, tag `@NEARProtocol` and `#NEARHackathon`, and include a video.
   - **Independence:** Marginal still re-implements ChainProof Guard patterns rather than importing them.
 - **PN-13 Lift-lite is a proxy.** It does not predict LLM fine-tuning lift, and its datasheet says so.
 - **PN-14 "Marginal" is a working name.** Trademark clearance is needed before public use (SPEC §9.3).
 - **PN-15 The CKD interface is verified, but the TypeScript side is ours.** The CKD calls were checked against `near/mpc` 3.18.0 and live state (§3.12.3). There is no official TypeScript helper, so the HDP room's BLS12-381 recovery code is ours and is checked against `near/mpc`'s test vectors.
-- **PN-16 NEAR AI receipts pin neither the instance nor the engine.** Signing keys are per model and persist across restarts (DR-13). LETHE's README says they rotate on backend restart; that is wrong.
+- **PN-16 NEAR AI receipts pin neither the instance nor the engine.** Signing keys are per model and persist across restarts (DR-13). An earlier prototype's README says they rotate on backend restart; that is wrong.
 - **PN-17 JavaScript cannot guarantee zeroisation.** Non-persistence rests on process exit plus no storage or swap (§3.14.2). The v1 Rust worker (§3.2) tightens this.
 - **PN-18 MPC liveness.** An independent review reports that one participant can stall signing (SPEC §4.9.6). Such stalls end in timeouts and refunds, not losses. Observed: no failures in about 600 sign requests per network; three testnet timeouts, all on foreign-transaction verification.
 - **PN-19 Not post-quantum.** X25519 and CKD's recovery keys are not post-quantum (SPEC §4.5.5). Hybrid sealing is v3.
@@ -1941,7 +1939,7 @@ Threat IDs T1–T26 follow SPEC §4.12. T27–T34 are added by this design.
   - State is updated before a promise is created, and failures are rolled back in `#[private]` callbacks.
   - Every outgoing transfer has a callback with a pull fallback.
   - `assert_one_yocto` on user methods that move funds.
-  - `overflow-checks = true` (as in LETHE).
+  - `overflow-checks = true` (as in the earlier prototype).
   - No `unwrap` on user input; all views are paginated; storage paid through NEP-145.
 - **Formal specification and audits.** The KeyPolicy grant logic and the clearing job state machine get a formal model (TLA+ or Quint) before v1 canary. External audits of the contracts, the room and its build pipeline, a cryptographic review of the key hierarchy, the certificate and delivery formats and the circuits, and a penetration test of operator infrastructure are required before caps rise above canary (AC-54, SPEC §8.12).
 - **Disclosure.** `SECURITY.md` with a contact and a bug bounty before canary caps are raised.
@@ -2010,7 +2008,7 @@ This is not legal advice. Counsel must run a prior-art search before any filing 
 | P-1 | Contract-enforced, priced leakage budget | A per-listing, seller-set bit budget on appraisal outputs, reserved before execution so refusals are simulatable, depleted across all buyers, with per-bit compensation to the seller (§3.8) | QIF, DP budgets, the Ladder, query pricing, privacy-loss compensation (SPEC §4.7.4) |
 | P-2 | Job-commitment-bound threshold key release | The room proves a job's authenticity to itself because it received threshold-derived key material for an app key committed to the job's parameters (§3.12.3) | Threshold KMS, CKD, TEE key-release services |
 | P-3 | ZK proof of a pricing rule over committed appraisal scores | Public on-chain verification that a clamped judgement factor (min and floor) and a registered formula map committed scores to the outcome and price, without revealing the scores (§3.17) | zkML, verifiable auctions, sealed-bid ZK auctions |
-| P-4 | Attestation-bound, two-sided forget certificate in a settlement record | Coverage of both parties' inputs, bound to the quote and policy version, anchored in the settlement, verifiable offline (§3.18) | Lethe protocol's erasure proofs (SPEC §4.10.5) |
+| P-4 | Attestation-bound, two-sided forget certificate in a settlement record | Coverage of both parties' inputs, bound to the quote and policy version, anchored in the settlement, verifiable offline (§3.18) | erasure proofs from an earlier audit market (SPEC §4.10.5) |
 | P-5 | Per-platform value-at-risk caps enforced at key release | §3.11, §3.12 | NDAI threshold model (SPEC §4.7.5) |
 | P-6 | Deterministic re-deliverable sealing | Delivery reproducible byte for byte by any authorised room, from the listing key and the job commitment (§3.19) | Deterministic encryption schemes |
 
@@ -2018,7 +2016,7 @@ This is not legal advice. Counsel must run a prior-art search before any filing 
 
 - Publishing the repository, demo video or hackathon submission is a public disclosure. Many jurisdictions require absolute novelty, so any filing must precede it. The US gives the inventor a one-year grace period for their own disclosures (35 U.S.C. §102(b)(1)).
 - If any candidate is pursued, a provisional filing must come **before the public demo**.
-- The licence choice matters too. MIT, which LETHE uses, has no express patent grant; Apache-2.0 does. The licence should be chosen deliberately alongside any patent strategy.
+- The licence choice matters too. MIT, which the earlier prototype uses, has no express patent grant; Apache-2.0 does. The licence should be chosen deliberately alongside any patent strategy.
 - Decision owner: @jay, with counsel.
 
 ---
@@ -2040,7 +2038,7 @@ On 2026-11-12, seven parallel research streams (about 925 searches, page fetches
 | OI-7 | NEAR AI judges | **Resolved** (S-5 confirms) | Qwen3.8-27B + GLM-5.3-Flash; request headers; signer registry with attested configuration and expiry; reasoning off | §3.16 | `judges-models-runtime.md` |
 | OI-8 | Compliance vendors; retention | **Partially resolved** | Sumsub + TRM Labs + nightly OFAC file; retention schedule. Contracts and quotes pending. | §3.20 | `compliance-legal.md` |
 | OI-9 | TypeScript or Rust room | **Resolved** (decision) | Hardened TypeScript for HDP; Rust worker and key custody before the v1 audit | §3.2 | `judges-models-runtime.md` |
-| OI-10 | Hackathon entry and rules | **Resolved** (decision for @jay) | Rules read (PN-12). Recommended option A: evolve the LETHE repo, keep the entry named "LETHE", and present Marginal as the vision. A separate Marginal repo can only replace LETHE. | §7 | `governance-rules-defaults.md` |
+| OI-10 | Hackathon entry and rules | **Resolved** (decision for @jay) | Rules read (PN-12). Recommended option A: evolve the earlier prototype's repo, keep that hackathon entry, and present Marginal as the vision. A separate Marginal repo can only replace that entry. | §7 | `governance-rules-defaults.md` |
 | OI-11 | Default parameters | **Proposed** (pilots) | Defaults table | §3.24 | same |
 | OI-12 | Settlement stablecoin | **Resolved** (counsel on EU points) | Circle USDC on NEAR only; USDT allowed but switched off; no bridged escrow; per-asset caps; on a freeze, payouts become claimable | §6.2, §7, §8.1 | `intents-stablecoins.md` |
 | OI-13 | Sealed-mode disclosure | **Resolved** | `DisputeOnly` default plus three opt-in policies, bound into the job commitment | §3.17, §3.24 | `governance-rules-defaults.md` |

@@ -4,6 +4,19 @@
 
 Built by [7Block Labs](https://7blocklabs.com) · demo: **https://marginal.7blocklabs.com**
 
+## For judges (start here)
+
+| | |
+| --- | --- |
+| Hosted demo | https://marginal.7blocklabs.com (opens `/listings`) |
+| Demo video | https://x.com/jay_ensures/status/2121727522962538557 |
+| Live contracts (NEAR testnet; attestation flagged **Simulated**) | `clearing.marginal-sim.testnet`, `keypolicy.marginal-sim.testnet`, `musdc.marginal-sim.testnet` · [explorer](https://explorer.testnet.near.org/accounts/clearing.marginal-sim.testnet) |
+| Honest scorecard | [What is real and what is not](#what-is-real-and-what-is-not) |
+| Re-run locally | `pnpm install && make models && make check`, then the [full runbook](#run-it-from-a-fresh-clone) |
+
+*Note for reviewers:* the submission overview mentions a "Real and simulated" table and a local sandbox. That table is now [What is real and what is not](#what-is-real-and-what-is-not) below. A hosted testnet showcase was added after submission; every simulated element is flagged on chain and in the UI.
+
+
 A seller lists a document without revealing it. A buyer says what they already know. A TEE room
 reads both, measures how much the document would actually add to *that* buyer, and prices it on
 that measurement. The buyer pays for what the document was worth to them; the seller learns nothing

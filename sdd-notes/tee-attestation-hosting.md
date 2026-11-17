@@ -334,7 +334,7 @@ Prices are on-demand, USD, Linux, excluding tax and egress.
 
 ### 2.4 Recommendation and cost (DERIVED)
 
-- **HDP provider: Phala Cloud, `tdx.large` (4 vCPU / 8 GB, $0.232/h) on one pinned `--node`, dstack OS 0.6.x.** Use `tdx.medium` ($0.116/h) if the CPU NLI and embedding models fit in 4 GB (LETHE measurements decide).
+- **HDP provider: Phala Cloud, `tdx.large` (4 vCPU / 8 GB, $0.232/h) on one pinned `--node`, dstack OS 0.6.x.** Use `tdx.medium` ($0.116/h) if the CPU NLI and embedding models fit in 4 GB (earlier prototype measurements decide).
 - **Budget:**
 
   | Scenario | Cost |

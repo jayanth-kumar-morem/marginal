@@ -52,7 +52,7 @@ test("a claim's novelty is linear between the two thresholds", () => {
   assert.equal(claimNovelty(UNSEEN), 1, "entirely new");
   assert.equal(claimNovelty(0), 1);
   assert.equal(claimNovelty((KNOWN + UNSEEN) / 2).toFixed(6), (0.5).toFixed(6));
-  assert.equal(KNOWN, 0.78, "LETHE's τ for MiniLM");
+  assert.equal(KNOWN, 0.78, "τ_hi for MiniLM");
   assert.equal(UNSEEN, 0.45);
 });
 

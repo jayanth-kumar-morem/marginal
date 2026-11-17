@@ -8,7 +8,7 @@
 
 **Linked issues:**  *(added once Status = Feature)*
 
-*Product: **Marginal**, a working name that may change (§9.3). It is a confidential exchange where a buyer pays only for the measured marginal value of an information good it does not already have. The v0 exists as the hackathon build LETHE (§4.15).*
+*Product: **Marginal**, a working name that may change (§9.3). It is a confidential exchange where a buyer pays only for the measured marginal value of an information good it does not already have. The v0 exists as the earlier hackathon prototype (§4.15).*
 
 *Conventions:*
 
@@ -382,7 +382,7 @@ Marginal is an exchange where a buyer pays for an information good only accordin
 
 - AI agents negotiating inside a TEE with disclosure only on deal: the NDAI paper and five open prototypes.
 - Inspect-then-forget as an idea: Information Bazaar ([arXiv 2403.14443](https://arxiv.org/abs/2403.14443)) and Conditional Recall.
-- Signed erasure proofs in an escrow flow: Lethe protocol, testnet, simulated TEE.
+- Signed erasure proofs in an escrow flow: an erasure-proof audit market, testnet, simulated TEE.
 - Compute-to-data and sealed model rental: Ocean, iExec, Super Protocol, VAST.
 - Buyer evaluation against seller data in an enclave without pricing: Turnkey.
 - Two-sided sealed model × private-eval evaluation without a market: DeepMind's pilot.
@@ -435,11 +435,11 @@ Competitors are mapped in §4.16, and research claims are scoped in §4.7. **Pos
 
 #### 4.3.2 Core objects
 
-On-chain fields are kept to commitments, integers and identifiers. Plaintext and ciphertext never go on-chain. LETHE v0 stores ciphertext on-chain; production moves it off-chain (§4.15).
+On-chain fields are kept to commitments, integers and identifiers. Plaintext and ciphertext never go on-chain. The earlier v0 prototype stores ciphertext on-chain; production moves it off-chain (§4.15).
 
 | Object | Key on-chain fields | Off-chain body | Notes |
 |---|---|---|---|
-| **Listing** | `listing_id`, `seller`, `asset_class`, `good_commitment` (salted hash), `ciphertext_ref` + hash, `key_path` (CKD derivation path), `appraiser_version`, `output_schema_hash`, `pricing_rule` + parameters (ask, P_min, P_full, reserve, k), `max_copies`, `ℓ_floor`, `leakage_budget_mbits`, `price_per_bit`, `sub_budget_per_identity`, `pinned_measurements[]`, `value_class`, `challenge_window`, `category`, `licence_class`, `dossier_hash`, `eligibility` (identity tiers, minimum anonymity set), `publish_height`, `status` | Sealed good, seller attestations, provenance dossier | The commitment is **salted**. A plain hash of a low-entropy good (a yes/no forecast, an address) can be brute-forced. LETHE v0 stores an unsalted SHA-256 (§4.15). |
+| **Listing** | `listing_id`, `seller`, `asset_class`, `good_commitment` (salted hash), `ciphertext_ref` + hash, `key_path` (CKD derivation path), `appraiser_version`, `output_schema_hash`, `pricing_rule` + parameters (ask, P_min, P_full, reserve, k), `max_copies`, `ℓ_floor`, `leakage_budget_mbits`, `price_per_bit`, `sub_budget_per_identity`, `pinned_measurements[]`, `value_class`, `challenge_window`, `category`, `licence_class`, `dossier_hash`, `eligibility` (identity tiers, minimum anonymity set), `publish_height`, `status` | Sealed good, seller attestations, provenance dossier | The commitment is **salted**. A plain hash of a low-entropy good (a yes/no forecast, an address) can be brute-forced. The earlier v0 prototype stores an unsalted SHA-256 (§4.15). |
 | **Context snapshot** | `snapshot_id`, `owner_commitment`, `content_hash`, `anchor_height`, `kind` (notes / data-index / eval / model) | Sealed context | Value-indexed listings accept only snapshots with `anchor_height < publish_height` (AC-6). |
 | **Job** | `job_id`, `listing_id`, `buyer_ref` (an account or a nullifier), `snapshot_id`, `budget`, `mode` (blind / scored fields), `max_debit`, `fee_paid`, `deadline_height`, `assigned_rooms[]`, `state` | Sealed per-job inputs | Created by `request_appraisal`. |
 | **Verdict** | `job_id`, `listing_id`, `snapshot_id`, `appraiser_version`, `components[]` (integers), `llm_factors[]` + model-identity proofs, `shown_fields[]`, `delivery_commitment` (if a deal is possible), `forget_cert_hash`, `room_key`, `attestation_ref`, `nonce`, signature | Full job log (signed, sealed to the governance audit key) | The contract recomputes the price from `components` and `llm_factors` (AC-1). |
@@ -480,7 +480,7 @@ Any pre-Final state ─(revocation of the assigned room)─▶ Revoked: refund o
 NEAR's yield/resume lets one transaction wait for an off-chain response. A yielded call times out after **200 blocks** ([NEAR docs](https://docs.near.org/smart-contracts/anatomy/yield-resume)), which is about 2 minutes at NEAR's *reported* ~600 ms block time. That figure is derived, not documented as a duration; the block time comes from NEAR announcements seen in search results. A planned 200 ms-block upgrade would shrink the window to about 40 s if the 200-block constant stays. GPU lift tests take far longer. So:
 
 - **Jobs are always state records with deadlines.** A job never depends on a single transaction staying open.
-- **Fast path (knowledge goods).** `request_appraisal` optionally yields so the buyer's call returns the outcome in one round trip. The room's `submit_verdict` resumes it. If the yield times out, the job simply continues on the asynchronous path. This differs from LETHE v0, where a timeout means a refund.
+- **Fast path (knowledge goods).** `request_appraisal` optionally yields so the buyer's call returns the outcome in one round trip. The room's `submit_verdict` resumes it. If the yield times out, the job simply continues on the asynchronous path. This differs from the earlier v0 prototype, where a timeout means a refund.
 - **Async path (datasets, models, evals, multi-room).**
   1. `request_appraisal` creates the job.
   2. The rooms post `submit_verdict` transactions whenever they finish.
@@ -492,7 +492,7 @@ NEAR's yield/resume lets one transaction wait for an off-chain response. A yield
 
 The status column reflects what was verifiable on 2026-11-11. Several statements in MOONSHOT §4.2 have been corrected here; the corrections are listed after the table.
 
-| Layer                             | Function                                                                                                 | NEAR primitive and status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Off-NEAR dependency                                                                   | v0 (LETHE) today                                                                                                      |
+| Layer                             | Function                                                                                                 | NEAR primitive and status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Off-NEAR dependency                                                                   | v0 today                                                                                                      |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | **L0 Clearing**                   | Listings, jobs, escrow, pricing rules, leakage ledger, caps, settlement, fees, refunds                   | NEAR smart contracts (Rust, near-sdk): **GA**. Yield/resume: **GA**, 200-block timeout ([docs](https://docs.near.org/smart-contracts/anatomy/yield-resume)). Function-call access keys: **GA**. They can be restricted to one contract and method list and cannot attach deposits ([docs](https://docs.near.org/protocol/access-keys)). Storage staking: 10¹⁹ yoctoNEAR per byte ([docs](https://docs.near.org/protocol/storage/storage-staking)). A ~104-byte certificate anchor therefore locks about 0.001 NEAR (derived).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | —                                                                                     | Contract on testnet: listings, escrow, yield/resume, integer-bps price recomputation, surplus split, refunds, timeout |
 | **L1 Vault & key release**        | Goods encrypted at rest. Keys released only to approved room code, per job                               | **MPC Confidential Key Derivation (CKD)**. Threshold BLS on BLS12-381. The key is bound to `app_id` = the account of the *calling contract*, plus an optional derivation path. It is returned ElGamal-encrypted to the app's fresh key and can be re-derived on different hardware. Verifiability is private only; public verifiability is "planned" ([NEAR One, 2026-02-23](https://blog.nearone.org/research/2026/02/23/mpc-ckd.html)). **Status:** no official mainnet launch post found. OutLayer's production keystore uses it ([OutLayer docs](https://app.outlayer.ai/docs/vaults)). **MPC network:** NEAR states an 11-of-17 signing threshold on TEE-backed nodes (NEAR X article, read via repost). An independent review reports 11-of-16, TEE-backed only since about Oct 2026, with no proactive refresh, and notes that "1 participant can DoS" ([alinush.github.io/near](https://alinush.github.io/near), SECONDARY).                                                                                                                                                                                                   | Blob storage for ciphertext (S3, Arweave or Filecoin)                                 | X25519 sealed boxes. Ciphertext and an unsalted plaintext hash on-chain.                                              |
@@ -687,7 +687,7 @@ Training overhead under CC may be considerably higher than inference overhead. O
 
 | Technique | Use in Marginal | Status of evidence |
 |---|---|---|
-| Provider receipts (signature over request and response hashes) | Model-identity proof for external judges; checked on-chain (LETHE v0 already does `ecrecover`) | In production at NEAR AI |
+| Provider receipts (signature over request and response hashes) | Model-identity proof for external judges; checked on-chain (the earlier v0 prototype already does `ecrecover`) | In production at NEAR AI |
 | TOPLOC activation commitments | A second room spot-checks that the declared model processed the declared input. Cost: 258 bytes per 32 tokens; validation "significantly faster" than inference; detected model, prompt and precision swaps with 100% accuracy in the authors' tests ([arXiv 2501.16007](https://arxiv.org/abs/2501.16007)). The earlier "up to 100×" figure appears only in v1. | Paper (ICML 2025 per search summaries) |
 | Output verification against weight exfiltration | For weights-in-vault serving: "reduces exfiltratable information to <0.5% with false-positive rate of <0.01%" on MoE-Qwen-30B ([arXiv 2511.02620](https://arxiv.org/abs/2511.02620)) | Paper |
 | Zero-knowledge proofs of small deterministic scorers | Embedding or classifier sub-models where proving is practical ([Jolt Atlas, arXiv 2602.17452](https://arxiv.org/abs/2602.17452)). Not for LLM judges: zkLLM proves a 13B inference in under 15 minutes ([arXiv 2404.16109](https://arxiv.org/abs/2404.16109)), and zkFinGPT reports 620 s per proof for Llama3-8B ([arXiv 2601.15716](https://arxiv.org/abs/2601.15716)). | Research; v3 at the earliest |
@@ -705,7 +705,7 @@ Training overhead under CC may be considerably higher than inference overhead. O
 
 ### 4.7 Mechanism: what the contract enforces and what the AI may do
 
-**Principle.** *The room measures. The contract prices.* Every movement of money is computed and executed by contract code from signed integer components. Model judgement is an input with a bounded, one-directional effect. Checks that something is safe (attestation, policy) are done by contract or deterministic code, never delegated to an LLM: across 10 LLMs tested, agents "can reliably detect danger signals but cannot reliably verify safety" ([arXiv 2603.19011](https://arxiv.org/abs/2603.19011)). LETHE v0 already implements this principle (§4.15); this section generalises it.
+**Principle.** *The room measures. The contract prices.* Every movement of money is computed and executed by contract code from signed integer components. Model judgement is an input with a bounded, one-directional effect. Checks that something is safe (attestation, policy) are done by contract or deterministic code, never delegated to an LLM: across 10 LLMs tested, agents "can reliably detect danger signals but cannot reliably verify safety" ([arXiv 2603.19011](https://arxiv.org/abs/2603.19011)). The earlier v0 prototype already implements this principle (§4.15); this section generalises it.
 
 #### 4.7.1 Measured value
 
@@ -749,7 +749,7 @@ The seller chooses one rule per listing:
 |---|---|---|---|---|
 | **R1 Posted price** | V ≥ ask | Buyer pays the ask | Payment does not depend on B, so reporting the true B is a dominant strategy. A buyer who deflates its own *m* (for example by stuffing context) can only lose the deal. | Single-buyer listings (the v1 default) |
 | **R2 Value-indexed price** ("pay for marginal value") | V ≥ p(m) | Buyer pays p(m) = max(P_min, P_full × m / 10,000) | Truthful in B. The buyer *would* gain by deflating *m*, so the contract accepts only context snapshots anchored before the listing's publication (AC-6), and the seller sets P_min. | Knowledge goods where sellers want price to track novelty (v1) |
-| **R3 Surplus split** (LETHE v0) | V ≥ ask | Buyer pays ask + (V − ask)/2 | **Not truthful.** The buyer gains by shading B toward ask/m. This is an instance of the general impossibility of efficient, truthful, budget-balanced bilateral trade ([Myerson–Satterthwaite 1983, DOI 10.1016/0022-0531(83)90048-0](https://doi.org/10.1016/0022-0531(83)90048-0)). | v0 compatibility and demos only. Deprecated in v1. |
+| **R3 Surplus split** (earlier v0) | V ≥ ask | Buyer pays ask + (V − ask)/2 | **Not truthful.** The buyer gains by shading B toward ask/m. This is an instance of the general impossibility of efficient, truthful, budget-balanced bilateral trade ([Myerson–Satterthwaite 1983, DOI 10.1016/0022-0531(83)90048-0](https://doi.org/10.1016/0022-0531(83)90048-0)). | v0 compatibility and demos only. Deprecated in v1. |
 | **R4 Sealed round** (k copies, many buyers) | Buyer's V_b is among the top k and ≥ reserve | Each winner pays max(reserve, V₍k+1₎), the same price for all | Uniform (k+1)-th-price rule. For a buyer who wants one copy and whose value is B × m, bidding the true B is dominant. *m* is measured, not reported. | Exclusive or limited-copy goods (v2) |
 | **R5 Tender** (one buyer, many sellers) | Offers chosen to maximise Σ(V_s − ask_s) within the buyer's budget | Each winning seller is paid its *threshold* payment: the highest ask at which it would still have won | Truthful for sellers with private costs. In the data-market setting of [arXiv 2504.05563](https://arxiv.org/abs/2504.05563), "Myerson payment is the smallest IC and IR (for data sellers) payment rule" given the welfare-maximising allocation. The same paper shows leave-one-out and Shapley payments are not incentive-compatible. Buyer individual rationality there also needs subadditive buyer value. | AI-lab data requests (v2) |
 
@@ -907,8 +907,8 @@ Indicative rates are estimates and appear in §4.18.
 3. **Novelty against the buyer (deterministic).**
    - Semantic retrieval of each claim's nearest passages in the buyer's corpus. Lexical overlap misses paraphrase, while semantic retrieval detected 80–97% of paraphrases at 1% false-positive rate in [arXiv 2303.13408](https://arxiv.org/abs/2303.13408) (a non-adaptive attacker).
    - An NLI entailment check on borderline pairs.
-   - Per-claim novelty *n_i* ∈ [0, 1]. The LETHE v0 form is *n_i = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))*, with τ_hi = 0.78 and τ_lo = 0.45 for MiniLM; v1 recalibrates the thresholds per embedding model.
-4. **Need weighting (deterministic).** Claims are weighted by similarity to the stated need: *N_b = Σ w_i n_i / Σ w_i*. This is LETHE's padding-resistant weighting, and it has a test (AC-39).
+   - Per-claim novelty *n_i* ∈ [0, 1]. The v0 form is *n_i = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))*, with τ_hi = 0.78 and τ_lo = 0.45 for MiniLM; v1 recalibrates the thresholds per embedding model.
+4. **Need weighting (deterministic).** Claims are weighted by similarity to the stated need: *N_b = Σ w_i n_i / Σ w_i*. This is the padding-resistant weighting, and it has a test (AC-39).
 5. **Public novelty (optional, deterministic).** The same computation runs against an in-room snapshot of public corpora (news, filings, papers, chain data), giving *N_pub*. If the buyer opts in, *D = N_b × N_pub*, so restated public material is cheap.
 6. **Verifiability (display field in v1, factor in v2).** The share of claims that can be checked against the public snapshot. For on-chain claims ("these wallets are linked"), checks use block-pinned replay of chain state (§4.15).
 7. **Relevance judgement.** Two judges score relevance of the good to the stated need. *L = max(ℓ_floor, min(ℓ₁, ℓ₂))*.
@@ -1202,13 +1202,13 @@ These methods work at dataset scale only, not for a single memo. They deter misu
 
 #### 4.10.5 What is and is not new
 
-**Signed erasure proofs are prior art.** The now-offline "Lethe protocol" showed, on testnet with simulated TEE hardware:
+**Signed erasure proofs are prior art.** A now-offline erasure-proof audit market showed, on testnet with simulated TEE hardware:
 
 - a "Proof of Erasure — NIST 800-88 + ECDSA signature";
 - "zkPoE v2 — O(1) on-chain verification via Groth16";
 - an escrow on Base Sepolia.
 
-See the [archived site, 2026-04-09](http://web.archive.org/web/20260409212333/https://lethe-protocol.github.io/). The same research circle published Conditional Recall as a mechanism-design primitive ([arXiv 2510.21904](https://arxiv.org/abs/2510.21904)).
+The project's site was archived on 2026-04-09 and is now offline. The same research circle published Conditional Recall as a mechanism-design primitive ([arXiv 2510.21904](https://arxiv.org/abs/2510.21904)).
 
 **What Marginal adds, and the narrower claim:**
 
@@ -1267,7 +1267,7 @@ Each threat has a mitigation and a residual risk, the risk that remains after mi
 | **T21** | Leakage-budget griefing | A competitor exhausts a listing's budget | Per-bit fees; per-identity sub-budgets; reserved budget for verified buyers; top-ups | Medium |
 | **T22** | Correlated relisting | The same insight is listed under several budgets | Near-duplicate screening at listing time; seller attestations | Medium. **Open question.** |
 | **T23** | Low-entropy commitments | A brute-forced hash of a yes/no good | Salted commitments (§4.3.2) | Low |
-| **T24** | Replay or cross-job reuse of verdicts or receipts | Old signatures reused | Nonces; job binding; receipt replay checks (LETHE v0 already tests these) | Low |
+| **T24** | Replay or cross-job reuse of verdicts or receipts | Old signatures reused | Nonces; job binding; receipt replay checks (the earlier v0 prototype already tests these) | Low |
 | **T25** | Asynchronous-execution bugs | Double settlement, or stuck escrow across NEAR callbacks | State locks; property tests (§8.3); audits | Low after audit |
 | **T26** | Settlement-layer incident | An Intents or bridge exploit or pause (2026-10-01) | Escrow outside the verifier; NEAR-side refunds; route diversity | Medium |
 
@@ -1459,19 +1459,19 @@ Marginal publishes:
 
 Both replay verifiers are open source (AC-35, AC-36).
 
-### 4.15 How LETHE, ChainProof Guard and 7Block Labs map in as v0 components
+### 4.15 How the earlier v0 prototype, ChainProof Guard and 7Block Labs map in as v0 components
 
 **Status of the evidence.**
 
-- LETHE and ChainProof Guard are public repositories built during NEAR HACKATHON (Nov 2026), deployed on NEAR testnet. Their READMEs state what is real and what is simulated ([LETHE](https://github.com/jayanth-kumar-morem/lethe), [ChainProof Guard](https://github.com/jayanth-kumar-morem/chainproof-guard)).
+- The earlier v0 prototype and ChainProof Guard are public repositories built during NEAR HACKATHON (Nov 2026), deployed on NEAR testnet. Their READMEs state what is real and what is simulated ([ChainProof Guard](https://github.com/jayanth-kumar-morem/chainproof-guard)).
 - The audit-ledger and claim-replay tooling described below is pre-existing work of the author's. The claims about it (paying B2B customers, Annex IV dossiers, block-pinned replay) are **reported, not independently verified** for this spec.
-- **Naming.** "LETHE" stays the hackathon codename only. The name is crowded in exactly this niche (§9, R21).
+- **Naming.** The originally considered hackathon codename is not used as the product name. That name is crowded in exactly this niche (§9, R21).
 
-#### 4.15.1 LETHE (hackathon v0): what exists today
+#### 4.15.1 The earlier v0 prototype: what exists today
 
-| Capability | LETHE v0 status (per its README) | Carries into | Gap to production |
+| Capability | Earlier v0 status (per its README) | Carries into | Gap to production |
 |---|---|---|---|
-| Listings, escrow, yield/resume settlement, refunds, timeout (~200-block window) | **Real** on testnet (`lethe-380029.testnet`) | Clearing contract (§4.7), job state machine (§4.3) | Two-phase jobs (§4.3.5); pricing rules R1–R5; leakage ledger; caps; bonds; challenge windows |
+| Listings, escrow, yield/resume settlement, refunds, timeout (~200-block window) | **Real** on testnet | Clearing contract (§4.7), job state machine (§4.3) | Two-phase jobs (§4.3.5); pricing rules R1–R5; leakage ledger; caps; bonds; challenge windows |
 | Price recomputed by the contract in integer bps: `valuation = budget × novelty × relevance`; deal if valuation ≥ ask; seller paid `ask + (valuation − ask)/2` | **Real** | The "contract sets the price; the model can only lower it" principle (§4.7.1) | Replace the surplus split (not truthful) with posted price as the default (§4.7.2); add the floor on the LLM factor |
 | Buyer-relative novelty: per-claim MiniLM similarity against the buyer's notes, `clamp((0.78 − maxSim)/(0.78 − 0.45))`, weighted by similarity to the stated need; a test shows padding does not move it | **Real** (runs locally) | Knowledge appraiser (§4.8.1) | NLI and paraphrase robustness; claim-extractor union; public-novelty option; benchmark against NovAScore |
 | On-chain ed25519 check of the enclave verdict; on-chain `ecrecover` of a NEAR-AI-style receipt with body-hash binding, score parsed from the signed body, and replay protection | **Real** (exercised with a stand-in signer on testnet; tamper cases in sandbox tests) | Model-identity proof (AC-25), threat T16 | Real NEAR AI Cloud receipts (needs an API key) or self-hosted judges; per-instance binding is not possible with shared signing keys (§4.6.6) |
@@ -1571,7 +1571,7 @@ These come from MOONSHOT §11 and are not a product requirement.
 | **Vana**, **OpenLedger** | Contribution-measured payouts against a pool or shared model | Live | P | P | P | N | N | P | Value relative to a pool or a shared model, not to the buyer |
 | **Nillion "Encrypted Markets"** ([post](https://nillion.com/news/the-road-to-encrypted-markets/)) | Sealed conditional trade instructions | Roadmap from Aug 2026 | N | N | N | N | P | N | An adjacent primitive, not an information market |
 | **TBVH, NDAI TrustKit, DealProof, Mnemo, Sealed Trade Protocol** | Agents negotiate in a TEE, with EVM escrow; exploit disclosure | All testnet-only; four dormant since Mar–Jun 2026; DealProof pivoting to attested credentials | N–P | P | N | N–P | N | N | Prior art for "AI escrow in a TEE" |
-| **Lethe protocol** ([archived](http://web.archive.org/web/20260409212333/https://lethe-protocol.github.io/)) | Erasure-based audit market. "Proof of Erasure" (NIST 800-88 + ECDSA) and Groth16 zkPoE, verified on-chain in an escrow flow | Testnet with simulated TEE (Apr 2026); site now offline; operators unidentified | N | P | P | **Y (testnet)** | N | N | **Prior art for the forget certificate**, and a name collision |
+| **Erasure-proof audit market** (site archived 2026-04-09, now offline) | Erasure-based audit market. "Proof of Erasure" (NIST 800-88 + ECDSA) and Groth16 zkPoE, verified on-chain in an escrow flow | Testnet with simulated TEE (Apr 2026); site now offline; operators unidentified | N | P | P | **Y (testnet)** | N | N | **Prior art for the forget certificate**, and a name collision |
 | **Opaque Systems** | Confidential AI platform | Wound down Oct 2026; team joined Anthropic (reported as a licence and acqui-hire; terms undisclosed) | — | — | — | — | — | — | Removed as an independent competitor. Big labs are bringing confidential computing in-house. |
 | **AlphaSense/Tegus, GLG, Third Bridge** | Expert-call transcript libraries; AI-led calls. AlphaSense delays transcript publication by 14 or 90 days, and buyers can pay to shorten the delay. | Live | N | N | N | N | N | N | Substitutes for knowledge goods. Time-based price discrimination already exists. |
 | **NEAR ecosystem**: Agent Market revamp ([NEAR Q2 2026](https://www.near.org/blog/the-state-of-near-q-2-2026)); NEAR AI Red security models | Agents hired per job with permissioned data access and escrow; TEE security models | Revamp planned Q3 2026 (launch unconfirmed) | N | N | P | N | P | N | Partner or distribution channel. Risk: NEAR AI builds a data-exchange layer itself. |
@@ -1603,7 +1603,7 @@ These come from MOONSHOT §11 and are not a product requirement.
 
 | Stage | Scope | Depends on | Exit gate (all required) | Kill / pivot criterion | Indicative duration (estimate) |
 |---|---|---|---|---|---|
-| **Stage 0: v0 (LETHE)** | Knowledge goods; buyer-relative novelty; contract-recomputed price; forget-certificate hash; replay verifier; simulated attestation | — | Exists on testnet (§4.15) | — | Done |
+| **Stage 0: v0 (earlier prototype)** | Knowledge goods; buyer-relative novelty; contract-recomputed price; forget-certificate hash; replay verifier; simulated attestation | — | Exists on testnet (§4.15) | — | Done |
 | **Stage 1: v1, the production knowledge exchange** | See the list below | Fork of the attestation crate; CKD availability (or the threshold-KMS fallback, §4.5.6); NEAR AI or own GPU capacity; counsel opinions in §4.13 | (1) All **[v1]** acceptance criteria pass; (2) 3–5 design partners (crypto funds, research DAOs, a security firm); (3) First $100k cleared (target); (4) No open critical or high audit findings | Fewer than 2 partners clear a paid trade by the end of the stage | ~6 months |
 | **Stage 2: v2, data and evals** | See the list below | Blackwell capacity; a second CPU-TEE vendor; an Intents partnership for FAR; EU entity | (1) All **[v2]** criteria pass; (2) 2 AI-lab or enterprise-model buyers; (3) $5–10M GMV (target); (4) A peer-reviewed paper on the leakage ledger and measured-value mechanisms | Labs refuse TEE-measured lift as a contract basis | ~12 months |
 | **Stage 3: v3, weights, use-rights, exploits, signals, assurance** | See the list below | Insurance partner; export-control and swaps opinions | (1) All **[v3]** criteria pass; (2) $100M+ GMV run-rate (target); (3) An insurance capacity partner; (4) The first weights licence | Use-rights extraction cannot be kept within declared budgets in red-team tests (AC-44) | ~18 months |
@@ -1924,7 +1924,7 @@ The sum is **$126.4B**.
 
 ## 8. Test Plan
 
-This section describes the plan only. No test code exists for the full product yet. LETHE v0 has a small existing suite: 2 contract unit tests, 1 sandbox end-to-end test and 6 enclave tests (§4.15).
+This section describes the plan only. No test code exists for the full product yet. The earlier v0 prototype has a small existing suite: 2 contract unit tests, 1 sandbox end-to-end test and 6 enclave tests (§4.15).
 
 ### 8.1 Environments and promotion path
 
@@ -2003,7 +2003,7 @@ Every test asserts the final balances, the settlement record, the leakage debit,
 
 - A receipt from an unregistered signer is rejected.
 - A receipt with a tampered body hash is rejected.
-- A receipt replayed from another job is rejected (LETHE v0 already tests the first three cases).
+- A receipt replayed from another job is rejected (the earlier v0 prototype already tests the first three cases).
 
 **Cross-check**
 
@@ -2164,7 +2164,7 @@ Inject each of the following during staging and canary runs. Assert that every j
 | **R18** | **Incumbent response.** Data vendors adding sealed evaluation; labs building rooms in-house (the DeepMind pilot); Super Protocol, Turnkey or VAST adding pricing; NEAR AI building a data-exchange layer. | M | M | Neutral venue; rails as partners; leakage standard; compliance artefacts (§4.16) | Medium |
 | **R19** | **Buyers refuse TEE-measured lift as a contract basis** | H | M | Multi-vendor agreement; open-source rooms; reproducible builds; audits; attested score certificates; small capped stakes first; Stage 2 kill criterion | **Open**, answered only by pilots |
 | **R20** | **Year-5 revenue sensitivity.** The obtainable revenue may be small for a venture outcome, and it depends on one segment (§9.2). | H | M | Prioritise the AI-lab clearing line after the knowledge wedge; verify the scope of Menlo's $15.3B; track GMV per lab buyer as the leading indicator | See §9.2 |
-| **R21** | **Name collision.** "Lethe protocol" (erasure-proof audit market; prior art). "Marginal" (marginal.network, a DeFi leverage protocol; GitHub last pushed 2025-03-26; app returned HTTP 402). A US "MARGINAL SOFTWARE" word mark (serial 78065984; status unknown). | M | H | Keep LETHE as the hackathon codename only. Commission a formal clearance search (USPTO, EUIPO, UKIPO, WIPO; Nice classes 9, 35, 36, 42) before public use of "Marginal". Prepare alternatives. | **Open:** final name (§9.3) |
+| **R21** | **Name collision.** An erasure-proof audit market (prior art; site archived April 2026). "Marginal" (marginal.network, a DeFi leverage protocol; GitHub last pushed 2025-03-26; app returned HTTP 402). A US "MARGINAL SOFTWARE" word mark (serial 78065984; status unknown). | M | H | The originally considered hackathon codename is not used as the product name. Commission a formal clearance search (USPTO, EUIPO, UKIPO, WIPO; Nice classes 9, 35, 36, 42) before public use of "Marginal". Prepare alternatives. | **Open:** final name (§9.3) |
 | **R22** | **Execution.** Solo founder, broad scope | H | H | Sequence verticals by stage; hire go-to-market and TEE engineering first (§4.15.5); kill criteria | Medium |
 | **R23** | **Platform dependency on NEAR** (CKD, Intents, NEAR AI) and its incident history | M | M | Key-release fallback; settlement-route diversity; chain-agnostic certificate format | Medium |
 | **R24** | **Long-horizon confidentiality.** CKD recovery keys and X25519 are not post-quantum. | L now; M long-term | L | Hybrid ML-KEM sealing in Stage 3; short listing lifetimes for long-value goods | Low |
@@ -2208,17 +2208,17 @@ Every number here is an **estimate**. No year-5 revenue figure is a forecast.
 
 ### 9.3 Name collision
 
-- "Lethe" is taken in exactly this niche:
-  - the Lethe protocol's erasure-proof audit market (archived April 2026, now offline);
-  - an ETHGlobal project named "Lethe";
-  - Lethean (LTHN);
+- The originally considered hackathon codename is taken in exactly this niche:
+  - an erasure-proof audit market (archived April 2026, now offline);
+  - an ETHGlobal project of the same name;
+  - a cryptocurrency (ticker LTHN);
   - several machine-unlearning papers.
 - "Marginal" collides with marginal.network, a DeFi leverage protocol in the same broad field (on-chain financial markets). It looks dormant (GitHub last pushed 2025-03-26) but may hold rights.
 - There is also a US "MARGINAL SOFTWARE" mark for financial-calculation software, status unknown ([Justia](https://trademark.justia.com/owners/kosaka-dane-1752676)).
 - **Decision needed before any public launch:**
   - run a formal clearance search;
   - if "Marginal" is not clear, use a composite or different mark;
-  - keep "LETHE" as the hackathon codename only.
+  - that originally considered codename is not used as the product name.
 
 ### 9.4 Open research problems
 
@@ -2271,7 +2271,7 @@ MOONSHOT.md itself is unchanged. The corrected statements are used throughout th
 | 15 | The Nash split as the bilateral rule | Not truthful (Myerson–Satterthwaite). Posted price is the default (§4.7.2). |
 | 16 | Leakage budget: "no prior implementation … nothing like it" | The concepts have prior art (QIF, DP budgets, the Ladder, query pricing, privacy-loss compensation). Only the contract-enforced, priced, per-listing combination is claimed (§4.7.4). |
 | 17 | Buyer-relative pricing cleared by a truthful mechanism is new | Prior art: [Agarwal, Dahleh & Sarkar 2019](https://arxiv.org/abs/1805.08125); [PrivaDE](https://arxiv.org/abs/2510.18109). Novelty is the sealed-TEE, two-sided, on-chain combination. |
-| 18 | The forget certificate as a new settlement artefact; Lethe protocol "Flashbots-adjacent" | Signed erasure proofs in an escrow flow exist (Lethe protocol, testnet). The claim is narrowed to an attestation-bound, two-sided certificate. The "Flashbots-adjacent" label is unsupported. |
+| 18 | The forget certificate as a new settlement artefact; an erasure-proof audit market labelled "Flashbots-adjacent" | Signed erasure proofs in an escrow flow exist (an erasure-proof audit market, testnet). The claim is narrowed to an attestation-bound, two-sided certificate. The "Flashbots-adjacent" label is unsupported. |
 | 19 | Surge "pay if metric improves" (SECONDARY, Sacra) | A primary vendor page exists ([surgehq.ai/ots](https://surgehq.ai/ots)). Labs receive the full dataset first. The Sacra link was an AI-generated chat page. |
 | 20 | STRIDE "13× faster"; In-Run Shapley and STRIDE as "cheap proxies" | "Over 12×" against an extrapolated baseline. Neither is a pre-screen ([arXiv 2606.05165](https://arxiv.org/abs/2606.05165), [2406.11011](https://arxiv.org/abs/2406.11011)). |
 | 21 | Attestable Audits ran on "TDX/SEV-SNP/Nitro"; ManaTEE "signs eval results" | A Nitro-only, CPU prototype ([arXiv 2506.23706](https://arxiv.org/abs/2506.23706)). The ManaTEE signing claim is unverified. |
@@ -2398,8 +2398,8 @@ The full verified source lists, with source-type labels and query logs, are in `
 
 - [Turnkey](https://docs.turnkey.com/solutions/verifiable-cloud/data-brokerage).
 - [Super Protocol](https://superprotocol.com/).
-- [Lethe protocol, archived](http://web.archive.org/web/20260409212333/https://lethe-protocol.github.io/).
+- Erasure-proof audit market (site archived 2026-04-09, now offline).
 - [NDAI TrustKit](https://github.com/discordwell/ndai-hackathon), [TBVH](https://github.com/deepsp94/tbvh), [DealProof](https://github.com/kkoci/Dealproof), [Mnemo](https://github.com/Eduardogbg/mnemo).
 - [marginal.network](https://marginal.network/).
-- v0 repositories: [LETHE](https://github.com/jayanth-kumar-morem/lethe), [ChainProof Guard](https://github.com/jayanth-kumar-morem/chainproof-guard).
+- v0 repositories: [ChainProof Guard](https://github.com/jayanth-kumar-morem/chainproof-guard).
 

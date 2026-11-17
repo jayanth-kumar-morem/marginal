@@ -28,7 +28,7 @@ The user's standing rules for every task:
 - `tasks.md`: the build plan. M1 (E1–E15) is the hackathon demo; M2 (E16–E19) is the mainnet canary.
 - `SPEC.md`: the product spec behind the SDD.
 - `sdd-notes/`, `spec-notes/`, `moonshot-notes/`: research. Read-only background.
-- LETHE and ChainProof Guard are v0 references only. Port code from them deliberately and note it in `tasks.md`; never edit them from here.
+- The earlier v0 prototype and ChainProof Guard are v0 references only. Port code from them deliberately and note it in `tasks.md`; never edit them from here.
 
 ## Scope rules
 

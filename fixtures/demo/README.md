@@ -5,8 +5,6 @@ for this repository**, with one deliberate exception: the OFAC address in `ofac-
 real listed address, because a sanctions screen that blocks an invented address demonstrates
 nothing. Every issuer, fund, instrument, person and number in the memos and the dataset is invented.
 
-LETHE's own demo corpus is not in this repository, so these documents were authored here rather than
-ported; what was carried over from LETHE is the measurement, not the text (`novelty.ts`, E8.6).
 
 | File | What, and which D | Synthetic? | What not to mistake it for |
 | --- | --- | --- | --- |

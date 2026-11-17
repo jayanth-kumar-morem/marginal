@@ -1,6 +1,6 @@
 /**
- * Buyer-relative novelty (SDD §3.15.1, AC-39; E8.6), ported from LETHE's `enclave/lib/novelty.js`
- * with its τ values (0.78 / 0.45) and its padding-resistant need weighting.
+ * Buyer-relative novelty (SDD §3.15.1, AC-39; E8.6), with τ values (0.78 / 0.45) and
+ * padding-resistant need weighting.
  *
  * The seller's good is split into claims; each claim is compared with every sentence of the buyer's
  * own context. A claim the buyer already knows contributes nothing, an unseen one contributes
@@ -24,7 +24,7 @@ export const MIN_CLAIM_WORDS = 5;
 const BPS = 10_000;
 
 /**
- * Splits text into claims: LETHE's deterministic splitter. Markdown headings go, sentences split on
+ * Splits text into claims: a deterministic splitter. Markdown headings go, sentences split on
  * terminal punctuation or a line break, list markers are stripped, and anything shorter than five
  * words is not a claim.
  */

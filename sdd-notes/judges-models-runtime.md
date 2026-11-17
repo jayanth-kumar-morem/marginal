@@ -30,7 +30,7 @@ Compiled 2026-11-12 for SDD.md §11. Live data was fetched 2026-11-11 between 19
 | Item | Status | One-line answer |
 |---|---|---|
 | OI-7.1 Catalogue and judge pick | **Resolved** (pending spike S-J) | Judges: `Qwen/Qwen3.8-27B` (Qwen) and `z-ai/glm-5.3-flash` (GLM). Fallback: `deepseek-ai/DeepSeek-V4.1-Flash-1017` (DeepSeek; on a different CVM and engine). No gpt-oss, Llama or Gemma is in the Private TEE tier today. |
-| OI-7.2 Verification APIs and key rotation | **Resolved** | Signing keys come from dstack KMS by model name. They are stable across restarts and shared by all instances, so they do **not** rotate on restart (this corrects LETHE). A signer address does not pin a measurement. |
+| OI-7.2 Verification APIs and key rotation | **Resolved** | Signing keys come from dstack KMS by model name. They are stable across restarts and shared by all instances, so they do **not** rotate on restart (this corrects the earlier prototype). A signer address does not pin a measurement. |
 | OI-7.3 Parameters, determinism, limits, terms | **Partially resolved** | `temperature`, `seed`, `max_tokens` and structured outputs are supported per model. Outputs are not bitwise deterministic (batching, speculative decoding, FP8/W4 quantisation). Rate limit is 64 concurrent requests per model per org by default. No prompt-retention period is published. |
 | OI-7.4 SGLang incident | **Resolved** (to 2026-11-11) | NEAR AI's own repos show an SSRF through OHTTP inner requests into unauthenticated SGLang admin endpoints. The proxy was fixed 11-08; engine-level CVEs were still open on the GLM fork on 11-11, and an upgrade to SGLang v0.5.23 was in progress. |
 | OI-15 Embedder and NLI | **Partially resolved; needs the benchmark spike** | Shortlist `bge-small-en-v1.5` (default) and `bge-base-en-v1.5`. NLI: `cross-encoder/nli-deberta-v3-xsmall` (HDP) or `-base` (v1). Thresholds must be recalibrated per model. NovAScore code is still unreleased. |
@@ -107,7 +107,7 @@ Compiled 2026-11-12 for SDD.md §11. Live data was fetched 2026-11-11 between 19
 - Dense, so its behaviour is predictable.
 - Cheapest input ($0.04/M); 262k context.
 - Supports `seed` and `structured_outputs`.
-- Its signer `0x835ab53d…` is **the same address LETHE registered on testnet** (`lethe-380029.testnet.get_config().ai_signers`, read via test.rpc.fastnear.com).
+- Its signer `0x835ab53d…` is **the same address the earlier prototype registered on testnet** (read via test.rpc.fastnear.com).
 
 **Judge B: `z-ai/glm-5.3-flash`**
 - Different family (Z.ai GLM).
@@ -246,8 +246,8 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
   - the `app_id`;
   - the canonical model name.
 - NEAR AI publishes no rotation schedule or notification channel. **Clients learn keys only by re-fetching `/v1/attestation/report`.**
-- **This corrects LETHE's README** ("signing keys rotate when the backend restarts") and SDD §3.16. That behaviour matches the dev-mode or old random-key path, not today's production.
-- Observation: LETHE's on-chain signer for Qwen3.8 (`0x835ab53d…`) still matched at 19:18 UTC. But the compose-manager log shows no Qwen restart between LETHE's deploy (~07:00 UTC on 11-11) and my fetch. So this is consistent with the code, not an independent proof.
+- **This corrects an earlier prototype's README** ("signing keys rotate when the backend restarts") and SDD §3.16. That behaviour matches the dev-mode or old random-key path, not today's production.
+- Observation: the earlier prototype's on-chain signer for Qwen3.8 (`0x835ab53d…`) still matched at 19:18 UTC. But the compose-manager log shows no Qwen restart between that deploy (~07:00 UTC on 11-11) and my fetch. So this is consistent with the code, not an independent proof.
 - **Security consequence.** Because the key follows the `app_id`, **any workload that NEAR AI's KMS policy authorises for that `app_id` gets the same signer**:
   - including a different engine image started by compose-manager;
   - including the unpatched or abliterated LoRA engines that serve the base model too.
@@ -322,7 +322,7 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
    - Every call sets `stream:false`, the canonical model ID, `x-no-aliasing: true` and `Accept-Encoding: identity`.
    - `signing_algo=ecdsa` on both the report call and the signature call.
    - Accept only `signature_kind == "provider_tee"`. Anything else, including a fallback to Chutes, gives `factorBps = 0`.
-2. **Replace "NEAR AI rotates signing keys on backend restart (LETHE README)"** with:
+2. **Replace "NEAR AI rotates signing keys on backend restart (earlier prototype README)"** with:
    - Keys are KMS-derived per (`app_id`, model) and shared across instances and measured configurations.
    - A signer address therefore does not pin code.
    - Registry entries become `{model_id, signing_algo, signing_address, verified_compose_hash, cm_actions_hash, engine_digests[], verified_at, expires_at}`.
@@ -466,7 +466,7 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
 
 **Why the τ values cannot carry over.**
 - e5's cosines sit in 0.7–1.0 (card), and bge-v1 sat in 0.6–1.0 (card).
-- LETHE's τ_hi = 0.78 and τ_lo = 0.45 are MiniLM-specific. bge-v1.5 "alleviates" the compression but still advises picking thresholds from your own data.
+- The v0 values τ_hi = 0.78 and τ_lo = 0.45 are MiniLM-specific. bge-v1.5 "alleviates" the compression but still advises picking thresholds from your own data.
 
 **Recalibration procedure (per model hash).**
 1. **Build a pairs set** of (claim, context sentence) labelled non-novel / partial / novel:
@@ -477,7 +477,7 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
    - **τ_hi** = the smallest cosine where P(non-novel) ≥ 0.9.
    - **τ_lo** = the largest cosine where P(non-novel) ≤ 0.1.
    - Report bootstrap 90% confidence intervals.
-   - Alternatively, use quantile matching: pick each model's τ so the share of pairs above τ equals MiniLM's share above 0.78 and 0.45 on the same set. This preserves the LETHE operating point.
+   - Alternatively, use quantile matching: pick each model's τ so the share of pairs above τ equals MiniLM's share above 0.78 and 0.45 on the same set. This preserves the v0 operating point.
 3. **Tune the NLI threshold** on the τ_lo < sim < τ_hi band, targeting ≤ 5% false "entailed" on the novel class.
 4. **Bake τ_hi, τ_lo and the NLI threshold into the measured image** next to the model hashes (DR-9). Each model change is a new appraiser version.
 
@@ -499,7 +499,7 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
 ### 2.5 Recommended SDD changes (OI-15)
 
 - **§3.15.1 Embeddings row.** "v1: `bge-small-en-v1.5` (MIT, 33M, 384-d) unless spike S-5 favours `bge-base-en-v1.5`; MiniLM is kept as the control. ONNX fp32 from the official repo, pinned by SHA-256."
-- **§3.15.1 per-claim novelty.** "τ_hi and τ_lo are per model hash, from the calibration procedure in §5. The LETHE values apply only to MiniLM."
+- **§3.15.1 per-claim novelty.** "τ_hi and τ_lo are per model hash, from the calibration procedure in §5. The v0 values apply only to MiniLM."
 - **§3.15.1 NLI.**
   - "`cross-encoder/nli-deberta-v3-xsmall` (HDP) or `-base` (v1); Apache-2.0; SNLI and MNLI only."
   - "Label index taken from `config.json` `id2label`."
@@ -563,7 +563,7 @@ All PRIMARY: docs.near.ai pages listed in §5, plus the OpenAPI blocks inside th
 
 | Measure | TS room (today) | Rust worker (proposed) | Source |
 |---|---|---|---|
-| Transitive packages | LETHE `enclave/package-lock.json`: **151** npm packages, 3 with install scripts (onnxruntime-node, protobufjs, sharp). A Marginal-like set (LETHE deps + snarkjs + onnxruntime-node ≥1.23): **193**, 26 optional/platform, install scripts in onnxruntime-node (×2), protobufjs, sharp. | `ort` (no download), `tokenizers` (fancy-regex), `crypto_box`, `zeroize`, `sha2`, `serde_json`: **105** crates for linux-x86_64 normal deps (109 with build deps) | DERIVED: lockfile resolution, 2026-11-11 |
+| Transitive packages | Earlier prototype `enclave/package-lock.json`: **151** npm packages, 3 with install scripts (onnxruntime-node, protobufjs, sharp). A Marginal-like set (those deps + snarkjs + onnxruntime-node ≥1.23): **193**, 26 optional/platform, install scripts in onnxruntime-node (×2), protobufjs, sharp. | `ort` (no download), `tokenizers` (fancy-regex), `crypto_box`, `zeroize`, `sha2`, `serde_json`: **105** crates for linux-x86_64 normal deps (109 with build deps) | DERIVED: lockfile resolution, 2026-11-11 |
 | Native blobs | Node binary (V8, OpenSSL, ICU, libuv); onnxruntime-node npm package unpacked **217.9 MB**. Its `postinstall` (`script/install`) downloads CUDA EP binaries from GitHub releases unless `--onnxruntime-node-install-cuda=skip`. | ORT C++ static library (built from source); one static binary | npm registry; onnxruntime `js/node/script/install.js` |
 | Runtime patch cadence | Node security releases in 2026: Mar 24, Jun 18, Jul 29, Oct 21, **Nov 11**. Each forces a re-measured image. | rustc/crate advisories via `cargo audit`; no runtime VM | nodejs.org/en/blog/vulnerability (PRIMARY) |
 | Wiping | Best effort (GC copies, pooled slabs, strings) | `zeroize` and `mlock` with documented limits | §3.1–3.2 |
@@ -694,7 +694,7 @@ Repo language shares come from the GitHub API (PRIMARY).
 - https://near.ai/blog/security-incident-report-sglang-vulnerability (2026-11-09)
 - https://near.ai/terms-of-service (2026-10-29) · https://near.ai/privacy-policy (2026-10-12) · https://near.ai/near-ai-data-processing-agreement-for-customers (2026-10-15)
 - https://github.com/nearai/inference-proxy (`src/signing.rs`; PR #342) · https://github.com/nearai/vllm-proxy (`src/app/quote/quote.py`) · https://github.com/nearai/cloud-api (`CLAUDE.md`) · https://github.com/nearai/cvm-compose-files (`prod/small-models.yaml`, `prod/DeepSeek-V4.1-Flash-1017-vLLM-DEP8-Abliterated.yaml`; PRs #439, #442, #446) · https://github.com/nearai/nearai-cloud-verifier
-- LETHE testnet state: `lethe-380029.testnet` `get_config` via https://test.rpc.fastnear.com (ai_signers)
+- Earlier prototype testnet state: `get_config` via https://test.rpc.fastnear.com (ai_signers)
 
 **Incident press (SECONDARY)**
 - https://www.theblock.co/news/defi/2026-11-10-near-ai-security-breach-437002
@@ -726,7 +726,7 @@ Repo language shares come from the GitHub API (PRIMARY).
 - SECONDARY: https://www.stepsecurity.io/blog/chaindrop-npm-worm · https://orca.security/resources/blog/tanstack-npm-supply-chain-worm/ · https://snyk.io/blog/node-gyp-supply-chain-compromise-self-propagating-npm-worm-binding-gyp/ · https://thehackernews.com/2026/08/rust-supply-chain-attack-puts-build.html · https://thehackernews.com/2025/09/malicious-rust-crates-steal-solana-and.html
 - https://doc.rust-lang.org/rustc/remap-source-paths.html · https://rust-lang.github.io/rfcs/3127-trim-paths.html · https://rust-secure-code.github.io/rust-supply-chain-security/build.html
 - GitHub languages API for: signalapp/SecureValueRecovery2, signalapp/ContactDiscoveryService-Icelake, flashbots/rbuilder, flashbots/buildernet-orderflow-proxy, flashbots/cvm-reverse-proxy, Dstack-TEE/dstack, near/mpc, apple/security-pcc, NearDeFi/shade-agent-framework, enarx/enarx, occlum/occlum, fortanix/rust-sgx
-- LETHE: https://github.com/jayanth-kumar-morem/lethe (`enclave/package.json`, `package-lock.json`, `README.md`, `scripts/deploy-testnet.sh`)
+- Earlier prototype (`enclave/package.json`, `package-lock.json`, `README.md`, `scripts/deploy-testnet.sh`)
 
 ## 6. Query log
 
@@ -783,5 +783,5 @@ Repo language shares come from the GitHub API (PRIMARY).
   - GitHub languages for 16 repos.
 - **Datasets and licences.** facebookresearch/anli README; google-research-datasets/paws README and LICENSE; Zenodo search (Webis-CPC-11, TAP-DLND).
 - **Node and ORT.** Node v22 `buffer.md` and `crypto.md`; onnxruntime issue #11833 and comments; onnxruntime `install.js`; npm registry for onnxruntime-node and snarkjs.
-- **LETHE.** Repo files; testnet `get_config` via fastnear RPC (rpc.testnet.near.org returned "deprecated").
+- **Earlier prototype.** Repo files; testnet `get_config` via fastnear RPC (rpc.testnet.near.org returned "deprecated").
 - **Lockfile resolution (no builds, no scripts).** `cargo generate-lockfile` + `cargo tree` for the Rust probe; `npm install --package-lock-only --ignore-scripts` for the TS probe.

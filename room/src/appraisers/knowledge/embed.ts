@@ -5,7 +5,7 @@
  * Three things here are deliberate.
  *
  * **No runtime download.** The weights and the tokenizer are loaded from `room/models/` and each
- * file is checked against `SHA256SUMS` before it is used. LETHE fetched the model from the network
+ * file is checked against `SHA256SUMS` before it is used. An earlier prototype fetched the model from the network
  * at run time; a room that did that would be scoring with weights the host chose (DR-9).
  *
  * **`onnxruntime-web`, not `onnxruntime-node`.** The node package has a `postinstall` that

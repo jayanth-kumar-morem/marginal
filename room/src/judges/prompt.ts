@@ -1,5 +1,5 @@
 /**
- * The judge prompt (SDD §3.16, ported from LETHE's `enclave/lib/ai.js`).
+ * The judge prompt (SDD §3.16).
  *
  * Three things matter and all three are in the measured image, not in a request the host builds.
  * The good is wrapped in delimiters and declared untrusted, so an instruction written inside it is
