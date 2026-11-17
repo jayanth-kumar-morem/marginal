@@ -73,6 +73,8 @@ services:
       PORT: "8083"
       MARGINAL_BIND: 0.0.0.0
       MARGINAL_CHAIN_ID: ${MARGINAL_CHAIN_ID}
+      # Read for the chain's height only: every expiry it signs is counted from it.
+      MARGINAL_RPC_URL: ${MARGINAL_RPC_URL}
       MARGINAL_CLEARING: ${MARGINAL_CLEARING}
       MARGINAL_ISSUER_SEED: ${MARGINAL_ISSUER_SEED}
       MARGINAL_COMPLIANCE_SEED: ${MARGINAL_COMPLIANCE_SEED}

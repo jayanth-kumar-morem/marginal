@@ -274,6 +274,38 @@ test("the list is re-read on a timer, and a failed read is reported not fatal", 
   }
 });
 
+test("with no chain height nothing that expires is issued", async () => {
+  // An expiry counted from zero is behind any chain that has run for an hour, so clearing would
+  // refuse it on arrival (E_CREDENTIAL). The service refuses first, and says why.
+  for (const height of [undefined, (): number => 0]) {
+    const service = await serve(
+      {
+        chainId: "testnet",
+        clearing: "clearing.test",
+        issuerSeed: ISSUER,
+        complianceSeed: COMPLIANCE,
+        allowed: ["buyer.testnet"],
+        sdn: { fetchImpl: sdnFetch() },
+        ...(height === undefined ? {} : { height }),
+      },
+      0,
+    );
+    try {
+      for (const [path, body] of [
+        ["/v1/nullifiers", { subject: "buyer.testnet", listing_id: 1, epoch: 1 }],
+        ["/v1/payout-approvals", { subject: "s", route_hash: ROUTE, address: "1Clean" }],
+      ] as const) {
+        const refused = await fetch(`http://127.0.0.1:${service.port}${path}`, postJson(body));
+        assert.equal(refused.status, 503, path);
+        assert.match(JSON.stringify(await refused.json()), /the chain height has not been read yet/);
+      }
+    } finally {
+      service.stop();
+      await new Promise<void>((resolve) => service.server.close(() => resolve()));
+    }
+  }
+});
+
 test("a service built with no clock of its own still answers", async () => {
   const service = await serve(
     {
@@ -283,6 +315,7 @@ test("a service built with no clock of its own still answers", async () => {
       complianceSeed: COMPLIANCE,
       allowed: ["buyer.testnet"],
       sdn: { fetchImpl: sdnFetch() },
+      height: () => 278_000_000,
     },
     0,
   );
@@ -290,8 +323,7 @@ test("a service built with no clock of its own still answers", async () => {
     const issued = (await (
       await fetch(`http://127.0.0.1:${service.port}/v1/nullifiers`, postJson({ subject: "buyer.testnet", listing_id: 1, epoch: 1 }))
     ).json()) as { credential: { expiry_height: number } };
-    // No height source, so the credential expires relative to zero: the wall clock is not a chain.
-    assert.equal(issued.credential.expiry_height, VALIDITY_BLOCKS);
+    assert.equal(issued.credential.expiry_height, 278_000_000 + VALIDITY_BLOCKS);
     const approved = await fetch(
       `http://127.0.0.1:${service.port}/v1/payout-approvals`,
       postJson({ subject: "s", route_hash: ROUTE, address: "1Clean" }),

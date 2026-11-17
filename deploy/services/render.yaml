@@ -31,8 +31,11 @@ envVarGroups:
     envVars:
       - key: MARGINAL_CHAIN_ID
         value: testnet
+      # Not the profile's endpoint. FastNEAR's free tier answers 429 to a shared host: the web app
+      # makes a hundred views to draw `/listings`, and the agent relays every room message, so on
+      # Render both were refused within minutes. Any testnet RPC without that limit will do.
       - key: MARGINAL_RPC_URL
-        value: https://test.rpc.fastnear.com
+        value: https://near-testnet.drpc.org
       - key: MARGINAL_CLEARING
         value: clearing.marginal-sim.testnet
       - key: MARGINAL_KEYPOLICY

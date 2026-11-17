@@ -6,7 +6,7 @@ Three services and the web app, one image, on the operator's machine (SDD §2.7;
 | --- | --- | --- | --- |
 | gateway | 8081 | Objects that are public or already sealed, and an HMAC key for upload grants | Nothing. Every object it serves is checked against a hash the chain committed to |
 | operator-agent | 8082 | A funded **function-call** key, and the NEAR AI key | Nothing. Every message it relays is signed by the room and bound to a chain, a contract and a job |
-| compliance | 8083 | The issuer key and the compliance key | Granting a nullifier credential and a payout approval — both of which clearing verifies itself |
+| compliance | 8083 | The issuer key and the compliance key | Granting a nullifier credential and a payout approval — both of which clearing verifies itself. It reads the chain's height from `MARGINAL_RPC_URL`, because every expiry it signs is counted from it, and does not start without one |
 
 ## Running it
 

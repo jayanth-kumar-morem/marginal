@@ -6,6 +6,7 @@
  */
 import { fromEnv, listFrom, portFrom, reporter, stdout, bindFrom } from "@marginal/service-common";
 
+import { chainHeight } from "./height.js";
 import { serve, sdnUrlFrom, type Compliance } from "./index.js";
 
 function seed(env: NodeJS.ProcessEnv, name: string): Uint8Array {
@@ -18,19 +19,31 @@ export async function main(
   env: NodeJS.ProcessEnv = process.env,
   log: (line: string) => void = stdout,
 ): Promise<Compliance & { port: number }> {
-  const service = await serve(
-    {
-      chainId: fromEnv(env, "MARGINAL_CHAIN_ID"),
-      clearing: fromEnv(env, "MARGINAL_CLEARING"),
-      issuerSeed: seed(env, "MARGINAL_ISSUER_SEED"),
-      complianceSeed: seed(env, "MARGINAL_COMPLIANCE_SEED"),
-      allowed: listFrom(env, "MARGINAL_ALLOWED_IDENTITIES"),
-      sdn: { url: sdnUrlFrom(env) },
-      onError: reporter(log),
-    },
-    portFrom(env, 8083),
-    bindFrom(env),
-  );
-  log(`compliance on ${service.port}, list ${service.list().entries} addresses`);
-  return service;
+  const options = {
+    chainId: fromEnv(env, "MARGINAL_CHAIN_ID"),
+    clearing: fromEnv(env, "MARGINAL_CLEARING"),
+    issuerSeed: seed(env, "MARGINAL_ISSUER_SEED"),
+    complianceSeed: seed(env, "MARGINAL_COMPLIANCE_SEED"),
+    allowed: listFrom(env, "MARGINAL_ALLOWED_IDENTITIES"),
+    sdn: { url: sdnUrlFrom(env) },
+    onError: reporter(log),
+  };
+  // Every expiry is counted from the chain's height, so the chain is read before anything is
+  // issued — and like the list, a service that cannot read it does not start.
+  const chain = chainHeight(fromEnv(env, "MARGINAL_RPC_URL"), { onError: reporter(log) });
+  try {
+    const height = await chain.refresh();
+    const service = await serve({ ...options, height: chain.height }, portFrom(env, 8083), bindFrom(env));
+    log(`compliance on ${service.port}, list ${service.list().entries} addresses, chain at ${height}`);
+    return {
+      ...service,
+      stop(): void {
+        chain.stop();
+        service.stop();
+      },
+    };
+  } catch (error) {
+    chain.stop();
+    throw error;
+  }
 }

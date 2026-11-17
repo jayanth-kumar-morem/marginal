@@ -66,6 +66,10 @@ export interface ComplianceOptions {
   /** Overridable so a test does not have to wait a day, or reach Treasury. */
   readonly refreshSeconds?: number;
   readonly now?: () => number;
+  /**
+   * The chain's height, which every expiry is counted from (`height.ts`). Absent, or answering
+   * zero, means nobody has read the chain, and nothing with an expiry is issued.
+   */
   readonly height?: () => number;
   readonly db?: Store;
   readonly onError?: (error: Error) => void;
@@ -89,6 +93,17 @@ export function compliance(options: ComplianceOptions): Compliance {
   const allowed = new Set(options.allowed);
   let list = emptySdn();
   let timer: NodeJS.Timeout | undefined;
+
+  /**
+   * When what is being issued stops being valid. Clearing refuses a credential or an approval once
+   * the chain is past its `expiry_height`, so one counted from an unread chain would be refused on
+   * arrival, on any network older than an hour: better to say so than to sign it.
+   */
+  const expiry = (): number => {
+    const at = height();
+    if (at <= 0) throw new HttpError(503, "the chain height has not been read yet");
+    return at + VALIDITY_BLOCKS;
+  };
 
   const signWith = (signer: { key: KeyObject }, message: string): string =>
     Buffer.from(sign(null, Buffer.from(message, "hex"), signer.key)).toString("hex");
@@ -130,7 +145,7 @@ export function compliance(options: ComplianceOptions): Compliance {
         listing_id: listingId,
         epoch,
         nullifier,
-        expiry_height: height() + VALIDITY_BLOCKS,
+        expiry_height: expiry(),
       };
       db.issue({ subject, listingId, epoch, nullifier }, now());
       return {
@@ -165,7 +180,7 @@ export function compliance(options: ComplianceOptions): Compliance {
         list_version: list.version,
         screening_id: screeningId,
         blocked,
-        expiry_height: height() + VALIDITY_BLOCKS,
+        expiry_height: expiry(),
       };
       db.record({ subject, routeHash, screeningId, blocked, listVersion: list.version, at: now() });
       return {
