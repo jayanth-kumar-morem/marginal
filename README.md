@@ -16,7 +16,6 @@ Built by [7Block Labs](https://7blocklabs.com) · demo: **https://marginal.7bloc
 
 *Note for reviewers:* the submission overview mentions a "Real and simulated" table and a local sandbox. That table is now [What is real and what is not](#what-is-real-and-what-is-not) below. A hosted testnet showcase was added after submission; every simulated element is flagged on chain and in the UI.
 
-
 A seller lists a document without revealing it. A buyer says what they already know. A TEE room
 reads both, measures how much the document would actually add to *that* buyer, and prices it on
 that measurement. The buyer pays for what the document was worth to them; the seller learns nothing
@@ -72,8 +71,9 @@ so no bridge and no custodian stands between the settlement and the payout.
 
 Every step below was run from a clean tree. Each says what you should see.
 
-**Prerequisites:** Node 22 (`.nvmrc`), pnpm 9, Rust (`rust-toolchain.toml`), and Docker for the
-three host services.
+**Prerequisites:** Node 22 (`.nvmrc`), pnpm 9, Rust (`rust-toolchain.toml`) with `cargo-near` and
+`cargo-llvm-cov` (`cargo install --locked cargo-near cargo-llvm-cov`), and Docker for the three
+host services.
 
 ### 1. Install, and enable the git hooks
 
@@ -225,8 +225,8 @@ Stated here because an honest scorecard is worth more than a demo that overclaim
 | Groth16 sealed verdicts | **Real.** A proof verifies on chain and debits exactly 1,000 mbits |
 | OFAC SDN screening | **Real.** The published list, parsed; the demo's blocked address is a genuine SDN entry |
 | NEAR Intents 1Click quote | **Real**, and deliberately read-only: `dry: true` is forced and nothing is stored |
-| Room attestation **in the local demo** | **Simulated.** `keypolicy-sim` admits a room that proves nothing; every record it makes says `Simulated` and the settlement carries the flag |
-| Key release **in the local demo** | **RoomSealed**, the documented fallback (SDD §3.12.7), not MPC CKD — a local node cannot reach the MPC network |
+| Room attestation **in the local demo and the hosted showcase** | **Simulated.** `keypolicy-sim` admits a room that proves nothing; every record it makes says `Simulated` and the settlement carries the flag |
+| Key release **in the local demo and the hosted showcase** | **RoomSealed**, the documented fallback (SDD §3.12.7), not MPC CKD — a local node cannot reach the MPC network, and a simulated room's listings are RoomSealed |
 | Chain-Signatures-derived payout address | **Not built.** The seller types the address and the page says so |
 | Judges | **Simulated** unless a NEAR AI key is supplied; flagged on chain either way |
 | Context envelope for an appraisal | **Not built** (`TODO(E12.1)`). Without it the room rejects the input *without decrypting the good*, which is the specified behaviour — and the settlement proves it: zero bits debited |

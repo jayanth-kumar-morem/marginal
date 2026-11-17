@@ -199,7 +199,7 @@ Priority: **P0** is the demo's spine. **P1** should be ready. **P2** is shown if
 
 ### 2.3 Design rationale
 
-Marginal is a new codebase. The table records the starting design choices and what this system changes.
+Marginal is a new codebase. The table records the starting design choices, taken from the earlier v0 prototype (SPEC §4.15.1), and what this system changes.
 
 | Starting design | Marginal design | Section |
 |---|---|---|
@@ -1131,7 +1131,7 @@ All appraisers follow the four rules in SPEC §4.8: deterministic first; judgeme
 | Claim extraction | Union of (a) the deterministic splitter from the earlier prototype's `novelty.js::claims()` and (b) an LLM extractor that can only *add* claims (SPEC §4.8.1) | (b) off in HDP; self-hosted in v1 production |
 | Context check | Minimum number of context sentences, before the good is touched (T7) | ≥ 30 sentences (target) |
 | Embeddings | ONNX sentence embedder, normalised | **`BAAI/bge-small-en-v1.5`** (MIT, 33M parameters, official ONNX; MTEB English STS 81.59 against MiniLM's 78.95). `bge-base-en-v1.5` is the v1 quality candidate. Spike S-6 confirms. |
-| Per-claim novelty | `nᵢ = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))` against buyer context sentences | **τ values are per model.** the v0 values 0.78 / 0.45 apply to MiniLM only; bge cosines bunch high. τ is recalibrated on labelled pairs (PAWS, Webis-CPC-11) and baked into the measured image. |
+| Per-claim novelty | `nᵢ = clamp((τ_hi − maxSim)/(τ_hi − τ_lo))` against buyer context sentences | **τ values are per model.** The v0 values 0.78 / 0.45 apply to MiniLM only; bge cosines bunch high. τ is recalibrated on labelled pairs (PAWS, Webis-CPC-11) and baked into the measured image. |
 | NLI on borderline pairs | NLI cross-encoder (ONNX, CPU) on pairs with τ_lo < sim < τ_hi. Entailment ≥ threshold sets nᵢ = 0. | **`cross-encoder/nli-deberta-v3-xsmall`** (Apache-2.0; SNLI and MNLI; 87.77% on MNLI-mismatched) in HDP; `-base` (90.04%) in v1. Models trained on ANLI (CC BY-NC) are excluded. Threshold 0.9 (target). |
 | Need weighting | `wᵢ = max(0.05, cos(claimᵢ, need))`, `N_b = Σwᵢnᵢ / Σwᵢ` (padding-resistant weighting, AC-39) | — |
 | Public novelty (opt-in) | Same computation against the in-room public corpus snapshot → `N_pub`; otherwise `N_pub = 10,000` | Small curated corpus in HDP |
@@ -2008,7 +2008,7 @@ This is not legal advice. Counsel must run a prior-art search before any filing 
 | P-1 | Contract-enforced, priced leakage budget | A per-listing, seller-set bit budget on appraisal outputs, reserved before execution so refusals are simulatable, depleted across all buyers, with per-bit compensation to the seller (§3.8) | QIF, DP budgets, the Ladder, query pricing, privacy-loss compensation (SPEC §4.7.4) |
 | P-2 | Job-commitment-bound threshold key release | The room proves a job's authenticity to itself because it received threshold-derived key material for an app key committed to the job's parameters (§3.12.3) | Threshold KMS, CKD, TEE key-release services |
 | P-3 | ZK proof of a pricing rule over committed appraisal scores | Public on-chain verification that a clamped judgement factor (min and floor) and a registered formula map committed scores to the outcome and price, without revealing the scores (§3.17) | zkML, verifiable auctions, sealed-bid ZK auctions |
-| P-4 | Attestation-bound, two-sided forget certificate in a settlement record | Coverage of both parties' inputs, bound to the quote and policy version, anchored in the settlement, verifiable offline (§3.18) | erasure proofs from an earlier audit market (SPEC §4.10.5) |
+| P-4 | Attestation-bound, two-sided forget certificate in a settlement record | Coverage of both parties' inputs, bound to the quote and policy version, anchored in the settlement, verifiable offline (§3.18) | Signed erasure proofs from an erasure-proof audit market (SPEC §4.10.5) |
 | P-5 | Per-platform value-at-risk caps enforced at key release | §3.11, §3.12 | NDAI threshold model (SPEC §4.7.5) |
 | P-6 | Deterministic re-deliverable sealing | Delivery reproducible byte for byte by any authorised room, from the listing key and the job commitment (§3.19) | Deterministic encryption schemes |
 
